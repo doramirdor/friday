@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Stop } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -300,7 +300,7 @@ const TranscriptDetails = () => {
                         isRecording ? "animate-pulse" : ""
                       }`}
                     >
-                      {isRecording ? <Stop className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
+                      {isRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
                     </Button>
                     <div className="text-sm font-medium">
                       {isRecording ? "Recording in progress..." : "Click to start recording"}

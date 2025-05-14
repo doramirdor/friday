@@ -5,9 +5,11 @@ import { useCallback, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useNavigate, useLocation } from "react-router-dom";
 import SettingsDialog from "./settings-dialog";
+import NewMeetingDialog from "./new-meeting-dialog";
 
 const AppToolbar = () => {
   const [showSettings, setShowSettings] = useState(false);
+  const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [liveTranscriptEnabled, setLiveTranscriptEnabled] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -24,19 +26,6 @@ const AppToolbar = () => {
     }
   }, []);
   
-  const handleStartRecording = useCallback(() => {
-    // Navigate directly to transcript page with "new" state
-    navigate('/transcript/new', {
-      state: {
-        title: "New Meeting",
-        description: "",
-        tags: [],
-        createdAt: new Date(),
-        isNew: true
-      }
-    });
-  }, [navigate]);
-
   const handleHelp = useCallback(() => {
     toast.info("Help Center", {
       description: "Press ⌘ ? to open keyboard shortcuts",
@@ -61,7 +50,7 @@ const AppToolbar = () => {
       
       <div className="flex items-center gap-3">
         <Button 
-          onClick={handleStartRecording}
+          onClick={() => setShowNewMeeting(true)}
           className="bg-primary hover:bg-primary-light text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
         >
           <Plus className="h-4 w-4" />
@@ -93,6 +82,11 @@ const AppToolbar = () => {
         open={showSettings} 
         onOpenChange={setShowSettings} 
         onSettingsChange={handleSettingsChange}
+      />
+
+      <NewMeetingDialog
+        open={showNewMeeting}
+        onOpenChange={setShowNewMeeting}
       />
     </header>
   );
