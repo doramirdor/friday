@@ -31,7 +31,7 @@ const formSchema = z.object({
   title: z.string().min(1, { message: "Meeting title is required" }),
   context: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  liveTranscript: z.boolean().default(true),
+  liveTranscript: z.boolean().default(false),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -46,7 +46,7 @@ const NewMeetingDialog = ({ open, onOpenChange }: NewMeetingDialogProps) => {
       title: "",
       context: "",
       tags: [],
-      liveTranscript: true,
+      liveTranscript: false, // Changed default to false
     },
   });
 
