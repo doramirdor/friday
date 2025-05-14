@@ -1,5 +1,5 @@
 
-import { Settings, HelpCircle, Mic, Plus } from "lucide-react";
+import { Settings, HelpCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCallback, useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -25,8 +25,16 @@ const AppToolbar = () => {
   }, []);
   
   const handleStartRecording = useCallback(() => {
-    // Navigate to meeting setup page
-    navigate('/meeting/new');
+    // Navigate directly to transcript page with "new" state
+    navigate('/transcript/new', {
+      state: {
+        title: "New Meeting",
+        description: "",
+        tags: [],
+        createdAt: new Date(),
+        isNew: true
+      }
+    });
   }, [navigate]);
 
   const handleHelp = useCallback(() => {

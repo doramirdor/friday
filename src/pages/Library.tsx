@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import RecordingsTable, { Recording } from "@/components/recordings-table";
@@ -48,8 +47,16 @@ const Library = () => {
   }, []);
   
   const handleStartRecording = () => {
-    // Navigate to meeting setup page instead of directly to transcript
-    navigate('/meeting/new');
+    // Navigate directly to transcript page with "new" state
+    navigate('/transcript/new', {
+      state: {
+        title: "New Meeting",
+        description: "",
+        tags: [],
+        createdAt: new Date(),
+        isNew: true
+      }
+    });
   };
   
   const handleDeleteRecording = (id: string) => {
@@ -72,7 +79,7 @@ const Library = () => {
         <h2 className="text-2xl font-medium">Recordings</h2>
         
         <div className="flex gap-3">
-          {/* New button to create meeting */}
+          {/* Updated button to go directly to transcript page */}
           <Button 
             onClick={handleStartRecording}
             className="flex items-center gap-2"

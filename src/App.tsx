@@ -7,7 +7,6 @@ import AppToolbar from "@/components/app-toolbar";
 import IndexPage from "@/pages/Index";
 import LibraryPage from "@/pages/Library";
 import TranscriptDetailsPage from "@/pages/TranscriptDetails";
-import MeetingSetupPage from "@/pages/MeetingSetup";
 import NotFoundPage from "@/pages/NotFound";
 import "./App.css";
 
@@ -38,7 +37,6 @@ function App({ isElectron = false }: AppProps) {
             <Route path="*" element={<NotFoundPage />} />
           </Route>
           <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />
-          <Route path="/meeting/new" element={<MeetingSetupPage />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-center" />

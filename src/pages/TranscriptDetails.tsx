@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Stop } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -93,9 +93,21 @@ const TranscriptDetails = () => {
   
   const [newSpeakerName, setNewSpeakerName] = useState("");
   
+  // New state for recording
+  const [isRecording, setIsRecording] = useState(false);
+  const [isNewMeeting, setIsNewMeeting] = useState(!!meetingState?.isNew);
+  
   // New state for panel visibility
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+
+  // Determine if we should show empty transcript area for new meeting
+  useEffect(() => {
+    if (meetingState?.isNew) {
+      // Clear transcript lines for new meetings
+      setTranscriptLines([]);
+    }
+  }, [meetingState?.isNew]);
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
@@ -106,6 +118,30 @@ const TranscriptDetails = () => {
       // In a real app, this would control actual audio playback
     } else {
       toast.info("Paused recording");
+    }
+  };
+  
+  const handleStartStopRecording = () => {
+    setIsRecording(!isRecording);
+    
+    if (!isRecording) {
+      toast.success("Recording started");
+      // In a real app, this would start actual recording
+      // For demo purposes, let's add a line to transcript after a delay
+      if (isNewMeeting && transcriptLines.length === 0) {
+        setTimeout(() => {
+          setTranscriptLines([
+            { 
+              id: "l1", 
+              text: "This is a sample transcription. In a real app, this would be your actual recording.", 
+              speakerId: "s1" 
+            }
+          ]);
+          setIsNewMeeting(false); // No longer a new meeting once we have transcript
+        }, 3000);
+      }
+    } else {
+      toast.info("Recording stopped");
     }
   };
   
@@ -252,141 +288,171 @@ const TranscriptDetails = () => {
                 {leftPanelCollapsed ? <ChevronRight className="h-4 w-4" /> : <Minimize className="h-4 w-4" />}
               </Button>
               
-              {/* Waveform player */}
+              {/* Recording controls for new meeting or Waveform player for existing */}
               <div className="p-6 border-b">
-                <div className="flex items-center gap-4 mb-4">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handlePlayPause}
-                    className="h-10 w-10 rounded-full"
-                  >
-                    {isPlaying ? (
-                      <Pause className="h-5 w-5" />
-                    ) : (
-                      <Play className="h-5 w-5" />
-                    )}
-                    <span className="sr-only">
-                      {isPlaying ? "Pause" : "Play"}
-                    </span>
-                  </Button>
-                  
-                  <div className="text-sm font-medium">
-                    01:30 Total
-                  </div>
-                </div>
-                
-                <div className="h-24 bg-muted rounded-md waveform-bg relative">
-                  {/* Simulated waveform */}
-                  <div className="absolute inset-0 flex items-center px-4">
-                    <div className="w-full h-16 flex items-center">
-                      {Array.from({ length: 100 }).map((_, i) => {
-                        const height = Math.sin(i * 0.2) * 20 + 30;
-                        return (
-                          <div
-                            key={i}
-                            className="w-1 mx-0.5 bg-primary-dark opacity-70"
-                            style={{
-                              height: `${height}%`,
-                            }}
-                          />
-                        );
-                      })}
+                {isNewMeeting || transcriptLines.length === 0 ? (
+                  <div className="flex flex-col items-center gap-4 py-8">
+                    <Button
+                      variant={isRecording ? "destructive" : "default"}
+                      size="lg"
+                      onClick={handleStartStopRecording}
+                      className={`h-16 w-16 rounded-full flex items-center justify-center ${
+                        isRecording ? "animate-pulse" : ""
+                      }`}
+                    >
+                      {isRecording ? <Stop className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
+                    </Button>
+                    <div className="text-sm font-medium">
+                      {isRecording ? "Recording in progress..." : "Click to start recording"}
                     </div>
                   </div>
-                  
-                  {/* Playhead */}
-                  <div 
-                    className="absolute top-0 bottom-0 w-0.5 bg-primary"
-                    style={{ left: "30%" }}
-                  />
-                </div>
+                ) : (
+                  <div className="flex items-center gap-4 mb-4">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handlePlayPause}
+                      className="h-10 w-10 rounded-full"
+                    >
+                      {isPlaying ? (
+                        <Pause className="h-5 w-5" />
+                      ) : (
+                        <Play className="h-5 w-5" />
+                      )}
+                      <span className="sr-only">
+                        {isPlaying ? "Pause" : "Play"}
+                      </span>
+                    </Button>
+                    
+                    <div className="text-sm font-medium">
+                      01:30 Total
+                    </div>
+                  </div>
+                )}
+                
+                {!isNewMeeting && transcriptLines.length > 0 && (
+                  <div className="h-24 bg-muted rounded-md waveform-bg relative">
+                    {/* Simulated waveform - only show for non-new meetings */}
+                    <div className="absolute inset-0 flex items-center px-4">
+                      <div className="w-full h-16 flex items-center">
+                        {Array.from({ length: 100 }).map((_, i) => {
+                          const height = Math.sin(i * 0.2) * 20 + 30;
+                          return (
+                            <div
+                              key={i}
+                              className="w-1 mx-0.5 bg-primary-dark opacity-70"
+                              style={{
+                                height: `${height}%`,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    {/* Playhead */}
+                    <div 
+                      className="absolute top-0 bottom-0 w-0.5 bg-primary"
+                      style={{ left: "30%" }}
+                    />
+                  </div>
+                )}
               </div>
               
-              {/* Transcript lines - updated styling for speaker names */}
+              {/* Transcript lines */}
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="space-y-4">
                   <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-medium">Transcript</h2>
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="add-speaker" className="sr-only">Add Speaker</Label>
-                      <Input 
-                        id="add-speaker"
-                        placeholder="Add new speaker..."
-                        value={newSpeakerName}
-                        onChange={(e) => setNewSpeakerName(e.target.value)}
-                        className="w-48"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleAddSpeaker();
-                          }
-                        }}
-                      />
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={handleAddSpeaker}
-                      >
-                        Add
-                      </Button>
-                    </div>
+                    {transcriptLines.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="add-speaker" className="sr-only">Add Speaker</Label>
+                        <Input 
+                          id="add-speaker"
+                          placeholder="Add new speaker..."
+                          value={newSpeakerName}
+                          onChange={(e) => setNewSpeakerName(e.target.value)}
+                          className="w-48"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleAddSpeaker();
+                            }
+                          }}
+                        />
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={handleAddSpeaker}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   
-                  {transcriptLines.map((line) => (
-                    <div 
-                      key={line.id}
-                      className={`p-2 rounded-md ${
-                        line.id === currentLineId 
-                          ? "bg-primary/10 border-l-2 border-primary" 
-                          : "hover:bg-accent/50"
-                      }`}
-                      onClick={() => handleLineClick(line)}
-                    >
-                      {line.isEditing ? (
-                        <div className="flex gap-2">
-                          <select 
-                            value={line.speakerId}
-                            onChange={(e) => handleSpeakerChange(line.id, e.target.value)}
-                            className="h-10 w-32 rounded-md border border-input bg-background px-3 text-sm"
-                          >
-                            {speakers.map(speaker => (
-                              <option key={speaker.id} value={speaker.id}>{speaker.name}</option>
-                            ))}
-                          </select>
-                          <Input
-                            value={line.text}
-                            onChange={(e) => handleLineEdit(line.id, e.target.value)}
-                            autoFocus
-                            onBlur={() => {
-                              setTranscriptLines(
-                                transcriptLines.map(l => 
-                                  l.id === line.id ? { ...l, isEditing: false } : l
-                                )
-                              );
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                handleLineEdit(line.id, (e.target as HTMLInputElement).value);
-                              }
-                            }}
-                            className="flex-1"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex gap-2">
-                          <span 
-                            className="font-medium"
-                            style={{ 
-                              color: speakers.find(s => s.id === line.speakerId)?.color || "#666666",
-                            }}
-                          >
-                            {speakers.find(s => s.id === line.speakerId)?.name}
-                          </span>
-                          <p className="flex-1">{line.text}</p>
-                        </div>
-                      )}
+                  {/* Empty state for new meeting */}
+                  {isNewMeeting || transcriptLines.length === 0 ? (
+                    <div className="text-center py-16 text-muted-foreground">
+                      <p>No transcript available yet</p>
+                      <p className="mt-2 text-sm">Start recording to begin transcription</p>
                     </div>
-                  ))}
+                  ) : (
+                    transcriptLines.map((line) => (
+                      <div 
+                        key={line.id}
+                        className={`p-2 rounded-md ${
+                          line.id === currentLineId 
+                            ? "bg-primary/10 border-l-2 border-primary" 
+                            : "hover:bg-accent/50"
+                        }`}
+                        onClick={() => handleLineClick(line)}
+                      >
+                        {line.isEditing ? (
+                          <div className="flex gap-2">
+                            <select 
+                              value={line.speakerId}
+                              onChange={(e) => handleSpeakerChange(line.id, e.target.value)}
+                              className="h-10 w-32 rounded-md border border-input bg-background px-3 text-sm"
+                            >
+                              {speakers.map(speaker => (
+                                <option key={speaker.id} value={speaker.id}>{speaker.name}</option>
+                              ))}
+                            </select>
+                            <Input
+                              value={line.text}
+                              onChange={(e) => handleLineEdit(line.id, e.target.value)}
+                              autoFocus
+                              onBlur={() => {
+                                setTranscriptLines(
+                                  transcriptLines.map(l => 
+                                    l.id === line.id ? { ...l, isEditing: false } : l
+                                  )
+                                );
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleLineEdit(line.id, (e.target as HTMLInputElement).value);
+                                }
+                              }}
+                              className="flex-1"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <span 
+                              className="font-medium"
+                              style={{ 
+                                color: speakers.find(s => s.id === line.speakerId)?.color || "#666666",
+                              }}
+                            >
+                              {speakers.find(s => s.id === line.speakerId)?.name}
+                            </span>
+                            <p className="flex-1">{line.text}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
