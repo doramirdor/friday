@@ -33,60 +33,106 @@ let mainWindow;
 // Handle the Google Speech-to-Text API calls
 async function handleGoogleSpeechAPI(audioBuffer) {
   try {
-    // Actual implementation with Google Speech API
-    const speech = require('@google-cloud/speech');
-    
     // First check for API key in environment variable
     const apiKey = process.env.GOOGLE_SPEECH_API_KEY;
     
-    let client;
-    
     if (apiKey) {
-      // Use API key authentication if available
-      client = new speech.SpeechClient({
-        credentials: {
-          client_email: undefined,
-          private_key: undefined
+      // Use direct HTTP request with API key
+      console.log("Using API key authentication for Google Speech");
+      const https = require('https');
+      const url = `https://speech.googleapis.com/v1/speech:recognize?key=${apiKey}`;
+      
+      // Prepare request data
+      const requestData = JSON.stringify({
+        config: {
+          encoding: 'LINEAR16',
+          sampleRateHertz: 16000,
+          languageCode: 'en-US',
         },
-        projectId: process.env.GOOGLE_PROJECT_ID || '',
-        apiEndpoint: 'speech.googleapis.com',
-        auth: {
-          apiKey: apiKey
+        audio: {
+          content: Buffer.from(audioBuffer).toString('base64')
         }
       });
+      
+      // Make HTTP request to Google Speech API
+      const response = await new Promise((resolve, reject) => {
+        const req = https.request(
+          url,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(requestData)
+            }
+          },
+          (res) => {
+            let data = '';
+            res.on('data', (chunk) => {
+              data += chunk;
+            });
+            res.on('end', () => {
+              if (res.statusCode >= 200 && res.statusCode < 300) {
+                resolve(data);
+              } else {
+                reject(new Error(`HTTP error ${res.statusCode}: ${data}`));
+              }
+            });
+          }
+        );
+        
+        req.on('error', reject);
+        req.write(requestData);
+        req.end();
+      });
+      
+      // Parse the response
+      const result = JSON.parse(response);
+      console.log("API response:", result);
+      
+      if (result.results && result.results.length > 0) {
+        const transcription = result.results
+          .map(result => result.alternatives[0].transcript)
+          .join('\n');
+        return transcription;
+      } else {
+        return "No speech detected";
+      }
     } else {
       // Fall back to service account credentials file
+      console.log("Using service account authentication for Google Speech");
+      const speech = require('@google-cloud/speech');
+      
       try {
-        client = new speech.SpeechClient({
+        const client = new speech.SpeechClient({
           keyFilename: path.join(__dirname, 'google-credentials.json'),
         });
+        
+        const config = {
+          encoding: 'LINEAR16',
+          sampleRateHertz: 16000,
+          languageCode: 'en-US',
+        };
+        
+        const audio = {
+          content: Buffer.from(audioBuffer).toString('base64'),
+        };
+        
+        const request = {
+          config: config,
+          audio: audio,
+        };
+        
+        const [response] = await client.recognize(request);
+        const transcription = response.results
+          .map(result => result.alternatives[0].transcript)
+          .join('\n');
+          
+        return transcription;
       } catch (credErr) {
-        console.error('Error loading credentials file:', credErr);
+        console.error('Error with service account authentication:', credErr);
         throw new Error('No valid Google Speech authentication method found. Please provide either an API key or a credentials file.');
       }
     }
-    
-    const config = {
-      encoding: 'LINEAR16',
-      sampleRateHertz: 16000,
-      languageCode: 'en-US',
-    };
-    
-    const audio = {
-      content: Buffer.from(audioBuffer).toString('base64'),
-    };
-    
-    const request = {
-      config: config,
-      audio: audio,
-    };
-    
-    const [response] = await client.recognize(request);
-    const transcription = response.results
-      .map(result => result.alternatives[0].transcript)
-      .join('\n');
-      
-    return transcription;
   } catch (error) {
     console.error('Error with speech recognition:', error);
     // If there's an error, return a fallback message
