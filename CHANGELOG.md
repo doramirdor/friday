@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2023-07-31
+
+### Added
+- Support for API key authentication for Google Cloud Speech-to-Text as an alternative to service account credentials
+- Updated documentation with instructions for both authentication methods
+
 ## [0.2.0] - 2023-07-30
 
 ### Added

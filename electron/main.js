@@ -1,5 +1,27 @@
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
+
+// Load environment variables from .env.local if it exists
+const envPath = path.join(__dirname, '..', '.env.local');
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split('\n').forEach(line => {
+      const parts = line.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        const value = parts.slice(1).join('=').trim();
+        if (key && value) {
+          process.env[key] = value;
+        }
+      }
+    });
+    console.log('Loaded environment variables from .env.local');
+  } catch (err) {
+    console.error('Error loading .env.local file:', err);
+  }
+}
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling
 if (process.platform === 'win32') {
@@ -14,10 +36,35 @@ async function handleGoogleSpeechAPI(audioBuffer) {
     // Actual implementation with Google Speech API
     const speech = require('@google-cloud/speech');
     
-    // Creates a client with credentials
-    const client = new speech.SpeechClient({
-      keyFilename: path.join(__dirname, 'google-credentials.json'),
-    });
+    // First check for API key in environment variable
+    const apiKey = process.env.GOOGLE_SPEECH_API_KEY;
+    
+    let client;
+    
+    if (apiKey) {
+      // Use API key authentication if available
+      client = new speech.SpeechClient({
+        credentials: {
+          client_email: undefined,
+          private_key: undefined
+        },
+        projectId: process.env.GOOGLE_PROJECT_ID || '',
+        apiEndpoint: 'speech.googleapis.com',
+        auth: {
+          apiKey: apiKey
+        }
+      });
+    } else {
+      // Fall back to service account credentials file
+      try {
+        client = new speech.SpeechClient({
+          keyFilename: path.join(__dirname, 'google-credentials.json'),
+        });
+      } catch (credErr) {
+        console.error('Error loading credentials file:', credErr);
+        throw new Error('No valid Google Speech authentication method found. Please provide either an API key or a credentials file.');
+      }
+    }
     
     const config = {
       encoding: 'LINEAR16',

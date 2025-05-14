@@ -74,7 +74,9 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-trick
 
 ## Setting up Google Cloud Speech-to-Text API
 
-This application uses Google Cloud Speech-to-Text API for audio transcription in the Electron desktop version. To set it up:
+This application uses Google Cloud Speech-to-Text API for audio transcription in the Electron desktop version. You can set it up using either a service account or an API key.
+
+### Option 1: Using a Service Account (Recommended for production)
 
 1. Create a Google Cloud account if you don't have one: [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project in the Google Cloud Console
@@ -83,6 +85,23 @@ This application uses Google Cloud Speech-to-Text API for audio transcription in
 5. Place the credentials file in the `electron` directory as `google-credentials.json`
 6. Make sure your service account has the necessary permissions to use the Speech-to-Text API
 
+### Option 2: Using an API Key (Simpler for development)
+
+1. Create a Google Cloud account if you don't have one: [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project in the Google Cloud Console
+3. Enable the Speech-to-Text API for your project
+4. Create an API key: APIs & Services > Credentials > Create Credentials > API Key
+5. Set up environment variables before starting the application:
+   ```
+   # On macOS/Linux
+   export GOOGLE_SPEECH_API_KEY=your_api_key
+   export GOOGLE_PROJECT_ID=your_project_id
+   
+   # On Windows
+   set GOOGLE_SPEECH_API_KEY=your_api_key
+   set GOOGLE_PROJECT_ID=your_project_id
+   ```
+
 For detailed instructions, see the [Google Cloud Speech-to-Text documentation](https://cloud.google.com/speech-to-text/docs/quickstart-client-libraries).
 
-**IMPORTANT:** Keep your credentials secure and never commit them to version control. The `google-credentials.json` file is included in `.gitignore` by default.
+**IMPORTANT:** Keep your credentials and API keys secure and never commit them to version control. The `google-credentials.json` file is included in `.gitignore` by default.

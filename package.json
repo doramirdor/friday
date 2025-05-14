@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:8082 && electron .\"",
     "electron:build": "vite build && electron-builder",
-    "electron:preview": "vite build && electron ."
+    "electron:preview": "vite build && electron .",
+    "setup:speech": "node setup-env.js"
   },
   "dependencies": {
     "@google-cloud/speech": "^7.1.0",
