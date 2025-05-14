@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- System audio recording support via BlackHole audio driver
+- New useSystemAudio hook for accessing system audio
+- Audio device management UI in settings
+- Utility functions for checking and testing audio devices
+- Automatic detection and use of BlackHole for system audio
+
+### Changed
+- Improved audio device handling in TranscriptDetails and useGoogleSpeech
+- Better fallback mechanisms when specific audio devices aren't available
+
 ## [0.2.1] - 2023-07-31
 
 ### Added

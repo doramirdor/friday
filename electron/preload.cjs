@@ -29,6 +29,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       console.error('Error invoking Google Speech API:', error);
       throw error;
     }
+  },
+  // Add method to save audio files to disk
+  saveAudioFile: async (buffer, filename) => {
+    try {
+      return await ipcRenderer.invoke('save-audio-file', { buffer, filename });
+    } catch (error) {
+      console.error('Error saving audio file:', error);
+      throw error;
+    }
   }
 });
 

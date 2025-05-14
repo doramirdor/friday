@@ -59,6 +59,11 @@ interface ElectronWindow extends Window {
     sendMessage: (channel: string, data: unknown) => void;
     receive: (channel: string, callback: (...args: unknown[]) => void) => void;
     invokeGoogleSpeech: (audioBuffer: ArrayBuffer) => Promise<string>;
+    saveAudioFile: (buffer: ArrayBuffer, filename: string) => Promise<{
+      success: boolean;
+      filePath?: string;
+      message?: string;
+    }>;
   }
 }
 
@@ -135,6 +140,7 @@ const TranscriptDetails = () => {
   const [currentAudioTime, setCurrentAudioTime] = useState<number>(0);
   const [volume, setVolume] = useState<number>(80);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [savedAudioPath, setSavedAudioPath] = useState<string | null>(null);
 
   // Timer for recording duration
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
@@ -170,23 +176,47 @@ const TranscriptDetails = () => {
   useEffect(() => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
+      
+      // Add event listeners for audio playback
       audioRef.current.addEventListener('timeupdate', () => {
         setCurrentAudioTime(audioRef.current?.currentTime || 0);
       });
       
       audioRef.current.addEventListener('loadedmetadata', () => {
         setAudioDuration(audioRef.current?.duration || 0);
+        console.log(`Audio duration: ${audioRef.current?.duration}s`);
       });
       
       audioRef.current.addEventListener('ended', () => {
         setIsPlaying(false);
       });
+      
+      audioRef.current.addEventListener('error', (e) => {
+        console.error('Audio playback error:', e);
+        toast.error('Error playing audio recording');
+        setIsPlaying(false);
+      });
+      
+      audioRef.current.addEventListener('play', () => {
+        console.log('Audio playback started');
+      });
+      
+      audioRef.current.addEventListener('pause', () => {
+        console.log('Audio playback paused');
+      });
     }
     
     return () => {
       if (audioRef.current) {
+        // Remove all event listeners
         audioRef.current.pause();
-        URL.revokeObjectURL(audioRef.current.src);
+        audioRef.current.src = '';
+        
+        // Revoke any object URLs to prevent memory leaks
+        if (recordedAudioUrl) {
+          URL.revokeObjectURL(recordedAudioUrl);
+        }
+        
         audioRef.current = null;
       }
     };
@@ -195,8 +225,13 @@ const TranscriptDetails = () => {
   // Update audio source when recorded audio URL changes
   useEffect(() => {
     if (audioRef.current && recordedAudioUrl) {
+      console.log('Setting audio source:', recordedAudioUrl);
       audioRef.current.src = recordedAudioUrl;
       audioRef.current.load();
+      
+      // Reset audio playback state
+      setCurrentAudioTime(0);
+      setIsPlaying(false);
     }
   }, [recordedAudioUrl]);
   
@@ -267,13 +302,31 @@ const TranscriptDetails = () => {
       return;
     }
     
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
+    try {
+      if (isPlaying) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        const playPromise = audioRef.current.play();
+        
+        // Handle play promise to catch potential errors
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch(error => {
+              console.error("Playback error:", error);
+              toast.error("Failed to play audio");
+              setIsPlaying(false);
+            });
+        }
+      }
+    } catch (err) {
+      console.error("Error toggling playback:", err);
+      toast.error("Playback error occurred");
+      setIsPlaying(false);
     }
-    
-    setIsPlaying(!isPlaying);
   };
   
   const handleStartStopRecording = useCallback(async () => {
@@ -311,7 +364,7 @@ const TranscriptDetails = () => {
           }
         };
         
-        mediaRecorder.onstop = () => {
+        mediaRecorder.onstop = async () => {
           // Create audio blob from chunks
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
           
@@ -319,17 +372,46 @@ const TranscriptDetails = () => {
           const audioUrl = URL.createObjectURL(audioBlob);
           setRecordedAudioUrl(audioUrl);
           
+          // Save the audio file to disk if running in Electron
+          const electronAPI = (window as unknown as ElectronWindow).electronAPI;
+          if (isElectron && electronAPI && typeof electronAPI.saveAudioFile === 'function') {
+            try {
+              // Convert blob to ArrayBuffer
+              const arrayBuffer = await audioBlob.arrayBuffer();
+              
+              // Generate filename based on meeting title or timestamp
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const filename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${timestamp}.wav`;
+              
+              // Save file to disk
+              const result = await electronAPI.saveAudioFile(arrayBuffer, filename);
+              
+              if (result.success) {
+                setSavedAudioPath(result.filePath);
+                toast.success(`Recording saved to ${result.filePath}`);
+              } else {
+                toast.error(`Failed to save recording: ${result.message}`);
+              }
+            } catch (err) {
+              console.error("Error saving audio file:", err);
+              toast.error("Failed to save recording to disk");
+            }
+          } else {
+            // Not running in Electron, just use the blob URL
+            toast.info("Recording available for this session only");
+          }
+          
           // Send for transcription if live transcript is disabled
           if (!isLiveTranscript) {
             // Start background transcription processing
-            if (isElectron && window.electronAPI?.invokeGoogleSpeech) {
+            if (isElectron && electronAPI && typeof electronAPI.invokeGoogleSpeech === 'function') {
               // Convert blob to ArrayBuffer and send to Google Speech API
               const reader = new FileReader();
               reader.readAsArrayBuffer(audioBlob);
               reader.onloadend = async () => {
                 try {
                   const buffer = reader.result as ArrayBuffer;
-                  const result = await window.electronAPI.invokeGoogleSpeech(buffer);
+                  const result = await electronAPI.invokeGoogleSpeech(buffer);
                   
                   // Add as a new transcript line
                   setTranscriptLines(prevLines => [
@@ -354,10 +436,6 @@ const TranscriptDetails = () => {
               // like sending to a server or using a more powerful API
             }
           }
-          
-          // Save the recording locally
-          // In a real app, you might save to IndexedDB or filesystem via Electron
-          toast.success("Recording saved locally");
         };
         
         // Start recording

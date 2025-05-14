@@ -46,7 +46,7 @@ async function handleGoogleSpeechAPI(audioBuffer) {
       const requestData = JSON.stringify({
         config: {
           encoding: 'LINEAR16',
-          sampleRateHertz: 16000,
+          sampleRateHertz: 48000,
           languageCode: 'en-US',
         },
         audio: {
@@ -109,7 +109,7 @@ async function handleGoogleSpeechAPI(audioBuffer) {
         
         const config = {
           encoding: 'LINEAR16',
-          sampleRateHertz: 16000,
+          sampleRateHertz: 48000,
           languageCode: 'en-US',
         };
         
@@ -194,6 +194,39 @@ ipcMain.on('to-main', (event, args) => {
 // Handle the Google Speech transcription requests
 ipcMain.handle('invoke-google-speech', async (event, audioBuffer) => {
   return await handleGoogleSpeechAPI(audioBuffer);
+});
+
+// Handle saving audio files to disk
+ipcMain.handle('save-audio-file', async (event, { buffer, filename }) => {
+  try {
+    // Create recordings directory if it doesn't exist
+    const recordingsDir = path.join(app.getPath('documents'), 'Friday Recordings');
+    if (!fs.existsSync(recordingsDir)) {
+      fs.mkdirSync(recordingsDir, { recursive: true });
+    }
+
+    // Create a timestamp-based filename if none provided
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const finalFilename = filename || `recording-${timestamp}.wav`;
+    
+    // Full path to save the file
+    const filePath = path.join(recordingsDir, finalFilename);
+    
+    // Write the buffer to disk
+    fs.writeFileSync(filePath, Buffer.from(buffer));
+    
+    return {
+      success: true,
+      filePath,
+      message: `File saved to ${filePath}`
+    };
+  } catch (error) {
+    console.error('Error saving audio file:', error);
+    return {
+      success: false,
+      message: `Failed to save file: ${error.message}`
+    };
+  }
 });
 
 app.whenReady().then(() => {
