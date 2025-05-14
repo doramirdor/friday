@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
@@ -38,14 +38,24 @@ interface Context {
   overrideGlobal: boolean;
 }
 
+interface MeetingState {
+  title: string;
+  description: string;
+  tags: string[];
+  createdAt: Date;
+  isNew: boolean;
+}
+
 const TranscriptDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const meetingState = location.state as MeetingState | undefined;
   const { notes, setNotes, formatText } = useNotes(id || "");
   
-  const [title, setTitle] = useState("Weekly Team Standup");
-  const [description, setDescription] = useState("Discussion about current project status and next steps.");
-  const [tags, setTags] = useState<string[]>(["meeting", "team"]);
+  const [title, setTitle] = useState(meetingState?.title || "Weekly Team Standup");
+  const [description, setDescription] = useState(meetingState?.description || "Discussion about current project status and next steps.");
+  const [tags, setTags] = useState<string[]>(meetingState?.tags || ["meeting", "team"]);
   const [actionItems, setActionItems] = useState<ActionItem[]>([
     { id: "a1", text: "Follow up with design team about UI changes", completed: false },
     { id: "a2", text: "Schedule retrospective for Friday", completed: true },
@@ -191,7 +201,7 @@ const TranscriptDetails = () => {
         <Button 
           variant="ghost" 
           size="sm"
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/library")}
           className="h-8 w-8 p-0 rounded-full"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -219,7 +229,6 @@ const TranscriptDetails = () => {
             // Optional: store sizes in localStorage for persistence
             localStorage.setItem('panelSizes', JSON.stringify(sizes));
           }}
-          defaultLayout={getDefaultSizes()}
         >
           {/* Left panel (Transcript) */}
           <ResizablePanel 

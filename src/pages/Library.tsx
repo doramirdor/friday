@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import RecordingsTable, { Recording } from "@/components/recordings-table";
 import EmptyState from "@/components/empty-state";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 
 // Sample data
 const sampleRecordings: Recording[] = [
@@ -46,17 +48,8 @@ const Library = () => {
   }, []);
   
   const handleStartRecording = () => {
-    // Navigate to transcript page with a new ID
-    const newId = `rec-${Date.now()}`;
-    navigate(`/transcript/${newId}`);
-    
-    toast.success("Recording started", {
-      description: "Press ⌘ L to stop recording",
-      action: {
-        label: "Cancel",
-        onClick: () => toast("Recording canceled")
-      }
-    });
+    // Navigate to meeting setup page instead of directly to transcript
+    navigate('/meeting/new');
   };
   
   const handleDeleteRecording = (id: string) => {
@@ -78,14 +71,25 @@ const Library = () => {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-medium">Recordings</h2>
         
-        {/* This button is just for demo toggling between states */}
-        <Button 
-          variant="outline" 
-          onClick={toggleEmptyState} 
-          className="text-xs"
-        >
-          Toggle Empty State Demo
-        </Button>
+        <div className="flex gap-3">
+          {/* New button to create meeting */}
+          <Button 
+            onClick={handleStartRecording}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            New Meeting
+          </Button>
+          
+          {/* This button is just for demo toggling between states */}
+          <Button 
+            variant="outline" 
+            onClick={toggleEmptyState} 
+            className="text-xs"
+          >
+            Toggle Empty State Demo
+          </Button>
+        </div>
       </div>
       
       {showEmpty ? (
@@ -97,20 +101,6 @@ const Library = () => {
         />
       )}
     </main>
-  );
-};
-
-// This is just for the demo toggle button, would normally be imported
-const Button = ({ children, onClick, className, variant }: any) => {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1 rounded-md ${
-        variant === "outline" ? "border border-gray-200 hover:bg-gray-50" : ""
-      } ${className}`}
-    >
-      {children}
-    </button>
   );
 };
 
