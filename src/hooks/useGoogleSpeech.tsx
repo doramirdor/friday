@@ -1,4 +1,3 @@
-
 import { useState, useRef, useCallback } from 'react';
 
 // Interface for the hook's return values
@@ -15,6 +14,18 @@ interface UseGoogleSpeechReturn {
 interface RecordingOptions {
   sampleRate?: number;
   language?: string;
+  continuous?: boolean;
+}
+
+// Define the Electron window interface
+interface ElectronWindow extends Window {
+  electronAPI?: {
+    isElectron: boolean;
+    platform: string;
+    sendMessage: (channel: string, data: unknown) => void;
+    receive: (channel: string, callback: (...args: unknown[]) => void) => void;
+    invokeGoogleSpeech: (audioBuffer: ArrayBuffer) => Promise<string>;
+  }
 }
 
 const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn => {
@@ -26,10 +37,60 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const processingRef = useRef<boolean>(false);
 
   // Default options
   const sampleRate = options.sampleRate || 16000;
   const language = options.language || 'en-US';
+  const continuous = options.continuous !== undefined ? options.continuous : true;
+
+  // Convert audio format if needed
+  const convertAudio = async (audioBlob: Blob): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) {
+          resolve(reader.result as ArrayBuffer);
+        } else {
+          reject(new Error('Failed to convert audio'));
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(audioBlob);
+    });
+  };
+
+  // Process audio chunks and send to Google Speech API
+  const processAudioChunk = async (audioBlob: Blob) => {
+    if (processingRef.current) return;
+    
+    try {
+      processingRef.current = true;
+      
+      // Check if we have the Electron API
+      if (!(window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
+        throw new Error('Google Speech API not available');
+      }
+      
+      // Convert audio to format needed for Google Speech
+      const audioBuffer = await convertAudio(audioBlob);
+      
+      // Call Google Speech API via Electron
+      const result = await (window as unknown as ElectronWindow).electronAPI.invokeGoogleSpeech(audioBuffer);
+      
+      if (result) {
+        setTranscript(prev => {
+          // If there's existing text, add a space before new content
+          return prev ? `${prev} ${result}` : result;
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+      console.error('Speech recognition error:', err);
+    } finally {
+      processingRef.current = false;
+    }
+  };
 
   // Start recording audio
   const startRecording = useCallback(async (): Promise<void> => {
@@ -37,9 +98,17 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
       // Reset state
       setError(null);
       audioChunksRef.current = [];
+      setTranscript('');
 
       // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        } 
+      });
       streamRef.current = stream;
 
       // Create media recorder
@@ -50,39 +119,34 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
-        }
-        
-        // For live transcription, we can convert and send data immediately
-        if (window.electronAPI?.invokeGoogleSpeech) {
-          // Convert blob to ArrayBuffer
-          const reader = new FileReader();
-          reader.readAsArrayBuffer(event.data);
-          reader.onloadend = async () => {
-            try {
-              const buffer = reader.result as ArrayBuffer;
-              // Call Google Speech API via Electron
-              const result = await window.electronAPI.invokeGoogleSpeech(buffer);
-              setTranscript(prev => prev + ' ' + result);
-            } catch (err) {
-              setError(err instanceof Error ? err : new Error(String(err)));
-            }
-          };
+          
+          // If continuous transcription is enabled, process each chunk
+          if (continuous && (window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
+            processAudioChunk(event.data);
+          }
         }
       };
 
       // Start recording
-      mediaRecorder.start(1000); // Capture in 1-second chunks for streaming
+      mediaRecorder.start(2000); // Capture in 2-second chunks for streaming
       setIsRecording(true);
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
+      console.error('Failed to start recording:', err);
     }
-  }, []);
+  }, [continuous, sampleRate]);
 
   // Stop recording
   const stopRecording = useCallback((): void => {
     // Stop the media recorder
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
+      
+      // Process all chunks at once if not in continuous mode
+      if (!continuous && audioChunksRef.current.length > 0) {
+        const completeBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        processAudioChunk(completeBlob);
+      }
     }
     
     // Stop all tracks
@@ -94,10 +158,7 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
     }
     
     setIsRecording(false);
-    
-    // Process final audio in a real implementation
-    // For now, we're processing chunks in real-time
-  }, [isRecording]);
+  }, [isRecording, continuous]);
 
   // Reset transcript
   const resetTranscript = useCallback((): void => {

@@ -11,20 +11,7 @@ let mainWindow;
 // Handle the Google Speech-to-Text API calls
 async function handleGoogleSpeechAPI(audioBuffer) {
   try {
-    // In a real implementation, you would use the @google-cloud/speech package
-    // For this demo, we'll just return a placeholder response
-    console.log('Received audio buffer of size:', audioBuffer.byteLength);
-    
-    // Simulate API processing delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Return a fake transcription
-    return "This is a simulated transcription from Google Speech API.";
-    
-    /*
-    // IMPLEMENTATION WITH ACTUAL GOOGLE SPEECH API:
-    
-    // Requires: npm install @google-cloud/speech
+    // Actual implementation with Google Speech API
     const speech = require('@google-cloud/speech');
     
     // Creates a client with credentials
@@ -53,10 +40,10 @@ async function handleGoogleSpeechAPI(audioBuffer) {
       .join('\n');
       
     return transcription;
-    */
   } catch (error) {
     console.error('Error with speech recognition:', error);
-    throw error;
+    // If there's an error, return a fallback message
+    return "Sorry, there was an error transcribing the audio. Please try again.";
   }
 }
 

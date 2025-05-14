@@ -3,5 +3,5 @@ description:
 globs: 
 alwaysApply: true
 ---
- - commit after any session all the changes with meaningful commit
+ - commit after any message all the changes with meaningful commit
  - update the change log with all the new changes

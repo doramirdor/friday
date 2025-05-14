@@ -71,3 +71,18 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+
+## Setting up Google Cloud Speech-to-Text API
+
+This application uses Google Cloud Speech-to-Text API for audio transcription in the Electron desktop version. To set it up:
+
+1. Create a Google Cloud account if you don't have one: [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project in the Google Cloud Console
+3. Enable the Speech-to-Text API for your project
+4. Create a service account and download the JSON credentials file
+5. Place the credentials file in the `electron` directory as `google-credentials.json`
+6. Make sure your service account has the necessary permissions to use the Speech-to-Text API
+
+For detailed instructions, see the [Google Cloud Speech-to-Text documentation](https://cloud.google.com/speech-to-text/docs/quickstart-client-libraries).
+
+**IMPORTANT:** Keep your credentials secure and never commit them to version control. The `google-credentials.json` file is included in `.gitignore` by default.
