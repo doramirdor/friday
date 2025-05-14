@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square } from "lucide-react";
@@ -11,6 +11,8 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNotes } from "@/hooks/useNotes";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import useSpeechRecognition from "@/hooks/useSpeechRecognition";
+import useGoogleSpeech from "@/hooks/useGoogleSpeech";
 
 interface TranscriptLine {
   id: string;
@@ -46,6 +48,16 @@ interface MeetingState {
   isNew: boolean;
 }
 
+interface ElectronWindow extends Window {
+  electronAPI?: {
+    isElectron: boolean;
+    platform: string;
+    sendMessage: (channel: string, data: unknown) => void;
+    receive: (channel: string, callback: (...args: unknown[]) => void) => void;
+    invokeGoogleSpeech: (audioBuffer: ArrayBuffer) => Promise<string>;
+  }
+}
+
 const TranscriptDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -78,28 +90,65 @@ const TranscriptDetails = () => {
     { id: "s3", name: "David", color: "#FF9F43" },
   ]);
   
-  const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([
-    { id: "l1", text: "Hey everyone, thanks for joining today's standup.", speakerId: "s1" },
-    { id: "l2", text: "Let's go around the room and share updates on what we've been working on.", speakerId: "s1" },
-    { id: "l3", text: "Sarah, would you like to go first?", speakerId: "s1" },
-    { id: "l4", text: "Sure. I've been working on the new dashboard design and it's about 80% complete.", speakerId: "s2" },
-    { id: "l5", text: "I'm planning to send it for review by end of day.", speakerId: "s2" },
-    { id: "l6", text: "Great. And do you foresee any blockers that might prevent you from finishing today?", speakerId: "s1" },
-    { id: "l7", text: "No blockers at the moment, just need to finish up some minor details.", speakerId: "s2" },
-    { id: "l8", text: "Perfect. Let's move on to David.", speakerId: "s1" },
-    { id: "l9", text: "I've been working on the backend API and have completed the user authentication endpoints.", speakerId: "s3" },
-    { id: "l10", text: "I'll need another day to finish the data validation and error handling.", speakerId: "s3" },
-  ]);
-  
+  const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
   const [newSpeakerName, setNewSpeakerName] = useState("");
   
-  // New state for recording
+  // Use different speech recognition based on environment
+  const isElectron = !!(window as unknown as ElectronWindow)?.electronAPI?.isElectron;
+  const googleSpeech = useGoogleSpeech();
+  const webSpeech = useSpeechRecognition({
+    continuous: true,
+    interimResults: true,
+    language: 'en-US',
+  });
+  
+  // Determine which speech recognition method to use
+  const speech = isElectron ? googleSpeech : webSpeech;
+  
+  // Get the relevant state from the speech recognition hooks
   const [isRecording, setIsRecording] = useState(false);
   const [isNewMeeting, setIsNewMeeting] = useState(!!meetingState?.isNew);
   
-  // New state for panel visibility
+  // State for panel visibility
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+  
+  // Track the current speaker for new transcripts
+  const [currentSpeakerId, setCurrentSpeakerId] = useState("s1");
+
+  // Process transcript updates when speech recognition produces new text
+  useEffect(() => {
+    if (speech.transcript && isRecording) {
+      const transcriptText = speech.transcript.trim();
+      if (transcriptText) {
+        // Add the new line to the transcript
+        const newLine: TranscriptLine = {
+          id: `l${Date.now()}`,
+          text: transcriptText,
+          speakerId: currentSpeakerId,
+        };
+
+        setTranscriptLines(prevLines => {
+          // Check if this is a continuation of the current speaker's text
+          if (prevLines.length > 0 && prevLines[prevLines.length - 1].speakerId === currentSpeakerId) {
+            // Update the last line to append the new text
+            const updatedLines = [...prevLines];
+            updatedLines[updatedLines.length - 1] = {
+              ...updatedLines[updatedLines.length - 1],
+              text: updatedLines[updatedLines.length - 1].text + ' ' + transcriptText,
+            };
+            return updatedLines;
+          } else {
+            // Add a new line
+            return [...prevLines, newLine];
+          }
+        });
+
+        // Reset the transcript in the speech hook to avoid duplication
+        speech.resetTranscript();
+      }
+    }
+  }, [speech.transcript, isRecording, currentSpeakerId]);
 
   // Determine if we should show empty transcript area for new meeting
   useEffect(() => {
@@ -108,6 +157,17 @@ const TranscriptDetails = () => {
       setTranscriptLines([]);
     }
   }, [meetingState?.isNew]);
+
+  // Handle errors from speech recognition
+  useEffect(() => {
+    if (speech.error) {
+      const errorMessage = typeof speech.error === 'string' 
+        ? speech.error 
+        : speech.error.message || 'Error with speech recognition';
+        
+      toast.error(errorMessage);
+    }
+  }, [speech.error]);
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
@@ -121,29 +181,25 @@ const TranscriptDetails = () => {
     }
   };
   
-  const handleStartStopRecording = () => {
-    setIsRecording(!isRecording);
+  const handleStartStopRecording = useCallback(() => {
+    setIsRecording(prev => !prev);
     
     if (!isRecording) {
       toast.success("Recording started");
-      // In a real app, this would start actual recording
-      // For demo purposes, let's add a line to transcript after a delay
-      if (isNewMeeting && transcriptLines.length === 0) {
-        setTimeout(() => {
-          setTranscriptLines([
-            { 
-              id: "l1", 
-              text: "This is a sample transcription. In a real app, this would be your actual recording.", 
-              speakerId: "s1" 
-            }
-          ]);
-          setIsNewMeeting(false); // No longer a new meeting once we have transcript
-        }, 3000);
+      
+      // Start the appropriate speech recognition
+      speech.startRecording();
+      
+      if (isNewMeeting) {
+        setIsNewMeeting(false);
       }
     } else {
       toast.info("Recording stopped");
+      
+      // Stop the speech recognition
+      speech.stopRecording();
     }
-  };
+  }, [isRecording, speech, isNewMeeting]);
   
   const handleLineClick = (line: TranscriptLine) => {
     setTranscriptLines(
@@ -231,6 +287,12 @@ const TranscriptDetails = () => {
     return [50, 50]; // Default is 50/50 split
   };
   
+  // Add a function to handle speaker change during recording
+  const handleCurrentSpeakerChange = (speakerId: string) => {
+    setCurrentSpeakerId(speakerId);
+    toast.info(`Speaker changed to ${speakers.find(s => s.id === speakerId)?.name || 'Unknown'}`);
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-background border-b border-border px-6 py-4 flex items-center gap-4">
@@ -262,7 +324,6 @@ const TranscriptDetails = () => {
           direction="horizontal" 
           className="w-full"
           onLayout={(sizes) => {
-            // Optional: store sizes in localStorage for persistence
             localStorage.setItem('panelSizes', JSON.stringify(sizes));
           }}
         >
@@ -305,6 +366,32 @@ const TranscriptDetails = () => {
                     <div className="text-sm font-medium">
                       {isRecording ? "Recording in progress..." : "Click to start recording"}
                     </div>
+                    
+                    {/* Add speaker selector when recording */}
+                    {isRecording && (
+                      <div className="mt-4 w-full">
+                        <Label className="text-sm">Current Speaker</Label>
+                        <div className="mt-2 grid grid-cols-3 gap-2">
+                          {speakers.map((speaker) => (
+                            <Button
+                              key={speaker.id}
+                              variant={currentSpeakerId === speaker.id ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handleCurrentSpeakerChange(speaker.id)}
+                              className="text-xs"
+                              style={{
+                                borderColor: speaker.color,
+                                ...(currentSpeakerId === speaker.id 
+                                  ? { backgroundColor: speaker.color, color: "#fff" } 
+                                  : {})
+                              }}
+                            >
+                              {speaker.name}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-center gap-4 mb-4">
@@ -330,7 +417,8 @@ const TranscriptDetails = () => {
                   </div>
                 )}
                 
-                {!isNewMeeting && transcriptLines.length > 0 && (
+                {/* Keep the waveform display as is */}
+                {!isNewMeeting && transcriptLines.length > 0 && !isRecording && (
                   <div className="h-24 bg-muted rounded-md waveform-bg relative">
                     {/* Simulated waveform - only show for non-new meetings */}
                     <div className="absolute inset-0 flex items-center px-4">
@@ -355,6 +443,21 @@ const TranscriptDetails = () => {
                       className="absolute top-0 bottom-0 w-0.5 bg-primary"
                       style={{ left: "30%" }}
                     />
+                  </div>
+                )}
+
+                {/* Show live transcription status when recording */}
+                {isRecording && (
+                  <div className="mt-4 p-3 bg-accent/20 rounded-md">
+                    <div className="text-sm font-medium flex items-center">
+                      <div className="mr-2 h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                      Live Transcription Active
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {isElectron 
+                        ? "Using Google Speech API for high accuracy" 
+                        : "Using Web Speech API for transcription"}
+                    </div>
                   </div>
                 )}
               </div>

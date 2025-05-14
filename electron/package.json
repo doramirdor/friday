@@ -1,15 +1,7 @@
-
 {
-  "name": "friday-app",
+  "name": "electron-app",
+  "private": true,
   "version": "1.0.0",
-  "description": "Friday - macOS Desktop Recorder & AI Transcript App",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron ."
-  },
-  "author": "",
-  "license": "MIT",
-  "devDependencies": {
-    "electron": "^28.0.0"
-  }
-}
+  "type": "commonjs",
+  "main": "main.js"
+} 
