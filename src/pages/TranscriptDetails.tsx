@@ -1,7 +1,8 @@
+
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useNotes } from "@/hooks/useNotes";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 interface TranscriptLine {
   id: string;
@@ -82,6 +84,10 @@ const TranscriptDetails = () => {
   
   const [newSpeakerName, setNewSpeakerName] = useState("");
   
+  // New state for panel visibility
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
+
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
     
@@ -164,6 +170,22 @@ const TranscriptDetails = () => {
     toast.success("Changes saved successfully");
   };
   
+  // Toggle panel visibility
+  const toggleLeftPanel = () => {
+    setLeftPanelCollapsed(!leftPanelCollapsed);
+  };
+  
+  const toggleRightPanel = () => {
+    setRightPanelCollapsed(!rightPanelCollapsed);
+  };
+
+  // Determine the default sizes based on collapsed state
+  const getDefaultSizes = () => {
+    if (leftPanelCollapsed) return [0, 100];
+    if (rightPanelCollapsed) return [100, 0];
+    return [50, 50]; // Default is 50/50 split
+  };
+  
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-background border-b border-border px-6 py-4 flex items-center gap-4">
@@ -191,370 +213,426 @@ const TranscriptDetails = () => {
       </header>
       
       <div className="flex flex-1 overflow-hidden">
-        {/* Main transcript area - 50% */}
-        <div className="flex flex-col w-1/2 overflow-hidden">
-          {/* Waveform player */}
-          <div className="p-6 border-b border-r">
-            <div className="flex items-center gap-4 mb-4">
+        <ResizablePanelGroup 
+          direction="horizontal" 
+          className="w-full"
+          onLayout={(sizes) => {
+            // Optional: store sizes in localStorage for persistence
+            localStorage.setItem('panelSizes', JSON.stringify(sizes));
+          }}
+          defaultSizes={getDefaultSizes()}
+        >
+          {/* Left panel (Transcript) */}
+          <ResizablePanel 
+            defaultSize={50} 
+            minSize={15}
+            maxSize={85}
+            collapsible={true}
+            collapsedSize={0}
+            onCollapse={() => setLeftPanelCollapsed(true)}
+            onExpand={() => setLeftPanelCollapsed(false)}
+            className={leftPanelCollapsed ? "hidden" : ""}
+          >
+            <div className="flex flex-col h-full overflow-hidden">
+              {/* Toggle button for left panel */}
               <Button
-                variant="outline"
-                size="icon"
-                onClick={handlePlayPause}
-                className="h-10 w-10 rounded-full"
+                variant="ghost"
+                size="sm"
+                onClick={toggleLeftPanel}
+                className="absolute left-2 top-20 z-10 h-8 w-8 p-0 rounded-full bg-accent/50"
               >
-                {isPlaying ? (
-                  <Pause className="h-5 w-5" />
-                ) : (
-                  <Play className="h-5 w-5" />
-                )}
-                <span className="sr-only">
-                  {isPlaying ? "Pause" : "Play"}
-                </span>
+                {leftPanelCollapsed ? <ChevronRight className="h-4 w-4" /> : <Minimize className="h-4 w-4" />}
               </Button>
               
-              <div className="text-sm font-medium">
-                01:30 Total
-              </div>
-            </div>
-            
-            <div className="h-24 bg-muted rounded-md waveform-bg relative">
-              {/* Simulated waveform */}
-              <div className="absolute inset-0 flex items-center px-4">
-                <div className="w-full h-16 flex items-center">
-                  {Array.from({ length: 100 }).map((_, i) => {
-                    const height = Math.sin(i * 0.2) * 20 + 30;
-                    return (
-                      <div
-                        key={i}
-                        className="w-1 mx-0.5 bg-primary-dark opacity-70"
-                        style={{
-                          height: `${height}%`,
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-              
-              {/* Playhead */}
-              <div 
-                className="absolute top-0 bottom-0 w-0.5 bg-primary"
-                style={{ left: "30%" }}
-              />
-            </div>
-          </div>
-          
-          {/* Transcript lines - updated styling for speaker names */}
-          <div className="flex-1 overflow-y-auto p-6 border-r">
-            <div className="space-y-4">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-medium">Transcript</h2>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="add-speaker" className="sr-only">Add Speaker</Label>
-                  <Input 
-                    id="add-speaker"
-                    placeholder="Add new speaker..."
-                    value={newSpeakerName}
-                    onChange={(e) => setNewSpeakerName(e.target.value)}
-                    className="w-48"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleAddSpeaker();
-                      }
-                    }}
-                  />
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleAddSpeaker}
+              {/* Waveform player */}
+              <div className="p-6 border-b">
+                <div className="flex items-center gap-4 mb-4">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handlePlayPause}
+                    className="h-10 w-10 rounded-full"
                   >
-                    Add
+                    {isPlaying ? (
+                      <Pause className="h-5 w-5" />
+                    ) : (
+                      <Play className="h-5 w-5" />
+                    )}
+                    <span className="sr-only">
+                      {isPlaying ? "Pause" : "Play"}
+                    </span>
                   </Button>
-                </div>
-              </div>
-              
-              {transcriptLines.map((line) => (
-                <div 
-                  key={line.id}
-                  className={`p-2 rounded-md ${
-                    line.id === currentLineId 
-                      ? "bg-primary/10 border-l-2 border-primary" 
-                      : "hover:bg-accent/50"
-                  }`}
-                  onClick={() => handleLineClick(line)}
-                >
-                  {line.isEditing ? (
-                    <div className="flex gap-2">
-                      <select 
-                        value={line.speakerId}
-                        onChange={(e) => handleSpeakerChange(line.id, e.target.value)}
-                        className="h-10 w-32 rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        {speakers.map(speaker => (
-                          <option key={speaker.id} value={speaker.id}>{speaker.name}</option>
-                        ))}
-                      </select>
-                      <Input
-                        value={line.text}
-                        onChange={(e) => handleLineEdit(line.id, e.target.value)}
-                        autoFocus
-                        onBlur={() => {
-                          setTranscriptLines(
-                            transcriptLines.map(l => 
-                              l.id === line.id ? { ...l, isEditing: false } : l
-                            )
-                          );
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleLineEdit(line.id, (e.target as HTMLInputElement).value);
-                          }
-                        }}
-                        className="flex-1"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex gap-3">
-                      <span 
-                        className="font-medium"
-                        style={{ 
-                          color: speakers.find(s => s.id === line.speakerId)?.color || "#666666",
-                        }}
-                      >
-                        {speakers.find(s => s.id === line.speakerId)?.name}:
-                      </span>
-                      <p className="flex-1">{line.text}</p>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        {/* Inspector sidebar - 50% */}
-        <div className="w-1/2 overflow-y-auto">
-          <Tabs defaultValue="details" className="w-full">
-            <TabsList className="w-full justify-start border-b rounded-none px-6 h-12">
-              <TabsTrigger value="details" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
-                Details
-              </TabsTrigger>
-              <TabsTrigger value="action-items" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
-                Action Items
-              </TabsTrigger>
-              <TabsTrigger value="notes" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
-                Notes
-              </TabsTrigger>
-              <TabsTrigger value="context" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
-                Context
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="details" className="p-6 space-y-6">
-              <div className="space-y-4">
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </div>
-              
-              <div className="space-y-4">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={4}
-                />
-              </div>
-              
-              <div className="space-y-4">
-                <Label htmlFor="tags">Tags</Label>
-                <TagInput
-                  id="tags"
-                  tags={tags}
-                  onTagsChange={setTags}
-                  placeholder="Add tag..."
-                />
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="action-items" className="p-6 space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="action-items">Action Items</Label>
-                  <span className="text-sm text-muted-foreground">
-                    {actionItems.filter(item => item.completed).length}/{actionItems.length} completed
-                  </span>
+                  
+                  <div className="text-sm font-medium">
+                    01:30 Total
+                  </div>
                 </div>
                 
-                <div className="space-y-3 max-h-[400px] overflow-y-auto">
-                  {actionItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-start gap-2 p-3 border rounded-md"
-                    >
-                      <Checkbox
-                        id={item.id}
-                        checked={item.completed}
-                        onCheckedChange={() => handleToggleActionItem(item.id)}
-                        className="mt-1"
+                <div className="h-24 bg-muted rounded-md waveform-bg relative">
+                  {/* Simulated waveform */}
+                  <div className="absolute inset-0 flex items-center px-4">
+                    <div className="w-full h-16 flex items-center">
+                      {Array.from({ length: 100 }).map((_, i) => {
+                        const height = Math.sin(i * 0.2) * 20 + 30;
+                        return (
+                          <div
+                            key={i}
+                            className="w-1 mx-0.5 bg-primary-dark opacity-70"
+                            style={{
+                              height: `${height}%`,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  {/* Playhead */}
+                  <div 
+                    className="absolute top-0 bottom-0 w-0.5 bg-primary"
+                    style={{ left: "30%" }}
+                  />
+                </div>
+              </div>
+              
+              {/* Transcript lines - updated styling for speaker names */}
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-medium">Transcript</h2>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="add-speaker" className="sr-only">Add Speaker</Label>
+                      <Input 
+                        id="add-speaker"
+                        placeholder="Add new speaker..."
+                        value={newSpeakerName}
+                        onChange={(e) => setNewSpeakerName(e.target.value)}
+                        className="w-48"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleAddSpeaker();
+                          }
+                        }}
                       />
-                      <Label
-                        htmlFor={item.id}
-                        className={`${
-                          item.completed ? "line-through text-muted-foreground" : ""
-                        } cursor-pointer text-sm flex-1`}
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleAddSpeaker}
                       >
-                        {item.text}
-                      </Label>
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {transcriptLines.map((line) => (
+                    <div 
+                      key={line.id}
+                      className={`p-2 rounded-md ${
+                        line.id === currentLineId 
+                          ? "bg-primary/10 border-l-2 border-primary" 
+                          : "hover:bg-accent/50"
+                      }`}
+                      onClick={() => handleLineClick(line)}
+                    >
+                      {line.isEditing ? (
+                        <div className="flex gap-2">
+                          <select 
+                            value={line.speakerId}
+                            onChange={(e) => handleSpeakerChange(line.id, e.target.value)}
+                            className="h-10 w-32 rounded-md border border-input bg-background px-3 text-sm"
+                          >
+                            {speakers.map(speaker => (
+                              <option key={speaker.id} value={speaker.id}>{speaker.name}</option>
+                            ))}
+                          </select>
+                          <Input
+                            value={line.text}
+                            onChange={(e) => handleLineEdit(line.id, e.target.value)}
+                            autoFocus
+                            onBlur={() => {
+                              setTranscriptLines(
+                                transcriptLines.map(l => 
+                                  l.id === line.id ? { ...l, isEditing: false } : l
+                                )
+                              );
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                handleLineEdit(line.id, (e.target as HTMLInputElement).value);
+                              }
+                            }}
+                            className="flex-1"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex gap-2">
+                          <span 
+                            className="font-medium"
+                            style={{ 
+                              color: speakers.find(s => s.id === line.speakerId)?.color || "#666666",
+                            }}
+                          >
+                            {speakers.find(s => s.id === line.speakerId)?.name}
+                          </span>
+                          <p className="flex-1">{line.text}</p>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
-                
-                <div className="flex gap-2 pt-4">
-                  <Input
-                    value={newActionItem}
-                    onChange={(e) => setNewActionItem(e.target.value)}
-                    placeholder="Add new action item..."
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleAddActionItem();
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleAddActionItem}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Add
-                  </Button>
-                </div>
               </div>
-            </TabsContent>
+            </div>
+          </ResizablePanel>
+          
+          {!leftPanelCollapsed && !rightPanelCollapsed && (
+            <ResizableHandle withHandle />
+          )}
+          
+          {/* Right panel (Inspector) */}
+          <ResizablePanel 
+            defaultSize={50}
+            minSize={15}
+            maxSize={85}
+            collapsible={true}
+            collapsedSize={0}
+            onCollapse={() => setRightPanelCollapsed(true)}
+            onExpand={() => setRightPanelCollapsed(false)}
+            className={rightPanelCollapsed ? "hidden" : ""}
+          >
+            {/* Toggle button for right panel */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleRightPanel}
+              className="absolute right-2 top-20 z-10 h-8 w-8 p-0 rounded-full bg-accent/50"
+            >
+              {rightPanelCollapsed ? <ChevronLeft className="h-4 w-4" /> : <Minimize className="h-4 w-4" />}
+            </Button>
             
-            <TabsContent value="notes" className="p-6 space-y-6">
-              <div className="space-y-4">
-                <Label htmlFor="notes">Meeting Notes</Label>
-                
-                <div className="border rounded-md p-2 mb-4">
-                  <div className="flex items-center gap-2 border-b pb-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => formatText('bold')}
-                      className="h-8 w-8 p-0"
-                      title="Bold"
-                    >
-                      <Bold className="h-5 w-5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => formatText('italic')}
-                      className="h-8 w-8 p-0"
-                      title="Italic"
-                    >
-                      <Italic className="h-5 w-5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => formatText('link')}
-                      className="h-8 w-8 p-0"
-                      title="Link"
-                    >
-                      <LinkIcon className="h-5 w-5" />
-                    </Button>
-                  </div>
-                </div>
-                
-                <Textarea
-                  id="notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={12}
-                  placeholder="Add meeting notes here..."
-                  className="resize-none"
-                />
-                
-                <div className="p-4 border rounded-md bg-accent/30">
-                  <h3 className="text-sm font-medium mb-2">Preview</h3>
-                  <div 
-                    dangerouslySetInnerHTML={{ __html: notes.replace(/\n/g, '<br />') }}
-                    className="prose prose-sm max-w-none"
-                  />
-                </div>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="context" className="p-6 space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="context-name">Context Name</Label>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="override-global"
-                      checked={context.overrideGlobal}
-                      onCheckedChange={handleToggleOverrideContext}
+            <Tabs defaultValue="details" className="w-full h-full flex flex-col">
+              <TabsList className="w-full justify-start border-b rounded-none px-6 h-12">
+                <TabsTrigger value="details" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
+                  Details
+                </TabsTrigger>
+                <TabsTrigger value="action-items" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
+                  Action Items
+                </TabsTrigger>
+                <TabsTrigger value="notes" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
+                  Notes
+                </TabsTrigger>
+                <TabsTrigger value="context" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
+                  Context
+                </TabsTrigger>
+              </TabsList>
+              
+              <div className="flex-1 overflow-y-auto">
+                <TabsContent value="details" className="p-6 space-y-6 h-full">
+                  <div className="space-y-4">
+                    <Label htmlFor="title">Title</Label>
+                    <Input
+                      id="title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
                     />
-                    <Label htmlFor="override-global" className="text-sm font-normal">
-                      Override global context
-                    </Label>
                   </div>
-                </div>
+                  
+                  <div className="space-y-4">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={4}
+                    />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <Label htmlFor="tags">Tags</Label>
+                    <TagInput
+                      id="tags"
+                      tags={tags}
+                      onTagsChange={setTags}
+                      placeholder="Add tag..."
+                    />
+                  </div>
+                </TabsContent>
                 
-                <Input
-                  id="context-name"
-                  value={context.name}
-                  onChange={(e) => setContext({ ...context, name: e.target.value })}
-                  placeholder="Context name"
-                />
-                
-                <Label htmlFor="context-files">Context Files</Label>
-                <div className="border rounded-md p-4 bg-accent/20">
-                  {context.files.length > 0 ? (
-                    <ul className="space-y-2">
-                      {context.files.map((file, index) => (
-                        <li key={index} className="flex items-center justify-between">
-                          <span className="text-sm">{file}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setContext({
-                                ...context,
-                                files: context.files.filter((_, i) => i !== index)
-                              });
-                            }}
-                            className="h-8 w-8 p-0 text-destructive"
+                <TabsContent value="action-items" className="p-6 space-y-6 h-full">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="action-items">Action Items</Label>
+                      <span className="text-sm text-muted-foreground">
+                        {actionItems.filter(item => item.completed).length}/{actionItems.length} completed
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                      {actionItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-start gap-2 p-3 border rounded-md"
+                        >
+                          <Checkbox
+                            id={item.id}
+                            checked={item.completed}
+                            onCheckedChange={() => handleToggleActionItem(item.id)}
+                            className="mt-1"
+                          />
+                          <Label
+                            htmlFor={item.id}
+                            className={`${
+                              item.completed ? "line-through text-muted-foreground" : ""
+                            } cursor-pointer text-sm flex-1`}
                           >
-                            <span className="sr-only">Remove</span>
-                            ×
-                          </Button>
-                        </li>
+                            {item.text}
+                          </Label>
+                        </div>
                       ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No context files added
-                    </p>
-                  )}
-                </div>
+                    </div>
+                    
+                    <div className="flex gap-2 pt-4">
+                      <Input
+                        value={newActionItem}
+                        onChange={(e) => setNewActionItem(e.target.value)}
+                        placeholder="Add new action item..."
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleAddActionItem();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleAddActionItem}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
                 
-                <div className="pt-2">
-                  <Button variant="outline" size="sm" className="w-full">
-                    Add Context Files
-                  </Button>
-                </div>
+                <TabsContent value="notes" className="p-6 space-y-6 h-full">
+                  <div className="space-y-4">
+                    <Label htmlFor="notes">Meeting Notes</Label>
+                    
+                    <div className="border rounded-md p-2 mb-4">
+                      <div className="flex items-center gap-2 border-b pb-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => formatText('bold')}
+                          className="h-8 w-8 p-0"
+                          title="Bold"
+                        >
+                          <Bold className="h-5 w-5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => formatText('italic')}
+                          className="h-8 w-8 p-0"
+                          title="Italic"
+                        >
+                          <Italic className="h-5 w-5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => formatText('link')}
+                          className="h-8 w-8 p-0"
+                          title="Link"
+                        >
+                          <LinkIcon className="h-5 w-5" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <Textarea
+                      id="notes"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={12}
+                      placeholder="Add meeting notes here..."
+                      className="resize-none"
+                    />
+                    
+                    <div className="p-4 border rounded-md bg-accent/30">
+                      <h3 className="text-sm font-medium mb-2">Preview</h3>
+                      <div 
+                        dangerouslySetInnerHTML={{ __html: notes.replace(/\n/g, '<br />') }}
+                        className="prose prose-sm max-w-none"
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="context" className="p-6 space-y-6 h-full">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="context-name">Context Name</Label>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="override-global"
+                          checked={context.overrideGlobal}
+                          onCheckedChange={handleToggleOverrideContext}
+                        />
+                        <Label htmlFor="override-global" className="text-sm font-normal">
+                          Override global context
+                        </Label>
+                      </div>
+                    </div>
+                    
+                    <Input
+                      id="context-name"
+                      value={context.name}
+                      onChange={(e) => setContext({ ...context, name: e.target.value })}
+                      placeholder="Context name"
+                    />
+                    
+                    <Label htmlFor="context-files">Context Files</Label>
+                    <div className="border rounded-md p-4 bg-accent/20">
+                      {context.files.length > 0 ? (
+                        <ul className="space-y-2">
+                          {context.files.map((file, index) => (
+                            <li key={index} className="flex items-center justify-between">
+                              <span className="text-sm">{file}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setContext({
+                                    ...context,
+                                    files: context.files.filter((_, i) => i !== index)
+                                  });
+                                }}
+                                className="h-8 w-8 p-0 text-destructive"
+                              >
+                                <span className="sr-only">Remove</span>
+                                ×
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                          No context files added
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="pt-2">
+                      <Button variant="outline" size="sm" className="w-full">
+                        Add Context Files
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
               </div>
-            </TabsContent>
-          </Tabs>
-        </div>
+            </Tabs>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );

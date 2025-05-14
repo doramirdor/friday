@@ -34,7 +34,6 @@ function App({ isElectron = false }: AppProps) {
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/library" />} />
             <Route path="/library" element={<LibraryPage />} />
-            <Route path="/" element={<IndexPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
           <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />

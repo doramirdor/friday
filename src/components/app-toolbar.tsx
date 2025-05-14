@@ -1,27 +1,64 @@
 
 import { Settings, HelpCircle, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import SettingsDialog from "./settings-dialog";
 
 const AppToolbar = () => {
   const [showSettings, setShowSettings] = useState(false);
+  const [liveTranscriptEnabled, setLiveTranscriptEnabled] = useState(false);
+  const navigate = useNavigate();
+  
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const settings = localStorage.getItem('friday-settings');
+    if (settings) {
+      const parsedSettings = JSON.parse(settings);
+      setLiveTranscriptEnabled(parsedSettings.liveTranscript || false);
+    }
+  }, []);
   
   const handleStartRecording = useCallback(() => {
+    // Generate a new ID for the transcript
+    const newId = `rec-${Date.now()}`;
+    
+    // Navigate to the transcript page
+    navigate(`/transcript/${newId}`);
+    
+    // Show toast notification
     toast.success("Recording started", {
-      description: "Press ⌘ L to stop recording",
+      description: liveTranscriptEnabled 
+        ? "Live transcript is enabled" 
+        : "Press ⌘ L to stop recording",
       action: {
         label: "Cancel",
-        onClick: () => toast("Recording canceled")
+        onClick: () => {
+          toast("Recording canceled");
+          navigate(-1); // Go back to previous page
+        }
       }
     });
-  }, []);
+    
+    // If live transcript is enabled, we would start it here in a real app
+    if (liveTranscriptEnabled) {
+      console.log("Starting live transcript...");
+      // In a real app, this would trigger the live transcription API
+    }
+  }, [navigate, liveTranscriptEnabled]);
 
   const handleHelp = useCallback(() => {
     toast.info("Help Center", {
       description: "Press ⌘ ? to open keyboard shortcuts",
     });
+  }, []);
+  
+  const handleSettingsChange = useCallback((settings: any) => {
+    // Save settings to localStorage
+    localStorage.setItem('friday-settings', JSON.stringify(settings));
+    // Update local state
+    setLiveTranscriptEnabled(settings.liveTranscript || false);
   }, []);
 
   return (
@@ -58,7 +95,11 @@ const AppToolbar = () => {
         </Button>
       </div>
       
-      <SettingsDialog open={showSettings} onOpenChange={setShowSettings} />
+      <SettingsDialog 
+        open={showSettings} 
+        onOpenChange={setShowSettings} 
+        onSettingsChange={handleSettingsChange}
+      />
     </header>
   );
 };

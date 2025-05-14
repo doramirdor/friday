@@ -1,9 +1,9 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import AppToolbar from "@/components/app-toolbar";
 import RecordingsTable, { Recording } from "@/components/recordings-table";
 import EmptyState from "@/components/empty-state";
+import { useNavigate } from "react-router-dom";
 
 // Sample data
 const sampleRecordings: Recording[] = [
@@ -33,6 +33,7 @@ const sampleRecordings: Recording[] = [
 const Library = () => {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [showEmpty, setShowEmpty] = useState(true);
+  const navigate = useNavigate();
   
   useEffect(() => {
     // Simulate loading data
@@ -45,6 +46,10 @@ const Library = () => {
   }, []);
   
   const handleStartRecording = () => {
+    // Navigate to transcript page with a new ID
+    const newId = `rec-${Date.now()}`;
+    navigate(`/transcript/${newId}`);
+    
     toast.success("Recording started", {
       description: "Press ⌘ L to stop recording",
       action: {
@@ -69,33 +74,29 @@ const Library = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <AppToolbar />
-      
-      <main className="flex-1 px-6 py-4">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-medium">Recordings</h2>
-          
-          {/* This button is just for demo toggling between states */}
-          <Button 
-            variant="outline" 
-            onClick={toggleEmptyState} 
-            className="text-xs"
-          >
-            Toggle Empty State Demo
-          </Button>
-        </div>
+    <main className="flex-1 px-6 py-4">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-medium">Recordings</h2>
         
-        {showEmpty ? (
-          <EmptyState onStartRecording={handleStartRecording} />
-        ) : (
-          <RecordingsTable 
-            recordings={recordings}
-            onDelete={handleDeleteRecording}
-          />
-        )}
-      </main>
-    </div>
+        {/* This button is just for demo toggling between states */}
+        <Button 
+          variant="outline" 
+          onClick={toggleEmptyState} 
+          className="text-xs"
+        >
+          Toggle Empty State Demo
+        </Button>
+      </div>
+      
+      {showEmpty ? (
+        <EmptyState onStartRecording={handleStartRecording} />
+      ) : (
+        <RecordingsTable 
+          recordings={recordings}
+          onDelete={handleDeleteRecording}
+        />
+      )}
+    </main>
   );
 };
 

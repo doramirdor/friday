@@ -19,7 +19,7 @@ export function useNotes(transcriptId: string) {
   }, [notes, storageKey]);
   
   // Function to handle text formatting
-  const formatText = (type: 'bold' | 'italic' | 'link') => {
+  const formatText = (type: 'bold' | 'italic' | 'link' | 'list-ordered' | 'list-unordered' | 'heading') => {
     const textarea = document.querySelector('textarea#notes') as HTMLTextAreaElement;
     
     if (!textarea) return;
@@ -47,6 +47,29 @@ export function useNotes(transcriptId: string) {
           return; // User canceled prompt
         }
         break;
+      case 'list-ordered':
+        // Split the selected text by new line and add numbers
+        if (selectedText) {
+          const lines = selectedText.split('\n');
+          const numberedLines = lines.map((line, i) => `${i + 1}. ${line}`);
+          formattedText = numberedLines.join('\n');
+        } else {
+          formattedText = '1. ';
+        }
+        break;
+      case 'list-unordered':
+        // Split the selected text by new line and add bullets
+        if (selectedText) {
+          const lines = selectedText.split('\n');
+          const bulletedLines = lines.map(line => `• ${line}`);
+          formattedText = bulletedLines.join('\n');
+        } else {
+          formattedText = '• ';
+        }
+        break;
+      case 'heading':
+        formattedText = `<h3>${selectedText}</h3>`;
+        break;
       default:
         formattedText = selectedText;
     }
@@ -63,5 +86,29 @@ export function useNotes(transcriptId: string) {
     }, 0);
   };
   
-  return { notes, setNotes, formatText };
+  // Function to clear formatting
+  const clearFormatting = () => {
+    const textarea = document.querySelector('textarea#notes') as HTMLTextAreaElement;
+    
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = notes.substring(start, end);
+    
+    // Remove HTML tags
+    const plainText = selectedText.replace(/<[^>]*>/g, '');
+    
+    setNotes(
+      notes.substring(0, start) + plainText + notes.substring(end)
+    );
+    
+    // Focus back on textarea
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start, start + plainText.length);
+    }, 0);
+  };
+  
+  return { notes, setNotes, formatText, clearFormatting };
 }
