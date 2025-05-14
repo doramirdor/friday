@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -220,7 +219,7 @@ const TranscriptDetails = () => {
             // Optional: store sizes in localStorage for persistence
             localStorage.setItem('panelSizes', JSON.stringify(sizes));
           }}
-          defaultSizes={getDefaultSizes()}
+          defaultLayout={getDefaultSizes()}
         >
           {/* Left panel (Transcript) */}
           <ResizablePanel 

@@ -1,3 +1,4 @@
+
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Settings, Keyboard, Mic, Info, File } from "lucide-react"
@@ -7,14 +8,35 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useTheme } from "@/components/theme-provider"
 import ContextSettings from "@/components/context-settings"
+import { useState, useEffect } from "react"
 
 interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSettingsChange?: (settings: any) => void
 }
 
-const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
+const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialogProps) => {
   const { theme, setTheme } = useTheme()
+  const [liveTranscript, setLiveTranscript] = useState(false)
+  
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const settings = localStorage.getItem('friday-settings');
+    if (settings) {
+      const parsedSettings = JSON.parse(settings);
+      setLiveTranscript(parsedSettings.liveTranscript || false);
+    }
+  }, []);
+  
+  const handleLiveTranscriptChange = (checked: boolean) => {
+    setLiveTranscript(checked);
+    
+    // Update settings in parent component
+    if (onSettingsChange) {
+      onSettingsChange({ liveTranscript: checked });
+    }
+  };
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,7 +168,11 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                   <span>Live Transcription</span>
                   <span className="text-sm text-muted-foreground font-normal">Convert speech to text in real-time as you record</span>
                 </Label>
-                <Switch id="live-transcription" defaultChecked />
+                <Switch 
+                  id="live-transcription" 
+                  checked={liveTranscript}
+                  onCheckedChange={handleLiveTranscriptChange}
+                />
               </div>
               
               <div className="space-y-3">
