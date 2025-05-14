@@ -1,12 +1,16 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { PlayCircle, Trash2, Tag, Edit } from "lucide-react";
+import { PlayCircle, Trash2, Tag, File } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 export interface Recording {
   id: string;
@@ -14,6 +18,10 @@ export interface Recording {
   createdAt: Date;
   duration: number; // in seconds
   tags: string[];
+  context?: {
+    name: string;
+    overrideGlobal: boolean;
+  };
 }
 
 interface RecordingsTableProps {
@@ -23,6 +31,10 @@ interface RecordingsTableProps {
 
 const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
+  const [contextDialogOpen, setContextDialogOpen] = useState(false);
+  const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
+  const [contextName, setContextName] = useState("");
+  const [overrideGlobal, setOverrideGlobal] = useState(false);
   const navigate = useNavigate();
   
   const formatDuration = (seconds: number) => {
@@ -43,6 +55,20 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
   const handleRowClick = (id: string) => {
     navigate(`/transcript/${id}`);
   };
+  
+  const handleContextClick = (recording: Recording, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentRecordingId(recording.id);
+    setContextName(recording.context?.name || "");
+    setOverrideGlobal(recording.context?.overrideGlobal || false);
+    setContextDialogOpen(true);
+  };
+  
+  const handleSaveContext = () => {
+    // In a real app, this would update the recording's context in your data store
+    toast.success("Context settings saved");
+    setContextDialogOpen(false);
+  };
 
   return (
     <div className="relative overflow-x-auto rounded-lg">
@@ -53,6 +79,7 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
             <th className="px-6 py-3 text-sm font-medium text-muted-foreground">Created On</th>
             <th className="px-6 py-3 text-sm font-medium text-muted-foreground">Duration</th>
             <th className="px-6 py-3 text-sm font-medium text-muted-foreground">Tags</th>
+            <th className="px-6 py-3 text-sm font-medium text-muted-foreground">Context</th>
             <th className="px-6 py-3 text-right text-sm font-medium text-muted-foreground">Actions</th>
           </tr>
         </thead>
@@ -78,6 +105,15 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
                     </Badge>
                   ))}
                 </div>
+              </td>
+              <td className="px-6 py-4" onClick={(e) => handleContextClick(recording, e)}>
+                <Button variant="ghost" size="sm" className="flex items-center gap-1.5">
+                  <File className="h-4 w-4" />
+                  <span>{recording.context?.name || "Default"}</span>
+                  {recording.context?.overrideGlobal && (
+                    <Badge variant="secondary" className="ml-1 px-1 py-0 text-[10px]">Override</Badge>
+                  )}
+                </Button>
               </td>
               <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-end gap-2">
@@ -106,6 +142,7 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
         </tbody>
       </table>
       
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!selectedRecording} onOpenChange={(open) => !open && setSelectedRecording(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -125,6 +162,54 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      
+      {/* Context Dialog */}
+      <Dialog open={contextDialogOpen} onOpenChange={setContextDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Context Settings</DialogTitle>
+            <DialogDescription>
+              Set the context for this recording. Context provides additional information for transcription.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="context-name">Context Name</Label>
+              <Input
+                id="context-name"
+                value={contextName}
+                onChange={(e) => setContextName(e.target.value)}
+                placeholder="Enter context name"
+              />
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="override-global"
+                checked={overrideGlobal}
+                onCheckedChange={setOverrideGlobal}
+              />
+              <Label htmlFor="override-global">
+                Override global context
+              </Label>
+            </div>
+            
+            <p className="text-sm text-muted-foreground">
+              When enabled, this recording will use its own context instead of the global one.
+            </p>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContextDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveContext}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

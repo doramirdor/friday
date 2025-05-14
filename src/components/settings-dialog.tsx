@@ -1,12 +1,12 @@
-
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Settings, Keyboard, Mic, Info } from "lucide-react"
+import { Settings, Keyboard, Mic, Info, File } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useTheme } from "@/components/theme-provider"
+import ContextSettings from "@/components/context-settings"
 
 interface SettingsDialogProps {
   open: boolean
@@ -39,6 +39,10 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
             <TabsTrigger value="transcription" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
               <Mic className="w-4 h-4" />
               Transcription
+            </TabsTrigger>
+            <TabsTrigger value="context" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+              <File className="w-4 h-4" />
+              Context
             </TabsTrigger>
             <TabsTrigger value="about" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
               <Info className="w-4 h-4" />
@@ -151,6 +155,10 @@ const SettingsDialog = ({ open, onOpenChange }: SettingsDialogProps) => {
                 <p className="text-xs text-muted-foreground">Your API key is stored locally and never shared</p>
               </div>
             </div>
+          </TabsContent>
+          
+          <TabsContent value="context" className="p-6 pt-4">
+            <ContextSettings />
           </TabsContent>
           
           <TabsContent value="about" className="p-6 pt-4">
