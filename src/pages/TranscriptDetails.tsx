@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import { useNotes } from "@/hooks/useNotes";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useGoogleSpeech from "@/hooks/useGoogleSpeech";
+import { Toggle } from "@/components/ui/toggle";
 
 interface TranscriptLine {
   id: string;
@@ -46,6 +47,7 @@ interface MeetingState {
   tags: string[];
   createdAt: Date;
   isNew: boolean;
+  liveTranscript: boolean;
 }
 
 interface ElectronWindow extends Window {
@@ -94,7 +96,7 @@ const TranscriptDetails = () => {
   const [newSpeakerName, setNewSpeakerName] = useState("");
   
   // Use different speech recognition based on environment
-  const isElectron = !!(window as unknown as ElectronWindow)?.electronAPI?.isElectron;
+  const isElectron = !!(window as Window)?.electronAPI?.isElectron;
   const googleSpeech = useGoogleSpeech();
   const webSpeech = useSpeechRecognition({
     continuous: true,
@@ -116,9 +118,12 @@ const TranscriptDetails = () => {
   // Track the current speaker for new transcripts
   const [currentSpeakerId, setCurrentSpeakerId] = useState("s1");
 
+  // Add state for live transcript toggle
+  const [isLiveTranscript, setIsLiveTranscript] = useState(meetingState?.liveTranscript || false);
+
   // Process transcript updates when speech recognition produces new text
   useEffect(() => {
-    if (speech.transcript && isRecording) {
+    if (speech.transcript && isRecording && isLiveTranscript) {
       const transcriptText = speech.transcript.trim();
       if (transcriptText) {
         // Add the new line to the transcript
@@ -148,7 +153,7 @@ const TranscriptDetails = () => {
         speech.resetTranscript();
       }
     }
-  }, [speech.transcript, isRecording, currentSpeakerId]);
+  }, [speech.transcript, isRecording, currentSpeakerId, isLiveTranscript]);
 
   // Determine if we should show empty transcript area for new meeting
   useEffect(() => {
@@ -293,6 +298,16 @@ const TranscriptDetails = () => {
     toast.info(`Speaker changed to ${speakers.find(s => s.id === speakerId)?.name || 'Unknown'}`);
   };
 
+  // Toggle live transcript mode
+  const handleToggleLiveTranscript = () => {
+    setIsLiveTranscript(!isLiveTranscript);
+    toast.info(
+      !isLiveTranscript
+        ? "Live transcript enabled" 
+        : "Live transcript disabled"
+    );
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-background border-b border-border px-6 py-4 flex items-center gap-4">
@@ -353,21 +368,42 @@ const TranscriptDetails = () => {
               <div className="p-6 border-b">
                 {isNewMeeting || transcriptLines.length === 0 ? (
                   <div className="flex flex-col items-center gap-4 py-8">
-                    <Button
-                      variant={isRecording ? "destructive" : "default"}
-                      size="lg"
-                      onClick={handleStartStopRecording}
-                      className={`h-16 w-16 rounded-full flex items-center justify-center ${
-                        isRecording ? "animate-pulse" : ""
-                      }`}
-                    >
-                      {isRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
-                    </Button>
-                    <div className="text-sm font-medium">
-                      {isRecording ? "Recording in progress..." : "Click to start recording"}
+                    <div className="flex items-center justify-center mb-4 space-x-2">
+                      <Button
+                        variant={isRecording ? "destructive" : "default"}
+                        size="lg"
+                        onClick={handleStartStopRecording}
+                        className={`h-16 w-16 rounded-full flex items-center justify-center ${
+                          isRecording ? "animate-pulse" : ""
+                        }`}
+                      >
+                        {isRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
+                      </Button>
+                      <div className="text-sm font-medium">
+                        {isRecording ? "Recording in progress..." : "Click to start recording"}
+                      </div>
+                    </div>
+                    
+                    {/* Add toggle for live transcript */}
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center space-x-2">
+                        <Toggle
+                          pressed={isLiveTranscript}
+                          onPressedChange={handleToggleLiveTranscript}
+                          aria-label="Toggle live transcript"
+                        >
+                          {isLiveTranscript ? 
+                            <ToggleRight className="h-5 w-5" /> : 
+                            <ToggleLeft className="h-5 w-5" />}
+                        </Toggle>
+                        <span className="text-sm font-medium">
+                          {isLiveTranscript ? "Live Transcript: On" : "Live Transcript: Off"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ) : (
+                  // ... keep existing code (waveform player for existing meeting)
                   <div className="flex items-center gap-4 mb-4">
                     <Button
                       variant="outline"
@@ -393,6 +429,7 @@ const TranscriptDetails = () => {
                 
                 {/* Keep the waveform display as is */}
                 {!isNewMeeting && transcriptLines.length > 0 && !isRecording && (
+                  // ... keep existing code (waveform display)
                   <div className="h-24 bg-muted rounded-md waveform-bg relative">
                     {/* Simulated waveform - only show for non-new meetings */}
                     <div className="absolute inset-0 flex items-center px-4">
@@ -425,13 +462,31 @@ const TranscriptDetails = () => {
                   <div className="mt-4 p-3 bg-accent/20 rounded-md">
                     <div className="text-sm font-medium flex items-center">
                       <div className="mr-2 h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
-                      Live Transcription Active
+                      Live Transcription {isLiveTranscript ? "Active" : "Disabled"}
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
                       {isElectron 
                         ? "Using Google Speech API for high accuracy" 
                         : "Using Web Speech API for transcription"}
                     </div>
+                    
+                    {/* Show toggle for live transcript during recording */}
+                    {isRecording && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <Toggle
+                          pressed={isLiveTranscript}
+                          onPressedChange={handleToggleLiveTranscript}
+                          aria-label="Toggle live transcript"
+                        >
+                          {isLiveTranscript ? 
+                            <ToggleRight className="h-4 w-4" /> : 
+                            <ToggleLeft className="h-4 w-4" />}
+                        </Toggle>
+                        <span className="text-xs">
+                          {isLiveTranscript ? "Live Transcript: On" : "Live Transcript: Off"}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
