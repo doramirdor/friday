@@ -366,32 +366,6 @@ const TranscriptDetails = () => {
                     <div className="text-sm font-medium">
                       {isRecording ? "Recording in progress..." : "Click to start recording"}
                     </div>
-                    
-                    {/* Add speaker selector when recording */}
-                    {isRecording && (
-                      <div className="mt-4 w-full">
-                        <Label className="text-sm">Current Speaker</Label>
-                        <div className="mt-2 grid grid-cols-3 gap-2">
-                          {speakers.map((speaker) => (
-                            <Button
-                              key={speaker.id}
-                              variant={currentSpeakerId === speaker.id ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleCurrentSpeakerChange(speaker.id)}
-                              className="text-xs"
-                              style={{
-                                borderColor: speaker.color,
-                                ...(currentSpeakerId === speaker.id 
-                                  ? { backgroundColor: speaker.color, color: "#fff" } 
-                                  : {})
-                              }}
-                            >
-                              {speaker.name}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="flex items-center gap-4 mb-4">
