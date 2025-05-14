@@ -1,59 +1,48 @@
 
-import { useState, useEffect } from "react";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import React from 'react';
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
-import Library from "./pages/Library";
-import TranscriptDetails from "./pages/TranscriptDetails";
-import NotFound from "./pages/NotFound";
+import { Toaster } from "@/components/ui/sonner";
+import AppToolbar from "@/components/app-toolbar";
+import IndexPage from "@/pages/Index";
+import LibraryPage from "@/pages/Library";
+import TranscriptDetailsPage from "@/pages/TranscriptDetails";
+import NotFoundPage from "@/pages/NotFound";
+import "./App.css";
 
-const queryClient = new QueryClient();
+interface AppProps {
+  isElectron?: boolean;
+}
 
-const App = () => {
-  const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
+function Layout() {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <AppToolbar />
+      <Outlet />
+    </div>
+  );
+}
 
-  useEffect(() => {
-    // Check system preference
-    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    
-    if (theme === "system") {
-      document.documentElement.classList.toggle("dark", isDark);
-    } else {
-      document.documentElement.classList.toggle("dark", theme === "dark");
-    }
-    
-    // Listen for changes in system preference
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = (e: MediaQueryListEvent) => {
-      if (theme === "system") {
-        document.documentElement.classList.toggle("dark", e.matches);
-      }
-    };
-    
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
-  }, [theme]);
+function App({ isElectron = false }: AppProps) {
+  // We can use the isElectron prop to conditionally render things or enable features
+  console.log(`Running in ${isElectron ? 'Electron' : 'Web'} environment`);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="system" onThemeChange={setTheme}>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Library />} />
-              <Route path="/transcript/:id" element={<TranscriptDetails />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ThemeProvider defaultTheme="light" storageKey="friday-ui-theme">
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Navigate to="/library" />} />
+            <Route path="/library" element={<LibraryPage />} />
+            <Route path="/" element={<IndexPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+          <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />
+        </Routes>
+      </BrowserRouter>
+      <Toaster position="top-center" />
+    </ThemeProvider>
   );
-};
+}
 
 export default App;

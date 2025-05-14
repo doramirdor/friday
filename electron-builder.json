@@ -1,0 +1,25 @@
+
+{
+  "appId": "com.friday.app",
+  "productName": "Friday",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "electron/**/*",
+    "dist/**/*"
+  ],
+  "mac": {
+    "category": "public.app-category.productivity",
+    "icon": "public/icon.icns",
+    "target": ["dmg"]
+  },
+  "win": {
+    "target": ["nsis"],
+    "icon": "public/icon.ico"
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "category": "Productivity"
+  }
+}

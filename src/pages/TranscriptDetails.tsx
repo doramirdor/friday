@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -245,7 +244,7 @@ const TranscriptDetails = () => {
             </div>
           </div>
           
-          {/* Transcript lines */}
+          {/* Transcript lines - updated styling for speaker names */}
           <div className="flex-1 overflow-y-auto p-6 border-r">
             <div className="space-y-4">
               <div className="flex justify-between items-center mb-4">
@@ -315,17 +314,16 @@ const TranscriptDetails = () => {
                       />
                     </div>
                   ) : (
-                    <div className="flex gap-2">
-                      <div 
-                        className="flex-shrink-0 py-1 px-2 rounded text-sm font-medium text-white"
+                    <div className="flex gap-3">
+                      <span 
+                        className="font-medium"
                         style={{ 
-                          backgroundColor: speakers.find(s => s.id === line.speakerId)?.color || "#666666",
-                          minWidth: "80px"
+                          color: speakers.find(s => s.id === line.speakerId)?.color || "#666666",
                         }}
                       >
-                        {speakers.find(s => s.id === line.speakerId)?.name}
-                      </div>
-                      <p>{line.text}</p>
+                        {speakers.find(s => s.id === line.speakerId)?.name}:
+                      </span>
+                      <p className="flex-1">{line.text}</p>
                     </div>
                   )}
                 </div>
