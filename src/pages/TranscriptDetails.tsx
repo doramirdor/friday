@@ -15,6 +15,7 @@ import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useGoogleSpeech from "@/hooks/useGoogleSpeech";
 import { Toggle } from "@/components/ui/toggle";
 import { Slider } from "@/components/ui/slider";
+import useSystemAudio from "@/hooks/useSystemAudio";
 
 interface TranscriptLine {
   id: string;
@@ -138,6 +139,9 @@ const TranscriptDetails = () => {
   // Timer for recording duration
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
   const recordingTimerRef = useRef<number | null>(null);
+
+  // Get the system audio hook
+  const { isBlackHoleAvailable, getSystemAudioStream } = useSystemAudio();
 
   // Format time in mm:ss format
   const formatTime = (seconds: number) => {
@@ -279,9 +283,22 @@ const TranscriptDetails = () => {
         // Reset audio chunks
         audioChunksRef.current = [];
         
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Get audio stream using our system audio hook
+        const stream = await getSystemAudioStream({
+          sampleRate: 44100,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        });
+        
         streamRef.current = stream;
+        
+        // Show feedback about audio source
+        if (isBlackHoleAvailable) {
+          toast.success("Recording system audio with BlackHole");
+        } else {
+          toast.info("Using microphone for recording");
+        }
         
         // Create media recorder
         const mediaRecorder = new MediaRecorder(stream);
@@ -385,7 +402,7 @@ const TranscriptDetails = () => {
       setIsRecording(false);
       toast.info("Recording stopped");
     }
-  }, [isRecording, speech, isNewMeeting, isElectron, isLiveTranscript, currentSpeakerId]);
+  }, [isRecording, speech, isNewMeeting, isElectron, isLiveTranscript, currentSpeakerId, getSystemAudioStream, isBlackHoleAvailable]);
   
   // Handle audio time change (seeking)
   const handleAudioTimeChange = (value: number[]) => {

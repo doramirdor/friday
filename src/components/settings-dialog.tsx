@@ -1,4 +1,3 @@
-
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Settings, Keyboard, Mic, Info, File } from "lucide-react"
@@ -8,12 +7,23 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useTheme } from "@/components/theme-provider"
 import ContextSettings from "@/components/context-settings"
+import { AudioDeviceInfo } from "@/components/audio-device-info"
 import { useState, useEffect } from "react"
+
+// Define a settings interface
+interface Settings {
+  liveTranscript: boolean;
+  // Add other settings as they become necessary
+  apiKey?: string;
+  theme?: string;
+  autoLaunch?: boolean;
+  saveLocation?: string;
+}
 
 interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSettingsChange?: (settings: any) => void
+  onSettingsChange?: (settings: Settings) => void
 }
 
 const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialogProps) => {
@@ -179,6 +189,11 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
                 <Label htmlFor="api-key" className="text-sm font-medium">Gemini API Key</Label>
                 <Input type="password" id="api-key" placeholder="Enter your API key" />
                 <p className="text-xs text-muted-foreground">Your API key is stored locally and never shared</p>
+              </div>
+              
+              <div className="border-t my-4 pt-4">
+                <h3 className="text-sm font-medium mb-4">Audio Devices</h3>
+                <AudioDeviceInfo />
               </div>
             </div>
           </TabsContent>

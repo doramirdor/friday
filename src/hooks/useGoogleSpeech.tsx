@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import useSystemAudio from './useSystemAudio';
 
 // Interface for the hook's return values
 interface UseGoogleSpeechReturn {
@@ -38,6 +39,9 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const processingRef = useRef<boolean>(false);
+
+  // Get our system audio hook
+  const { getSystemAudioStream } = useSystemAudio();
 
   // Default options
   const sampleRate = options.sampleRate || 16000;
@@ -100,15 +104,14 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
       audioChunksRef.current = [];
       setTranscript('');
 
-      // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          sampleRate,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        } 
+      // Get audio stream using our system audio hook
+      const stream = await getSystemAudioStream({
+        sampleRate,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
       });
+      
       streamRef.current = stream;
 
       // Create media recorder
@@ -134,7 +137,7 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
       setError(err instanceof Error ? err : new Error(String(err)));
       console.error('Failed to start recording:', err);
     }
-  }, [continuous, sampleRate]);
+  }, [continuous, sampleRate, getSystemAudioStream]);
 
   // Stop recording
   const stopRecording = useCallback((): void => {
