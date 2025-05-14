@@ -1,3 +1,4 @@
+
 import { useState, useRef, useCallback } from 'react';
 
 // Interface for the hook's return values
@@ -8,15 +9,6 @@ interface UseGoogleSpeechReturn {
   startRecording: () => Promise<void>;
   stopRecording: () => void;
   resetTranscript: () => void;
-}
-
-// For Electron access
-declare global {
-  interface Window {
-    electronAPI?: {
-      invokeGoogleSpeech?: (audioBuffer: ArrayBuffer) => Promise<string>;
-    };
-  }
 }
 
 // Options for recording
@@ -122,4 +114,4 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
   };
 };
 
-export default useGoogleSpeech; 
+export default useGoogleSpeech;
