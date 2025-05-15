@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- System audio recording support via BlackHole audio driver
+- Native macOS system audio recording using ScreenCaptureKit
+- Swift integration for capturing system audio without third-party drivers
+- Permission management for screen recording (required for system audio)
+- System audio recording hooks for React components
+- File system storage for recorded audio files
+- System audio recording support via BlackHole audio driver (fallback)
 - New useSystemAudio hook for accessing system audio
 - Audio device management UI in settings
 - Utility functions for checking and testing audio devices
@@ -14,6 +19,13 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Improved audio device handling in TranscriptDetails and useGoogleSpeech
 - Better fallback mechanisms when specific audio devices aren't available
+- Updated Google Speech API to use correct sample rate (48kHz)
+- Enhanced audio playback with better error handling
+
+### Fixed
+- Sample rate mismatch in Google Speech API configuration
+- Audio playback reliability issues
+- Audio recording not being saved to disk
 
 ## [0.2.1] - 2023-07-31
 

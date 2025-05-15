@@ -16,6 +16,7 @@ import useGoogleSpeech from "@/hooks/useGoogleSpeech";
 import { Toggle } from "@/components/ui/toggle";
 import { Slider } from "@/components/ui/slider";
 import useSystemAudio from "@/hooks/useSystemAudio";
+import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
 
 interface TranscriptLine {
   id: string;
@@ -148,6 +149,17 @@ const TranscriptDetails = () => {
 
   // Get the system audio hook
   const { isBlackHoleAvailable, getSystemAudioStream } = useSystemAudio();
+
+  // Get the system audio hook
+  const { 
+    isAvailable: isNativeSystemAudioAvailable,
+    isRecording: isNativeRecording,
+    hasPermission: hasSystemAudioPermission,
+    recordingPath: nativeRecordingPath,
+    recordingDuration: nativeRecordingDuration,
+    startRecording: startNativeRecording,
+    stopRecording: stopNativeRecording
+  } = useSystemAudioRecording();
 
   // Format time in mm:ss format
   const formatTime = (seconds: number) => {
@@ -331,7 +343,42 @@ const TranscriptDetails = () => {
   
   const handleStartStopRecording = useCallback(async () => {
     if (!isRecording) {
-      // Start recording
+      // First, try to use native system audio recording if available
+      if (isNativeSystemAudioAvailable) {
+        try {
+          // Generate a filename based on the meeting title
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const filename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${timestamp}`;
+          
+          // Start native system audio recording
+          const success = await startNativeRecording({
+            filename
+          });
+          
+          if (success) {
+            setIsRecording(true);
+            
+            // Start recording timer
+            startRecordingTimer();
+            
+            // Start the speech recognition if needed
+            if (isLiveTranscript) {
+              speech.startRecording();
+            }
+            
+            if (isNewMeeting) {
+              setIsNewMeeting(false);
+            }
+            
+            return;
+          }
+        } catch (error) {
+          console.error("Error with native system audio recording:", error);
+          // Will fall back to regular recording
+        }
+      }
+      
+      // If native system audio recording is not available or failed, fall back to MediaRecorder
       try {
         // Reset audio chunks
         audioChunksRef.current = [];
@@ -366,7 +413,9 @@ const TranscriptDetails = () => {
         
         mediaRecorder.onstop = async () => {
           // Create audio blob from chunks
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+          const audioBlob = new Blob(audioChunksRef.current, { 
+            type: 'audio/wav' 
+          });
           
           // Create URL for the blob and set it
           const audioUrl = URL.createObjectURL(audioBlob);
@@ -458,17 +507,22 @@ const TranscriptDetails = () => {
         toast.error("Failed to start recording");
       }
     } else {
-      // Stop recording
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stop();
-      }
-      
-      // Stop all audio tracks
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => {
-          track.stop();
-        });
-        streamRef.current = null;
+      // If using native system audio recording
+      if (isNativeSystemAudioAvailable && isNativeRecording) {
+        await stopNativeRecording();
+      } else {
+        // Stop MediaRecorder
+        if (mediaRecorderRef.current) {
+          mediaRecorderRef.current.stop();
+        }
+        
+        // Stop all audio tracks
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => {
+            track.stop();
+          });
+          streamRef.current = null;
+        }
       }
       
       // Stop the speech recognition
@@ -480,7 +534,21 @@ const TranscriptDetails = () => {
       setIsRecording(false);
       toast.info("Recording stopped");
     }
-  }, [isRecording, speech, isNewMeeting, isElectron, isLiveTranscript, currentSpeakerId, getSystemAudioStream, isBlackHoleAvailable]);
+  }, [
+    isRecording, 
+    speech, 
+    isNewMeeting, 
+    isElectron, 
+    isLiveTranscript, 
+    currentSpeakerId, 
+    getSystemAudioStream, 
+    isBlackHoleAvailable,
+    isNativeSystemAudioAvailable,
+    isNativeRecording,
+    startNativeRecording,
+    stopNativeRecording,
+    title
+  ]);
   
   // Handle audio time change (seeking)
   const handleAudioTimeChange = (value: number[]) => {
