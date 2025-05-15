@@ -4,6 +4,7 @@ const fs = require('fs');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const execPromise = promisify(exec);
+const axios = require('axios');
 
 // Load environment variables from .env.local if it exists
 const envPath = path.join(__dirname, '..', '.env.local');
@@ -41,6 +42,10 @@ try {
 } catch (e) {
   console.log('ℹ️ fluent-ffmpeg module not available, will use raw ffmpeg commands');
 }
+
+// Replace with your actual API key
+// IMPORTANT: Store this in environment variables or a secure config in production
+const API_KEY = process.env.GOOGLE_SPEECH_API_KEY || 'YOUR_API_KEY';
 
 // Handle the Google Speech-to-Text API calls
 async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
@@ -715,4 +720,46 @@ async function testGoogleSpeechAPI(client) {
     console.error('❌ Google Speech API test failed with error:', error);
     return false;
   }
-} 
+}
+
+// Handle audio transcription requests
+ipcMain.handle('transcribe-audio', async (event, buffer) => {
+  try {
+    console.log('Received audio buffer of size:', buffer.length);
+    const base64Audio = Buffer.from(buffer).toString('base64');
+
+    const response = await axios.post(
+      `https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}`,
+      {
+        config: {
+          encoding: 'WEBM_OPUS',
+          sampleRateHertz: 48000,
+          languageCode: 'en-US',
+          enableAutomaticPunctuation: true,
+          model: 'default'
+        },
+        audio: {
+          content: base64Audio
+        }
+      }
+    );
+
+    if (!response.data.results || response.data.results.length === 0) {
+      console.log('No transcription results returned');
+      return { success: false, error: 'No speech detected' };
+    }
+
+    const transcript = response.data.results
+      .map(r => r.alternatives[0].transcript)
+      .join('\n');
+    
+    console.log('Transcription successful:', transcript.substring(0, 100) + '...');
+    return { success: true, transcript };
+  } catch (err) {
+    console.error('Error transcribing audio:', err.response?.data || err.message);
+    return { 
+      success: false, 
+      error: err.response?.data?.error?.message || err.message || 'Unknown error' 
+    };
+  }
+}); 

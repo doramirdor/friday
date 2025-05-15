@@ -26,6 +26,9 @@ All notable changes to this project will be documented in this file.
 - Development mode fallback for audio testing features
 - Test scripts for verifying Google Speech API functionality with different audio formats
 - Multiple authentication methods for Google Speech API in test scripts
+- API key-based authentication for Google Speech-to-Text as an alternative to service account credentials
+- New ApiKeyTranscription component for easy API key-based transcription
+- Simple test script for verifying API key authentication with Google Speech
 
 ### Changed
 - Improved audio device handling in TranscriptDetails and useGoogleSpeech
@@ -40,6 +43,8 @@ All notable changes to this project will be documented in this file.
 - Improved MP3 encoding with optimized parameters and quality settings
 - Better cross-environment compatibility with Electron and Vite development
 - Updated test audio files with clearer speech samples
+- Refactored main.js to support both service account and API key authentication methods
+- Enhanced preload.js to expose new API key-based transcription functionality
 
 ### Fixed
 - Sample rate mismatch in Google Speech API configuration

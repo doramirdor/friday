@@ -75,6 +75,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }
 });
 
+contextBridge.exposeInMainWorld(
+  'api', {
+    // New method for transcribing audio with API key
+    transcribeAudioWithApiKey: async (audioBuffer) => {
+      return await ipcRenderer.invoke('transcribe-audio', audioBuffer);
+    },
+  }
+);
+
 window.addEventListener('DOMContentLoaded', () => {
   const replaceText = (selector, text) => {
     const element = document.getElementById(selector);
