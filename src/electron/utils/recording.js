@@ -57,7 +57,10 @@ module.exports.startRecording = async ({ filepath, filename }) => {
     return;
   }
 
-  const fullPath = path.join(filepath, `${filename || "recording"}.flac`);
+  // Process the filename to ensure it has the right extension
+  let filenameWithoutExt = (filename || "recording").replace(/\.\w+$/, '');
+  const fullPath = path.join(filepath, `${filenameWithoutExt}.flac`);
+
   if (fs.existsSync(fullPath)) {
     dialog.showMessageBox({
       type: "error",

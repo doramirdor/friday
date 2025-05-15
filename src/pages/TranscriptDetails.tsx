@@ -352,7 +352,8 @@ const TranscriptDetails = () => {
         try {
           // Generate a filename based on the meeting title
           const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const filename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${timestamp}`;
+          // Add .flac extension since the native recorder uses FLAC format
+          const filename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${timestamp}.flac`;
           
           // Start native system audio recording
           const success = await startNativeRecording({

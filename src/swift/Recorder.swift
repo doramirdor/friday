@@ -77,7 +77,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
                 let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
 
                 let filename = self.recordingFilename ?? timestamp.toFormattedFileName()
-                let pathForAudioFile = "\(self.recordingPath!)/\(filename).flac"
+                let filenameSanitized = filename.hasSuffix(".flac") ? String(filename.dropLast(5)) : filename
+                let pathForAudioFile = "\(self.recordingPath!)/\(filenameSanitized).flac"
                 self.prepareAudioFile(at: pathForAudioFile)
 
                 ResponseHandler.returnResponse(["code": "RECORDING_STARTED", "path": pathForAudioFile, "timestamp": formattedTimestamp], shouldExitProcess: false)
