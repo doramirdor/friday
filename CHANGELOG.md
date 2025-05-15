@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - Sample audio files for testing speech-to-text functionality
 - Test function for verifying speech-to-text with existing audio files
 - Multi-format audio saving (WAV and MP3) using ffmpeg for format conversion
+- Robust MP3 conversion with signature verification and multiple fallback methods
 
 ### Changed
 - Improved audio device handling in TranscriptDetails and useGoogleSpeech
@@ -33,6 +34,7 @@ All notable changes to this project will be documented in this file.
 - Exposed application path in Electron API for accessing resources
 - Enhanced path handling for test audio files in main process
 - Enhanced audio file saving API to handle multiple formats simultaneously
+- Improved MP3 encoding with optimized parameters and quality settings
 
 ### Fixed
 - Sample rate mismatch in Google Speech API configuration
@@ -42,6 +44,7 @@ All notable changes to this project will be documented in this file.
 - Audio test button functionality with proper Electron API exposure
 - Path resolution for audio test files to work in all environments
 - Improved error reporting for speech-to-text test feature
+- MP3 file format verification to ensure properly encoded files
 
 ## [0.2.1] - 2023-07-31
 

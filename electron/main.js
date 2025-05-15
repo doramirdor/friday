@@ -33,6 +33,15 @@ if (process.platform === 'win32') {
 
 let mainWindow;
 
+// Import fluent-ffmpeg if it's available, otherwise use null
+let ffmpeg = null;
+try {
+  ffmpeg = require('fluent-ffmpeg');
+  console.log('✅ fluent-ffmpeg module loaded successfully');
+} catch (e) {
+  console.log('ℹ️ fluent-ffmpeg module not available, will use raw ffmpeg commands');
+}
+
 // Handle the Google Speech-to-Text API calls
 async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
   console.log('🔄 main.js: Handling Google Speech API request', {
@@ -418,15 +427,90 @@ ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['
           };
         }
         
-        // Convert WAV to MP3 using ffmpeg
-        console.log(`🔄 Converting to MP3: ${mp3FilePath}`);
-        await execPromise(`ffmpeg -y -i "${wavFilePath}" -codec:a libmp3lame -qscale:a 2 "${mp3FilePath}"`);
+        // Function to attempt MP3 conversion using multiple methods
+        const convertToMP3 = async () => {
+          // Try the primary conversion method first
+          try {
+            // Convert WAV to MP3 using ffmpeg with optimized parameters
+            console.log(`🔄 Converting to MP3: ${mp3FilePath}`);
+            await execPromise(`ffmpeg -y -i "${wavFilePath}" -codec:a libmp3lame -qscale:a 2 -map_metadata 0 -id3v2_version 3 "${mp3FilePath}"`);
+            
+            if (fs.existsSync(mp3FilePath)) {
+              // Verify the file is actually an MP3 by checking the file signature
+              const fileHeader = fs.readFileSync(mp3FilePath, { length: 4 });
+              
+              // MP3 files typically start with ID3 (0x49 0x44 0x33) or with an MP3 frame header
+              const isMP3 = fileHeader[0] === 0x49 && fileHeader[1] === 0x44 && fileHeader[2] === 0x33 || 
+                           (fileHeader[0] === 0xFF && (fileHeader[1] & 0xE0) === 0xE0);
+              
+              if (isMP3) {
+                console.log(`✅ MP3 file saved and verified to: ${mp3FilePath}`);
+                return true;
+              }
+            }
+            return false;
+          } catch (err) {
+            console.error('❌ Primary MP3 conversion method failed:', err);
+            return false;
+          }
+        };
         
-        if (fs.existsSync(mp3FilePath)) {
-          console.log(`✅ MP3 file saved to: ${mp3FilePath}`);
+        // Try using the main conversion method
+        let conversionSuccess = await convertToMP3();
+        
+        // If the primary method failed and fluent-ffmpeg is available, try that
+        if (!conversionSuccess && ffmpeg) {
+          try {
+            console.log('🔄 Trying MP3 conversion with fluent-ffmpeg...');
+            
+            // Return a promise for fluent-ffmpeg conversion
+            await new Promise((resolve, reject) => {
+              ffmpeg(wavFilePath)
+                .audioCodec('libmp3lame')
+                .audioBitrate(320)
+                .audioChannels(2)
+                .format('mp3')
+                .output(mp3FilePath)
+                .on('end', () => {
+                  console.log('✅ MP3 conversion completed with fluent-ffmpeg');
+                  resolve();
+                })
+                .on('error', (err) => {
+                  console.error('❌ fluent-ffmpeg conversion failed:', err);
+                  reject(err);
+                })
+                .run();
+            });
+            
+            if (fs.existsSync(mp3FilePath)) {
+              console.log(`✅ MP3 file saved with fluent-ffmpeg: ${mp3FilePath}`);
+              conversionSuccess = true;
+            }
+          } catch (fluentErr) {
+            console.error('❌ fluent-ffmpeg MP3 conversion failed:', fluentErr);
+          }
+        }
+        
+        // If none of the conversion methods worked, try one last method with high bitrate
+        if (!conversionSuccess) {
+          try {
+            console.log('🔄 Trying final MP3 conversion method...');
+            await execPromise(`ffmpeg -y -i "${wavFilePath}" -codec:a libmp3lame -b:a 320k "${mp3FilePath}"`);
+            
+            if (fs.existsSync(mp3FilePath)) {
+              console.log(`✅ MP3 file saved with last resort method: ${mp3FilePath}`);
+              conversionSuccess = true;
+            }
+          } catch (lastErr) {
+            console.error('❌ Last resort MP3 conversion failed:', lastErr);
+          }
+        }
+        
+        // If any conversion method succeeded, add the MP3 to saved files
+        if (conversionSuccess) {
           savedFiles.push({ format: 'mp3', path: mp3FilePath });
         } else {
-          console.error('❌ MP3 conversion failed');
+          console.error('❌ All MP3 conversion methods failed');
         }
       } catch (convErr) {
         console.error('❌ Error converting to MP3:', convErr);
