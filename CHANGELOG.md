@@ -24,6 +24,8 @@ All notable changes to this project will be documented in this file.
 - Multi-format audio saving (WAV and MP3) using ffmpeg for format conversion
 - Robust MP3 conversion with signature verification and multiple fallback methods
 - Development mode fallback for audio testing features
+- Test scripts for verifying Google Speech API functionality with different audio formats
+- Multiple authentication methods for Google Speech API in test scripts
 
 ### Changed
 - Improved audio device handling in TranscriptDetails and useGoogleSpeech
@@ -37,6 +39,7 @@ All notable changes to this project will be documented in this file.
 - Enhanced audio file saving API to handle multiple formats simultaneously
 - Improved MP3 encoding with optimized parameters and quality settings
 - Better cross-environment compatibility with Electron and Vite development
+- Updated test audio files with clearer speech samples
 
 ### Fixed
 - Sample rate mismatch in Google Speech API configuration
