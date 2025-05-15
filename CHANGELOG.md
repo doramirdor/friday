@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
 - Audio device management UI in settings
 - Utility functions for checking and testing audio devices
 - Automatic detection and use of BlackHole for system audio
+- Sample audio files for testing speech-to-text functionality
+- Test function for verifying speech-to-text with existing audio files
 
 ### Changed
 - Improved audio device handling in TranscriptDetails and useGoogleSpeech
@@ -27,12 +29,17 @@ All notable changes to this project will be documented in this file.
 - Enhanced audio playback with better error handling
 - Expanded useGoogleSpeech hook with more configuration options
 - Improved error notifications using toast messages
+- Exposed application path in Electron API for accessing resources
+- Enhanced path handling for test audio files in main process
 
 ### Fixed
 - Sample rate mismatch in Google Speech API configuration
 - Audio playback reliability issues
 - Audio recording not being saved to disk
-- Error handling in Google Speech API credential loading process
+- Error handling in Google Cloud Speech API credential loading process
+- Audio test button functionality with proper Electron API exposure
+- Path resolution for audio test files to work in all environments
+- Improved error reporting for speech-to-text test feature
 
 ## [0.2.1] - 2023-07-31
 
