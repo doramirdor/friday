@@ -62,6 +62,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       console.error('❌ preload.js: Error testing speech with file:', error);
       throw error;
     }
+  },
+  // Add method to save audio files to disk
+  saveAudioFile: async (buffer, filename, formats = ['wav', 'mp3']) => {
+    try {
+      console.log('🔄 preload.js: Saving audio file with formats:', formats);
+      return await ipcRenderer.invoke('save-audio-file', { buffer, filename, formats });
+    } catch (error) {
+      console.error('❌ preload.js: Error saving audio file:', error);
+      throw error;
+    }
   }
 });
 

@@ -59,11 +59,13 @@ interface ElectronWindow extends Window {
   electronAPI?: {
     isElectron: boolean;
     platform: string;
+    appPath?: string;
     sendMessage: (channel: string, data: unknown) => void;
     receive: (channel: string, callback: (...args: unknown[]) => void) => void;
     invokeGoogleSpeech: (audioBuffer: ArrayBuffer) => Promise<string>;
-    saveAudioFile: (buffer: ArrayBuffer, filename: string) => Promise<{
+    saveAudioFile: (buffer: ArrayBuffer, filename: string, formats?: string[]) => Promise<{
       success: boolean;
+      files?: Array<{format: string, path: string}>;
       filePath?: string;
       message?: string;
     }>;
@@ -432,14 +434,27 @@ const TranscriptDetails = () => {
               
               // Generate filename based on meeting title or timestamp
               const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const filename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${timestamp}.wav`;
+              const baseFilename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${timestamp}`;
               
-              // Save file to disk
-              const result = await electronAPI.saveAudioFile(arrayBuffer, filename);
+              // Save file to disk in both WAV and MP3 formats
+              const result = await electronAPI.saveAudioFile(arrayBuffer, baseFilename, ['wav', 'mp3']);
               
               if (result.success) {
+                // Set the primary file path (WAV) for backward compatibility
                 setSavedAudioPath(result.filePath);
-                toast.success(`Recording saved to ${result.filePath}`);
+                
+                // Create a message showing all saved formats
+                if (result.files && result.files.length > 0) {
+                  const formatsList = result.files.map(f => f.format.toUpperCase()).join(' and ');
+                  toast.success(`Recording saved in ${formatsList} formats`);
+                  
+                  // Show paths to each file
+                  result.files.forEach(file => {
+                    toast.info(`${file.format.toUpperCase()}: ${file.path}`);
+                  });
+                } else {
+                  toast.success(`Recording saved to ${result.filePath}`);
+                }
               } else {
                 toast.error(`Failed to save recording: ${result.message}`);
               }

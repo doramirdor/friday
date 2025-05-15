@@ -1,6 +1,9 @@
 const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execPromise = promisify(exec);
 
 // Load environment variables from .env.local if it exists
 const envPath = path.join(__dirname, '..', '.env.local');
@@ -375,6 +378,75 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
   } catch (error) {
     console.error('❌ Error testing speech with file:', error);
     return { error: error.message || 'Unknown error' };
+  }
+});
+
+// Handle saving audio files to disk in multiple formats
+ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['wav', 'mp3'] }) => {
+  try {
+    // Create recordings directory if it doesn't exist
+    const recordingsDir = path.join(app.getPath('documents'), 'Friday Recordings');
+    if (!fs.existsSync(recordingsDir)) {
+      fs.mkdirSync(recordingsDir, { recursive: true });
+    }
+
+    // Create a timestamp-based filename if none provided
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const baseFilename = filename?.replace(/\.\w+$/, '') || `recording-${timestamp}`;
+    
+    // First save the raw WAV file
+    const wavFilePath = path.join(recordingsDir, `${baseFilename}.wav`);
+    fs.writeFileSync(wavFilePath, Buffer.from(buffer));
+    console.log(`✅ WAV file saved to: ${wavFilePath}`);
+    
+    const savedFiles = [{ format: 'wav', path: wavFilePath }];
+    
+    // If MP3 is requested, convert the WAV to MP3 using ffmpeg
+    if (formats.includes('mp3')) {
+      try {
+        const mp3FilePath = path.join(recordingsDir, `${baseFilename}.mp3`);
+        
+        // Check if ffmpeg is installed
+        try {
+          await execPromise('ffmpeg -version');
+        } catch (err) {
+          console.warn('⚠️ ffmpeg not found, MP3 conversion skipped');
+          return {
+            success: true,
+            files: savedFiles,
+            message: 'WAV file saved, MP3 conversion skipped (ffmpeg not found)'
+          };
+        }
+        
+        // Convert WAV to MP3 using ffmpeg
+        console.log(`🔄 Converting to MP3: ${mp3FilePath}`);
+        await execPromise(`ffmpeg -y -i "${wavFilePath}" -codec:a libmp3lame -qscale:a 2 "${mp3FilePath}"`);
+        
+        if (fs.existsSync(mp3FilePath)) {
+          console.log(`✅ MP3 file saved to: ${mp3FilePath}`);
+          savedFiles.push({ format: 'mp3', path: mp3FilePath });
+        } else {
+          console.error('❌ MP3 conversion failed');
+        }
+      } catch (convErr) {
+        console.error('❌ Error converting to MP3:', convErr);
+      }
+    }
+    
+    // Return all the saved file paths
+    return {
+      success: true,
+      files: savedFiles,
+      primaryFilePath: wavFilePath, // For backward compatibility
+      filePath: wavFilePath, // For backward compatibility
+      message: `Files saved: ${savedFiles.map(f => f.format).join(', ')}`
+    };
+  } catch (error) {
+    console.error('❌ Error saving audio file:', error);
+    return {
+      success: false,
+      message: `Failed to save file: ${error.message}`
+    };
   }
 });
 

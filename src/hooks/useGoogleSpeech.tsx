@@ -44,6 +44,12 @@ interface ElectronWindow extends Window {
     invokeGoogleSpeech: (audioBuffer: ArrayBuffer, options?: RecordingOptions) => Promise<string>;
     selectCredentialsFile: () => Promise<{success: boolean, error?: string, canceled?: boolean}>;
     testSpeechWithFile: (filePath: string) => Promise<{error?: string, transcription?: string}>;
+    saveAudioFile: (buffer: ArrayBuffer, filename: string, formats?: string[]) => Promise<{
+      success: boolean;
+      files?: Array<{format: string, path: string}>;
+      filePath?: string;
+      message?: string;
+    }>;
   }
 }
 
