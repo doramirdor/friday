@@ -48,6 +48,8 @@ All notable changes to this project will be documented in this file.
 - Improved error reporting for speech-to-text test feature
 - MP3 file format verification to ensure properly encoded files
 - Audio testing error in development mode with mock implementation when Electron APIs unavailable
+- Missing file extensions in native system audio recordings
+- File extension duplication when saving recordings
 
 ## [0.2.1] - 2023-07-31
 
