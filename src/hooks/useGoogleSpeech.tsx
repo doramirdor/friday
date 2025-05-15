@@ -1,21 +1,27 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import useSystemAudio from './useSystemAudio';
+import { useToast } from '@/hooks/use-toast';
 
 // Interface for the hook's return values
 interface UseGoogleSpeechReturn {
   transcript: string;
   isRecording: boolean;
   error: Error | null;
-  startRecording: () => Promise<void>;
+  startRecording: (options?: RecordingOptions) => Promise<void>;
   stopRecording: () => void;
   resetTranscript: () => void;
+  isProcessing: boolean;
+  selectCredentialsFile: () => Promise<boolean>;
 }
 
 // Options for recording
 interface RecordingOptions {
-  sampleRate?: number;
-  language?: string;
+  sampleRateHertz?: number;
+  languageCode?: string;
   continuous?: boolean;
+  encoding?: 'LINEAR16' | 'FLAC' | 'MP3';
+  audioChannelCount?: number;
+  model?: 'default' | 'phone_call' | 'video' | 'command_and_search';
 }
 
 // Define the Electron window interface
@@ -25,28 +31,45 @@ interface ElectronWindow extends Window {
     platform: string;
     sendMessage: (channel: string, data: unknown) => void;
     receive: (channel: string, callback: (...args: unknown[]) => void) => void;
-    invokeGoogleSpeech: (audioBuffer: ArrayBuffer) => Promise<string>;
+    invokeGoogleSpeech: (audioBuffer: ArrayBuffer, options?: RecordingOptions) => Promise<string>;
+    selectCredentialsFile: () => Promise<{success: boolean, error?: string, canceled?: boolean}>;
   }
 }
 
-const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn => {
+const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeechReturn => {
   const [transcript, setTranscript] = useState<string>('');
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
   // References to maintain state between renders
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  const processingRef = useRef<boolean>(false);
+  const { toast } = useToast();
 
   // Get our system audio hook
   const { getSystemAudioStream } = useSystemAudio();
 
   // Default options
-  const sampleRate = options.sampleRate || 16000;
-  const language = options.language || 'en-US';
-  const continuous = options.continuous !== undefined ? options.continuous : true;
+  const sampleRate = defaultOptions.sampleRateHertz || 16000;
+  const language = defaultOptions.languageCode || 'en-US';
+  const continuous = defaultOptions.continuous !== undefined ? defaultOptions.continuous : true;
+  const encoding = defaultOptions.encoding || 'LINEAR16';
+  const audioChannelCount = defaultOptions.audioChannelCount || 1;
+  const model = defaultOptions.model || 'default';
+
+  // Cleanup function
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+        });
+        streamRef.current = null;
+      }
+    };
+  }, []);
 
   // Convert audio format if needed
   const convertAudio = async (audioBlob: Blob): Promise<ArrayBuffer> => {
@@ -65,11 +88,11 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
   };
 
   // Process audio chunks and send to Google Speech API
-  const processAudioChunk = async (audioBlob: Blob) => {
-    if (processingRef.current) return;
+  const processAudioChunk = async (audioBlob: Blob, options: RecordingOptions = {}) => {
+    if (isProcessing) return;
     
     try {
-      processingRef.current = true;
+      setIsProcessing(true);
       
       // Check if we have the Electron API
       if (!(window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
@@ -79,35 +102,102 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
       // Convert audio to format needed for Google Speech
       const audioBuffer = await convertAudio(audioBlob);
       
+      // Combine default options with any overrides
+      const speechOptions = {
+        sampleRateHertz: options.sampleRateHertz || sampleRate,
+        languageCode: options.languageCode || language,
+        encoding: options.encoding || encoding,
+        audioChannelCount: options.audioChannelCount || audioChannelCount,
+        model: options.model || model
+      };
+      
       // Call Google Speech API via Electron
-      const result = await (window as unknown as ElectronWindow).electronAPI.invokeGoogleSpeech(audioBuffer);
+      const result = await (window as unknown as ElectronWindow).electronAPI.invokeGoogleSpeech(audioBuffer, speechOptions);
       
       if (result) {
-        setTranscript(prev => {
-          // If there's existing text, add a space before new content
-          return prev ? `${prev} ${result}` : result;
-        });
+        // Check if the result starts with "Error:"
+        if (result.startsWith('Error:')) {
+          toast({
+            title: 'Transcription Error',
+            description: result,
+            variant: 'destructive'
+          });
+          setError(new Error(result));
+        } else {
+          setTranscript(prev => {
+            // If there's existing text, add a space before new content
+            return prev ? `${prev} ${result}` : result;
+          });
+        }
       }
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
       setError(err instanceof Error ? err : new Error(String(err)));
+      toast({
+        title: 'Speech Recognition Error',
+        description: errorMessage,
+        variant: 'destructive'
+      });
       console.error('Speech recognition error:', err);
     } finally {
-      processingRef.current = false;
+      setIsProcessing(false);
+    }
+  };
+
+  // Allow selecting a custom credentials file
+  const selectCredentialsFile = async (): Promise<boolean> => {
+    try {
+      if (!(window as unknown as ElectronWindow).electronAPI?.selectCredentialsFile) {
+        toast({
+          title: 'Not Available',
+          description: 'This feature is only available in the desktop app',
+          variant: 'destructive'
+        });
+        return false;
+      }
+      
+      const result = await (window as unknown as ElectronWindow).electronAPI.selectCredentialsFile();
+      
+      if (result.success) {
+        toast({
+          title: 'Success',
+          description: 'Google Cloud credentials updated successfully',
+          variant: 'default'
+        });
+        return true;
+      } else if (result.error) {
+        toast({
+          title: 'Error',
+          description: `Failed to update credentials: ${result.error}`,
+          variant: 'destructive'
+        });
+      }
+      return false;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      toast({
+        title: 'Error',
+        description: `Failed to select credentials: ${errorMessage}`,
+        variant: 'destructive'
+      });
+      return false;
     }
   };
 
   // Start recording audio
-  const startRecording = useCallback(async (): Promise<void> => {
+  const startRecording = useCallback(async (options: RecordingOptions = {}): Promise<void> => {
     try {
       // Reset state
       setError(null);
       audioChunksRef.current = [];
-      setTranscript('');
+      if (!options.continuous) {
+        setTranscript('');
+      }
 
       // Get audio stream using our system audio hook
       const stream = await getSystemAudioStream({
-        sampleRate,
-        channelCount: 1,
+        sampleRate: options.sampleRateHertz || sampleRate,
+        channelCount: options.audioChannelCount || audioChannelCount,
         echoCancellation: true,
         noiseSuppression: true,
       });
@@ -124,8 +214,9 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
           audioChunksRef.current.push(event.data);
           
           // If continuous transcription is enabled, process each chunk
-          if (continuous && (window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
-            processAudioChunk(event.data);
+          const isContinuous = options.continuous !== undefined ? options.continuous : continuous;
+          if (isContinuous && (window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
+            processAudioChunk(event.data, options);
           }
         }
       };
@@ -133,11 +224,22 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
       // Start recording
       mediaRecorder.start(2000); // Capture in 2-second chunks for streaming
       setIsRecording(true);
+      
+      toast({
+        title: 'Recording Started',
+        description: 'Audio recording has started',
+        variant: 'default'
+      });
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
+      toast({
+        title: 'Recording Error',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive'
+      });
       console.error('Failed to start recording:', err);
     }
-  }, [continuous, sampleRate, getSystemAudioStream]);
+  }, [continuous, sampleRate, audioChannelCount, language, encoding, model, getSystemAudioStream, toast]);
 
   // Stop recording
   const stopRecording = useCallback((): void => {
@@ -150,6 +252,12 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
         const completeBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
         processAudioChunk(completeBlob);
       }
+      
+      toast({
+        title: 'Recording Stopped',
+        description: 'Audio recording has stopped',
+        variant: 'default'
+      });
     }
     
     // Stop all tracks
@@ -161,7 +269,7 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
     }
     
     setIsRecording(false);
-  }, [isRecording, continuous]);
+  }, [isRecording, continuous, toast]);
 
   // Reset transcript
   const resetTranscript = useCallback((): void => {
@@ -172,9 +280,11 @@ const useGoogleSpeech = (options: RecordingOptions = {}): UseGoogleSpeechReturn 
     transcript,
     isRecording,
     error,
+    isProcessing,
     startRecording,
     stopRecording,
     resetTranscript,
+    selectCredentialsFile
   };
 };
 

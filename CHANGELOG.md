@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Enhanced Google Speech-to-Text integration with configurable options
+- UI for selecting Google Cloud credentials file
+- Support for additional audio formats and speech recognition models
+- Live feedback during transcription with improved error handling
 - Native macOS system audio recording using ScreenCaptureKit
 - Swift integration for capturing system audio without third-party drivers
 - Permission management for screen recording (required for system audio)
@@ -21,11 +25,14 @@ All notable changes to this project will be documented in this file.
 - Better fallback mechanisms when specific audio devices aren't available
 - Updated Google Speech API to use correct sample rate (48kHz)
 - Enhanced audio playback with better error handling
+- Expanded useGoogleSpeech hook with more configuration options
+- Improved error notifications using toast messages
 
 ### Fixed
 - Sample rate mismatch in Google Speech API configuration
 - Audio playback reliability issues
 - Audio recording not being saved to disk
+- Error handling in Google Speech API credential loading process
 
 ## [0.2.1] - 2023-07-31
 

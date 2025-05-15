@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -31,10 +31,16 @@ if (process.platform === 'win32') {
 let mainWindow;
 
 // Handle the Google Speech-to-Text API calls
-async function handleGoogleSpeechAPI(audioBuffer) {
+async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
   try {
-    // Actual implementation with Google Speech API
+    // Dynamically import Google Speech API to avoid issues with ESM/CJS compatibility
     const speech = require('@google-cloud/speech');
+    
+    // Configure speech options
+    const sampleRateHertz = options.sampleRateHertz || 16000;
+    const languageCode = options.languageCode || 'en-US';
+    const encoding = options.encoding || 'LINEAR16';
+    const audioChannelCount = options.audioChannelCount || 1;
     
     // First check for API key in environment variable
     const apiKey = process.env.GOOGLE_SPEECH_API_KEY;
@@ -54,12 +60,26 @@ async function handleGoogleSpeechAPI(audioBuffer) {
           apiKey: apiKey
         }
       });
+      console.log('Using API key authentication for Google Speech');
     } else {
       // Fall back to service account credentials file
       try {
+        const credentialsPath = path.join(__dirname, 'google-credentials.json');
+        
+        // Check if credentials file exists and has been populated
+        if (!fs.existsSync(credentialsPath)) {
+          throw new Error('Credentials file not found');
+        }
+        
+        const credentialsContent = fs.readFileSync(credentialsPath, 'utf8');
+        if (credentialsContent.includes('YOUR_PROJECT_ID')) {
+          throw new Error('Credentials file contains placeholder values');
+        }
+        
         client = new speech.SpeechClient({
-          keyFilename: path.join(__dirname, 'google-credentials.json'),
+          keyFilename: credentialsPath,
         });
+        console.log('Using service account credentials for Google Speech');
       } catch (credErr) {
         console.error('Error loading credentials file:', credErr);
         throw new Error('No valid Google Speech authentication method found. Please provide either an API key or a credentials file.');
@@ -67,11 +87,16 @@ async function handleGoogleSpeechAPI(audioBuffer) {
     }
     
     const config = {
-      encoding: 'LINEAR16',
-      sampleRateHertz: 16000,
-      languageCode: 'en-US',
+      encoding: encoding,
+      sampleRateHertz: sampleRateHertz,
+      languageCode: languageCode,
+      audioChannelCount: audioChannelCount,
+      enableAutomaticPunctuation: true,
+      model: options.model || 'default',
+      useEnhanced: true
     };
     
+    // Convert audio buffer to base64
     const audio = {
       content: Buffer.from(audioBuffer).toString('base64'),
     };
@@ -81,16 +106,31 @@ async function handleGoogleSpeechAPI(audioBuffer) {
       audio: audio,
     };
     
+    console.log('Sending audio to Google Speech API...');
     const [response] = await client.recognize(request);
+    
+    if (!response || !response.results || response.results.length === 0) {
+      console.log('No transcription results returned');
+      return '';
+    }
+    
     const transcription = response.results
       .map(result => result.alternatives[0].transcript)
       .join('\n');
       
+    console.log('Transcription received:', transcription.substring(0, 50) + '...');
     return transcription;
   } catch (error) {
     console.error('Error with speech recognition:', error);
-    // If there's an error, return a fallback message
-    return "Sorry, there was an error transcribing the audio. Please try again.";
+    
+    // Provide more specific error messages for common issues
+    if (error.message.includes('API key')) {
+      return "Error: Invalid Google API key. Please check your authentication settings.";
+    } else if (error.message.includes('credentials')) {
+      return "Error: Google credentials file is missing or invalid. Please set up authentication.";
+    } else {
+      return "Sorry, there was an error transcribing the audio. Please try again.";
+    }
   }
 }
 
@@ -146,8 +186,31 @@ ipcMain.on('to-main', (event, args) => {
 });
 
 // Handle the Google Speech transcription requests
-ipcMain.handle('invoke-google-speech', async (event, audioBuffer) => {
-  return await handleGoogleSpeechAPI(audioBuffer);
+ipcMain.handle('invoke-google-speech', async (event, audioBuffer, options = {}) => {
+  return await handleGoogleSpeechAPI(audioBuffer, options);
+});
+
+// Allow selecting a credentials file
+ipcMain.handle('select-credentials-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    title: 'Select Google Cloud Service Account Key File'
+  });
+  
+  if (!result.canceled && result.filePaths.length > 0) {
+    const selectedPath = result.filePaths[0];
+    try {
+      const fileContent = fs.readFileSync(selectedPath, 'utf8');
+      fs.writeFileSync(path.join(__dirname, 'google-credentials.json'), fileContent);
+      return { success: true };
+    } catch (error) {
+      console.error('Error copying credentials file:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  return { success: false, canceled: true };
 });
 
 app.whenReady().then(() => {

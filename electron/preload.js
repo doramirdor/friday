@@ -1,4 +1,3 @@
-
 const { contextBridge, ipcRenderer } = require('electron');
 
 // Expose protected methods that allow the renderer process to use
@@ -23,11 +22,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   // Add Google Speech API invocation method
-  invokeGoogleSpeech: async (audioBuffer) => {
+  invokeGoogleSpeech: async (audioBuffer, options = {}) => {
     try {
-      return await ipcRenderer.invoke('invoke-google-speech', audioBuffer);
+      return await ipcRenderer.invoke('invoke-google-speech', audioBuffer, options);
     } catch (error) {
       console.error('Error invoking Google Speech API:', error);
+      throw error;
+    }
+  },
+  // Add method to select credentials file
+  selectCredentialsFile: async () => {
+    try {
+      return await ipcRenderer.invoke('select-credentials-file');
+    } catch (error) {
+      console.error('Error selecting credentials file:', error);
       throw error;
     }
   }
