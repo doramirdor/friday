@@ -346,10 +346,55 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
       console.log(`📍 Resolved relative path to: ${resolvedPath}`);
     }
 
-    // Check if the file exists
+    // Check if the file exists - if not, try appending common extensions
     if (!fs.existsSync(resolvedPath)) {
-      console.error(`❌ Audio file does not exist: ${resolvedPath}`);
-      return { error: `File not found: ${filePath}` };
+      console.log(`⚠️ File not found: ${resolvedPath}, trying to add extensions...`);
+      
+      // Try common audio extensions
+      const commonExtensions = ['.mp3', '.wav', '.ogg', '.flac'];
+      let fileFound = false;
+      
+      for (const ext of commonExtensions) {
+        const pathWithExt = resolvedPath + ext;
+        if (fs.existsSync(pathWithExt)) {
+          console.log(`✅ Found file with extension: ${pathWithExt}`);
+          resolvedPath = pathWithExt;
+          fileFound = true;
+          break;
+        }
+      }
+      
+      if (!fileFound) {
+        // Also try Friday Recordings directory
+        const recordingsDir = path.join(app.getPath('documents'), 'Friday Recordings');
+        const filename = path.basename(resolvedPath);
+        
+        console.log(`🔍 Looking for ${filename} in ${recordingsDir}...`);
+        
+        // Check if file exists in recordings directory
+        const recordingPath = path.join(recordingsDir, filename);
+        if (fs.existsSync(recordingPath)) {
+          console.log(`✅ Found file in recordings directory: ${recordingPath}`);
+          resolvedPath = recordingPath;
+          fileFound = true;
+        } else {
+          // Try with extensions in recordings directory
+          for (const ext of commonExtensions) {
+            const pathWithExt = recordingPath + ext;
+            if (fs.existsSync(pathWithExt)) {
+              console.log(`✅ Found file with extension in recordings directory: ${pathWithExt}`);
+              resolvedPath = pathWithExt;
+              fileFound = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (!fileFound) {
+        console.error(`❌ Audio file does not exist: ${resolvedPath}`);
+        return { error: `File not found: ${filePath}` };
+      }
     }
 
     // Read the file
@@ -376,7 +421,28 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
       encoding = 'LINEAR16';
       console.log('🎵 Detected WAV format, using LINEAR16 encoding');
     } else {
-      console.log(`⚠️ Unknown file extension: ${fileExt}, defaulting to LINEAR16 encoding`);
+      // If no extension or unknown extension, try to detect format from file header
+      if (audioBuffer && audioBuffer.length > 4) {
+        // Check for MP3 signature
+        if (audioBuffer[0] === 0x49 && audioBuffer[1] === 0x44 && audioBuffer[2] === 0x33 || 
+            (audioBuffer[0] === 0xFF && (audioBuffer[1] & 0xE0) === 0xE0)) {
+          console.log('🎵 Detected MP3 header signature, using MP3 encoding');
+          encoding = 'MP3';
+        }
+        // Check for WAV signature (RIFF)
+        else if (audioBuffer[0] === 0x52 && audioBuffer[1] === 0x49 && audioBuffer[2] === 0x46 && audioBuffer[3] === 0x46) {
+          console.log('🎵 Detected WAV/RIFF header signature, using LINEAR16 encoding');
+          encoding = 'LINEAR16';
+        }
+        // Check for OGG signature ("OggS")
+        else if (audioBuffer[0] === 0x4F && audioBuffer[1] === 0x67 && audioBuffer[2] === 0x67 && audioBuffer[3] === 0x53) {
+          console.log('🎵 Detected OGG header signature, using OGG_OPUS encoding');
+          encoding = 'OGG_OPUS';
+        }
+        else {
+          console.log(`⚠️ Unknown file format, defaulting to LINEAR16 encoding`);
+        }
+      }
     }
 
     // Call the existing function to process the audio
@@ -388,10 +454,10 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
     });
 
     console.log('📝 Transcription result:', transcription);
-    return { success: true, transcription };
+    return transcription;
   } catch (error) {
     console.error('❌ Error testing speech with file:', error);
-    return { error: error.message || 'Unknown error' };
+    return `Error: ${error.message || 'Unknown error'}`;
   }
 });
 
@@ -406,7 +472,13 @@ ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['
 
     // Create a timestamp-based filename if none provided
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const baseFilename = filename?.replace(/\.\w+$/, '') || `recording-${timestamp}`;
+    
+    // Ensure we're working with a clean filename without extension
+    let baseFilename = filename || `recording-${timestamp}`;
+    // Remove any existing extension
+    baseFilename = baseFilename.replace(/\.\w+$/, '');
+    
+    console.log(`🔖 Using base filename: ${baseFilename}`);
     
     // First save the raw WAV file
     const wavFilePath = path.join(recordingsDir, `${baseFilename}.wav`);

@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - Format detection for transcription based on file signatures
 - Improved MP3 support in API key-based Google Speech transcription
 - Optimized audio file format handling for more accurate transcription results
+- Extension auto-correction for audio files missing proper extensions
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -46,6 +47,7 @@ All notable changes to this project will be documented in this file.
 - Updated test audio files with clearer speech samples
 - Refactored main.js to support both service account and API key authentication methods
 - Enhanced preload.js to expose new API key-based transcription functionality
+- Improved file path handling for recordings without extensions
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
@@ -64,6 +66,9 @@ All notable changes to this project will be documented in this file.
 - Audio testing error in development mode with mock implementation when Electron APIs unavailable
 - Missing file extensions in native system audio recordings
 - File extension duplication when saving recordings
+- MP3 files being saved without proper file extensions
+- Transcription errors due to missing file extensions
+- Audio file lookup failing for files without extensions
 
 ## [0.2.1] - 2023-07-31
 

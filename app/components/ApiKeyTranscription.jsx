@@ -72,9 +72,11 @@ export function ApiKeyTranscription() {
       const blob = new Blob(chunksRef.current, { type: mimeType });
       const buffer = await blob.arrayBuffer();
       
-      // Generate a timestamp-based filename
+      // Generate a timestamp-based filename with clear description
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `recording-${timestamp}`;
+      
+      console.log(`📝 Saving audio recording with base filename: ${filename}`);
       
       // Save the audio file with preference for MP3 format
       if (window.electronAPI && window.electronAPI.saveAudioFile) {
@@ -92,11 +94,26 @@ export function ApiKeyTranscription() {
           const mp3File = result.files.find(f => f.format === 'mp3');
           
           if (mp3File) {
+            // Make sure the MP3 file has an extension
+            if (!mp3File.path.toLowerCase().endsWith('.mp3')) {
+              console.warn('⚠️ MP3 file path does not end with .mp3 extension:', mp3File.path);
+              mp3File.path = mp3File.path + '.mp3';
+              console.log('✅ Added .mp3 extension to path:', mp3File.path);
+            }
+            
             // Use the MP3 file for transcription
             await transcribeAudioFile(mp3File.path);
           } else if (result.files.length > 0) {
             // Fallback to the first available file
-            await transcribeAudioFile(result.files[0].path);
+            const firstFile = result.files[0];
+            // Make sure it has the proper extension
+            if (!firstFile.path.toLowerCase().endsWith(`.${firstFile.format}`)) {
+              console.warn(`⚠️ File path does not end with .${firstFile.format} extension:`, firstFile.path);
+              firstFile.path = firstFile.path + `.${firstFile.format}`;
+              console.log(`✅ Added .${firstFile.format} extension to path:`, firstFile.path);
+            }
+            
+            await transcribeAudioFile(firstFile.path);
           } else {
             throw new Error('No audio files were saved');
           }
