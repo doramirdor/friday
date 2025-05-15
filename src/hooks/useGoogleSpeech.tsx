@@ -139,54 +139,110 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       const audioBuffer = await convertAudio(audioBlob);
       console.log('✅ Audio converted', { bufferByteLength: audioBuffer.byteLength });
       
-      // CRITICAL FIX: Use OGG_OPUS for WebM format regardless of codec
-      // WebM container format is not directly compatible with Google Speech
-      let speechEncoding: 'LINEAR16' | 'FLAC' | 'MP3' | 'OGG_OPUS' = encoding as any;
+      let transcriptionResult: string | undefined = undefined;
       
-      if (audioBlob.type.includes('webm') || audioBlob.type.includes('ogg')) {
-        speechEncoding = 'OGG_OPUS';
-        console.log('🎯 Using OGG_OPUS encoding');
-      } else {
-        speechEncoding = 'LINEAR16';   // only for real WAV/raw PCM
-        console.log('🎯 Using LINEAR16 encoding for other audio');
+      // Generate a timestamp-based filename for saving
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `recording-${timestamp}`;
+      
+      // For WebM/Opus format, save as MP3 first for better compatibility
+      if (audioBlob.type.includes('webm') || audioBlob.type.includes('opus') || audioBlob.type.includes('ogg')) {
+        // Only proceed if saveAudioFile is available
+        if ((window as unknown as ElectronWindow).electronAPI?.saveAudioFile) {
+          console.log('📦 Saving audio as MP3 for better compatibility with Google Speech API');
+          
+          try {
+            // Save with MP3 prioritized
+            const saveResult = await (window as unknown as ElectronWindow).electronAPI.saveAudioFile(
+              audioBuffer, 
+              filename, 
+              ['mp3', 'wav']
+            );
+            
+            if (saveResult.success && saveResult.files && saveResult.files.length > 0) {
+              // Find MP3 file
+              const mp3File = saveResult.files.find(f => f.format === 'mp3');
+              
+              if (mp3File) {
+                console.log('🎵 Using saved MP3 file for transcription:', mp3File.path);
+                
+                // Now use testSpeechWithFile to transcribe the MP3 file
+                if ((window as unknown as ElectronWindow).electronAPI?.testSpeechWithFile) {
+                  const testResult = await (window as unknown as ElectronWindow).electronAPI.testSpeechWithFile(mp3File.path);
+                  
+                  if (testResult && typeof testResult === 'string' && !testResult.startsWith('Error:')) {
+                    transcriptionResult = testResult;
+                    console.log('✅ MP3 file transcription successful');
+                  } else if (testResult && typeof testResult === 'object' && testResult.transcription) {
+                    transcriptionResult = testResult.transcription;
+                    console.log('✅ MP3 file transcription successful');
+                  } else {
+                    console.warn('⚠️ MP3 transcription failed, falling back to direct method');
+                  }
+                }
+              } else {
+                console.log('⚠️ No MP3 file found in saved files, using default method');
+              }
+            }
+          } catch (saveError) {
+            console.error('❌ Error saving audio file:', saveError);
+            console.log('⚠️ Falling back to direct transcription method');
+          }
+        }
       }
       
-      // Combine default options with any overrides
-      const speechOptions = {
-        sampleRateHertz: options.sampleRateHertz || sampleRate,
-        languageCode: options.languageCode || language,
-        encoding: options.encoding || speechEncoding,
-        audioChannelCount: options.audioChannelCount || audioChannelCount,
-        // Use command_and_search model for better accuracy with short phrases
-        model: options.model || 'command_and_search',
-        // Add option to force LINEAR16 even for WebM audio (for testing)
-        forceLinear16: options.forceLinear16 || forceLinear16,
-        // Add option to boost audio levels
-        boostAudio: options.boostAudio !== undefined ? options.boostAudio : true
-      };
-      
-      console.log('🚀 Sending to Google Speech API with options:', speechOptions);
-      
-      // Call Google Speech API via Electron
-      const result = await (window as unknown as ElectronWindow).electronAPI.invokeGoogleSpeech(audioBuffer, speechOptions);
+      // If we don't have a result yet from the MP3 approach, use the standard method
+      if (!transcriptionResult) {
+        // CRITICAL FIX: Use OGG_OPUS for WebM format regardless of codec
+        // WebM container format is not directly compatible with Google Speech
+        let speechEncoding: 'LINEAR16' | 'FLAC' | 'MP3' | 'OGG_OPUS' = encoding as any;
+        
+        if (audioBlob.type.includes('webm') || audioBlob.type.includes('ogg')) {
+          speechEncoding = 'OGG_OPUS';
+          console.log('🎯 Using OGG_OPUS encoding');
+        } else {
+          speechEncoding = 'LINEAR16';   // only for real WAV/raw PCM
+          console.log('🎯 Using LINEAR16 encoding for other audio');
+        }
+        
+        // Combine default options with any overrides
+        const speechOptions = {
+          sampleRateHertz: options.sampleRateHertz || sampleRate,
+          languageCode: options.languageCode || language,
+          encoding: options.encoding || speechEncoding,
+          audioChannelCount: options.audioChannelCount || audioChannelCount,
+          // Use command_and_search model for better accuracy with short phrases
+          model: options.model || 'command_and_search',
+          // Add option to force LINEAR16 even for WebM audio (for testing)
+          forceLinear16: options.forceLinear16 || forceLinear16,
+          // Add option to boost audio levels
+          boostAudio: options.boostAudio !== undefined ? options.boostAudio : true
+        };
+        
+        console.log('🚀 Sending to Google Speech API with options:', speechOptions);
+        
+        // Call Google Speech API via Electron
+        const result = await (window as unknown as ElectronWindow).electronAPI.invokeGoogleSpeech(audioBuffer, speechOptions);
+        transcriptionResult = result;
+      }
       
       console.log('📥 Received result from Google Speech API:', { 
-        resultLength: result?.length,
-        result: result?.substring(0, 100) + (result?.length > 100 ? '...' : '')
+        resultLength: transcriptionResult?.length,
+        result: transcriptionResult?.substring(0, 100) + (transcriptionResult?.length > 100 ? '...' : '')
       });
       
-      if (result) {
+      if (transcriptionResult) {
         // Check if the result starts with "Error:"
-        if (result.startsWith('Error:')) {
-          console.error('❌ Error from Google Speech API:', result);
-          setLastErrorMessage(result);
+        if (transcriptionResult.startsWith('Error:')) {
+          console.error('❌ Error from Google Speech API:', transcriptionResult);
+          setLastErrorMessage(transcriptionResult);
           toast({
             title: 'Transcription Error',
-            description: result,
+            description: transcriptionResult,
             variant: 'destructive'
           });
-          setError(new Error(result));
-        } else if (result === 'No speech detected') {
+          setError(new Error(transcriptionResult));
+        } else if (transcriptionResult === 'No speech detected') {
           console.warn('⚠️ No speech detected in audio');
           // Don't treat "No speech detected" as a real error
           // Just add it to the transcript so the user knows
@@ -198,7 +254,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
           setLastErrorMessage(null);
           setTranscript(prev => {
             // If there's existing text, add a space before new content
-            return prev ? `${prev} ${result}` : result;
+            return prev ? `${prev} ${transcriptionResult}` : transcriptionResult;
           });
         }
       } else {
