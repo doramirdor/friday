@@ -725,15 +725,53 @@ async function testGoogleSpeechAPI(client) {
 // Handle audio transcription requests
 ipcMain.handle('transcribe-audio', async (event, buffer) => {
   try {
-    console.log('Received audio buffer of size:', buffer.length);
+    console.log('📥 Received audio buffer of size:', buffer.length);
     const base64Audio = Buffer.from(buffer).toString('base64');
+
+    // Get the API key from environment variables
+    const API_KEY = process.env.GOOGLE_SPEECH_API_KEY;
+    if (!API_KEY) {
+      console.error('❌ GOOGLE_SPEECH_API_KEY environment variable is not set');
+      return { 
+        success: false, 
+        error: 'API key is not configured. Please set the GOOGLE_SPEECH_API_KEY environment variable.'
+      };
+    }
+
+    // Examine the first few bytes to determine if it's an MP3 file
+    let encoding = 'WEBM_OPUS'; // Default 
+    let sampleRateHertz = 48000; // Default
+
+    // Check for MP3 signature (ID3v2 or MP3 frame header)
+    if (buffer.length > 4) {
+      // Check for ID3 header
+      if (buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) {
+        console.log('🎵 Detected ID3 header, using MP3 encoding');
+        encoding = 'MP3';
+        sampleRateHertz = 44100;
+      } 
+      // Check for MP3 frame sync (first 11 bits set to 1)
+      else if (buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0) {
+        console.log('🎵 Detected MP3 frame header, using MP3 encoding');
+        encoding = 'MP3';
+        sampleRateHertz = 44100;
+      }
+      // Check for WAV header
+      else if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
+        console.log('🎵 Detected WAV/RIFF header, using LINEAR16 encoding');
+        encoding = 'LINEAR16';
+        sampleRateHertz = 16000;
+      }
+    }
+
+    console.log(`🔍 Using encoding: ${encoding}, sample rate: ${sampleRateHertz}Hz`);
 
     const response = await axios.post(
       `https://speech.googleapis.com/v1/speech:recognize?key=${API_KEY}`,
       {
         config: {
-          encoding: 'WEBM_OPUS',
-          sampleRateHertz: 48000,
+          encoding: encoding,
+          sampleRateHertz: sampleRateHertz,
           languageCode: 'en-US',
           enableAutomaticPunctuation: true,
           model: 'default'
@@ -745,7 +783,7 @@ ipcMain.handle('transcribe-audio', async (event, buffer) => {
     );
 
     if (!response.data.results || response.data.results.length === 0) {
-      console.log('No transcription results returned');
+      console.log('⚠️ No transcription results returned');
       return { success: false, error: 'No speech detected' };
     }
 
@@ -753,10 +791,10 @@ ipcMain.handle('transcribe-audio', async (event, buffer) => {
       .map(r => r.alternatives[0].transcript)
       .join('\n');
     
-    console.log('Transcription successful:', transcript.substring(0, 100) + '...');
+    console.log('✅ Transcription successful:', transcript.substring(0, 100) + (transcript.length > 100 ? '...' : ''));
     return { success: true, transcript };
   } catch (err) {
-    console.error('Error transcribing audio:', err.response?.data || err.message);
+    console.error('❌ Error transcribing audio:', err.response?.data || err.message);
     return { 
       success: false, 
       error: err.response?.data?.error?.message || err.message || 'Unknown error' 

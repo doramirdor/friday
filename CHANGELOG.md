@@ -16,21 +16,22 @@ All notable changes to this project will be documented in this file.
 - File system storage for recorded audio files
 - System audio recording support via BlackHole audio driver (fallback)
 - New useSystemAudio hook for accessing system audio
-- Audio device management UI in settings
-- Utility functions for checking and testing audio devices
-- Automatic detection and use of BlackHole for system audio
-- Sample audio files for testing speech-to-text functionality
-- Test function for verifying speech-to-text with existing audio files
-- Multi-format audio saving (WAV and MP3) using ffmpeg for format conversion
-- Robust MP3 conversion with signature verification and multiple fallback methods
-- Development mode fallback for audio testing features
-- Test scripts for verifying Google Speech API functionality with different audio formats
-- Multiple authentication methods for Google Speech API in test scripts
-- API key-based authentication for Google Speech-to-Text as an alternative to service account credentials
-- New ApiKeyTranscription component for easy API key-based transcription
-- Simple test script for verifying API key authentication with Google Speech
+- Audio device management and input selection
+- Audio transcription formats (FLAC, WAV, MP3) based on device capabilities
+- Built-in format conversion for optimal Google Speech-to-Text compatibility
+- Multi-format audio recording with both WAV and MP3 output
+- Automatic MP3 conversion of audio recordings for optimized file size
+- Format detection for transcription based on file signatures
+- Improved MP3 support in API key-based Google Speech transcription
+- Optimized audio file format handling for more accurate transcription results
 
 ### Changed
+- Upgraded Google Cloud Speech-to-Text client library
+- Improved error handling for audio recording and transcription
+- Enhanced audio format detection for accurate transcription
+- Prioritized MP3 recordings for better performance with Google Speech API
+- Updated API key authentication flow for Google Speech services
+- Modified transcription component to use saved MP3 files for optimal results
 - Improved audio device handling in TranscriptDetails and useGoogleSpeech
 - Better fallback mechanisms when specific audio devices aren't available
 - Updated Google Speech API to use correct sample rate (48kHz)
@@ -47,6 +48,11 @@ All notable changes to this project will be documented in this file.
 - Enhanced preload.js to expose new API key-based transcription functionality
 
 ### Fixed
+- Audio format detection and handling for Google Speech API
+- MP3 encoding issues in audio recordings
+- Transcription quality issues with different audio formats
+- Automatic file extension management for recordings
+- Format verification for audio files before transcription
 - Sample rate mismatch in Google Speech API configuration
 - Audio playback reliability issues
 - Audio recording not being saved to disk
