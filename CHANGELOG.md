@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Automatic detection and use of BlackHole for system audio
 - Sample audio files for testing speech-to-text functionality
 - Test function for verifying speech-to-text with existing audio files
+- Multi-format audio saving (WAV and MP3) using ffmpeg for format conversion
 
 ### Changed
 - Improved audio device handling in TranscriptDetails and useGoogleSpeech
@@ -31,6 +32,7 @@ All notable changes to this project will be documented in this file.
 - Improved error notifications using toast messages
 - Exposed application path in Electron API for accessing resources
 - Enhanced path handling for test audio files in main process
+- Enhanced audio file saving API to handle multiple formats simultaneously
 
 ### Fixed
 - Sample rate mismatch in Google Speech API configuration
