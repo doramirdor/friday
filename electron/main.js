@@ -321,18 +321,32 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
   try {
     console.log('🧪 Testing speech recognition with audio file:', filePath);
 
+    // Handle relative paths - convert them to absolute
+    let resolvedPath = filePath;
+    if (!path.isAbsolute(filePath)) {
+      // If path is relative, resolve from the app's root directory
+      resolvedPath = path.resolve(app.getAppPath(), filePath);
+      console.log(`📍 Resolved relative path to: ${resolvedPath}`);
+    }
+
+    // Check if the file exists
+    if (!fs.existsSync(resolvedPath)) {
+      console.error(`❌ Audio file does not exist: ${resolvedPath}`);
+      return { error: `File not found: ${filePath}` };
+    }
+
     // Read the file
     let audioBuffer;
     try {
-      audioBuffer = fs.readFileSync(filePath);
-      console.log(`✅ Successfully read audio file: ${filePath}, size: ${audioBuffer.length} bytes`);
+      audioBuffer = fs.readFileSync(resolvedPath);
+      console.log(`✅ Successfully read audio file: ${resolvedPath}, size: ${audioBuffer.length} bytes`);
     } catch (error) {
-      console.error(`❌ Error reading audio file: ${filePath}`, error);
+      console.error(`❌ Error reading audio file: ${resolvedPath}`, error);
       return { error: `Failed to read audio file: ${error.message}` };
     }
 
     // Determine encoding based on file extension
-    const fileExt = path.extname(filePath).toLowerCase();
+    const fileExt = path.extname(resolvedPath).toLowerCase();
     let encoding = 'LINEAR16'; // Default for WAV
 
     if (fileExt === '.mp3') {

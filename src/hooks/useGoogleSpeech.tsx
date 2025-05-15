@@ -38,6 +38,7 @@ interface ElectronWindow extends Window {
   electronAPI?: {
     isElectron: boolean;
     platform: string;
+    appPath: string;
     sendMessage: (channel: string, data: unknown) => void;
     receive: (channel: string, callback: (...args: unknown[]) => void) => void;
     invokeGoogleSpeech: (audioBuffer: ArrayBuffer, options?: RecordingOptions) => Promise<string>;

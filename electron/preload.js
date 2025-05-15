@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const path = require('path');
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -6,6 +7,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Expose methods to the renderer process
   platform: process.platform,
   isElectron: true,
+  // Add application path for accessing resources
+  appPath: process.env.NODE_ENV === 'production' 
+    ? path.join(__dirname, '..') 
+    : process.cwd(),
   // Add more methods as needed
   sendMessage: (channel, data) => {
     // Whitelist channels that can be used
@@ -51,9 +56,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Add method to test speech recognition with existing audio files
   testSpeechWithFile: async (filePath) => {
     try {
+      console.log('🔄 preload.js: Testing speech with file:', filePath);
       return await ipcRenderer.invoke('test-speech-with-file', filePath);
     } catch (error) {
-      console.error('Error testing speech with file:', error);
+      console.error('❌ preload.js: Error testing speech with file:', error);
       throw error;
     }
   }

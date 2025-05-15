@@ -13,7 +13,9 @@ export function AudioTestButton({ className }: AudioTestButtonProps) {
   const handleTestWav = async () => {
     setIsLoading(true);
     try {
-      const filePath = '/Users/amirdor/Library/Application Support/Friday/recording-2025-05-14T00-30-13-366Z.wav';
+      // Use electron app's resource path for test files
+      const filePath = `${window.electronAPI?.appPath || '.'}/test-audio/test-speech.wav`;
+      console.log('🧪 Testing with WAV file:', filePath);
       await testWithFile(filePath);
     } catch (error) {
       console.error('Error testing WAV file:', error);
@@ -25,7 +27,9 @@ export function AudioTestButton({ className }: AudioTestButtonProps) {
   const handleTestMp3 = async () => {
     setIsLoading(true);
     try {
-      const filePath = '/Users/amirdor/Library/Application Support/Friday/recording-2025-05-14T00-30-13-366Z.mps';
+      // Use electron app's resource path for test files
+      const filePath = `${window.electronAPI?.appPath || '.'}/test-audio/test-speech.mp3`;
+      console.log('🧪 Testing with MP3 file:', filePath);
       await testWithFile(filePath);
     } catch (error) {
       console.error('Error testing MP3 file:', error);
