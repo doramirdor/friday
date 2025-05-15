@@ -318,7 +318,7 @@ const TranscriptDetails = () => {
       if (isPlaying) {
         audioRef.current.pause();
         setIsPlaying(false);
-      } else {
+    } else {
         const playPromise = audioRef.current.play();
         
         // Handle play promise to catch potential errors
@@ -476,9 +476,9 @@ const TranscriptDetails = () => {
                 } catch (err) {
                   toast.error("Transcription failed");
                   console.error(err);
-                }
+      }
               };
-            } else {
+    } else {
               // Use Web Speech API for transcription
               toast.info("Processing audio for transcription");
               // Here we could use a different approach for full audio transcription
@@ -669,7 +669,7 @@ const TranscriptDetails = () => {
         : "Live transcript disabled"
     );
   };
-
+  
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-background border-b border-border px-6 py-4 flex items-center gap-4">
@@ -731,17 +731,17 @@ const TranscriptDetails = () => {
                 {isNewMeeting || transcriptLines.length === 0 ? (
                   <div className="flex flex-col items-center gap-4 py-8">
                     <div className="flex items-center justify-center mb-4 space-x-2">
-                      <Button
-                        variant={isRecording ? "destructive" : "default"}
-                        size="lg"
-                        onClick={handleStartStopRecording}
-                        className={`h-16 w-16 rounded-full flex items-center justify-center ${
-                          isRecording ? "animate-pulse" : ""
-                        }`}
-                      >
-                        {isRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
-                      </Button>
-                      <div className="text-sm font-medium">
+                    <Button
+                      variant={isRecording ? "destructive" : "default"}
+                      size="lg"
+                      onClick={handleStartStopRecording}
+                      className={`h-16 w-16 rounded-full flex items-center justify-center ${
+                        isRecording ? "animate-pulse" : ""
+                      }`}
+                    >
+                      {isRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
+                    </Button>
+                    <div className="text-sm font-medium">
                         {isRecording 
                           ? `Recording: ${formatTime(recordingDuration)}` 
                           : "Click to start recording"}
@@ -770,26 +770,26 @@ const TranscriptDetails = () => {
                   // Audio player controls
                   <div className="flex flex-col gap-4 mb-4">
                     <div className="flex items-center gap-4">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={handlePlayPause}
-                        className="h-10 w-10 rounded-full"
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handlePlayPause}
+                      className="h-10 w-10 rounded-full"
                         disabled={!recordedAudioUrl}
-                      >
-                        {isPlaying ? (
-                          <Pause className="h-5 w-5" />
-                        ) : (
-                          <Play className="h-5 w-5" />
-                        )}
-                        <span className="sr-only">
-                          {isPlaying ? "Pause" : "Play"}
-                        </span>
-                      </Button>
-                      
-                      <div className="text-sm font-medium">
+                    >
+                      {isPlaying ? (
+                        <Pause className="h-5 w-5" />
+                      ) : (
+                        <Play className="h-5 w-5" />
+                      )}
+                      <span className="sr-only">
+                        {isPlaying ? "Pause" : "Play"}
+                      </span>
+                    </Button>
+                    
+                    <div className="text-sm font-medium">
                         {formatTime(currentAudioTime)} / {formatTime(audioDuration)}
-                      </div>
+                    </div>
                       
                       <div className="flex items-center gap-2 ml-auto">
                         <Button
@@ -808,7 +808,7 @@ const TranscriptDetails = () => {
                             step={1}
                             onValueChange={handleVolumeChange}
                           />
-                        </div>
+                  </div>
                       </div>
                     </div>
                     
@@ -828,32 +828,32 @@ const TranscriptDetails = () => {
                     {recordedAudioUrl && (
                       <div className="h-20 bg-muted rounded-md waveform-bg relative">
                         {/* Simulated waveform for now */}
-                        <div className="absolute inset-0 flex items-center px-4">
-                          <div className="w-full h-16 flex items-center">
-                            {Array.from({ length: 100 }).map((_, i) => {
-                              const height = Math.sin(i * 0.2) * 20 + 30;
-                              return (
-                                <div
-                                  key={i}
-                                  className="w-1 mx-0.5 bg-primary-dark opacity-70"
-                                  style={{
-                                    height: `${height}%`,
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
-                        </div>
-                        
-                        {/* Playhead */}
-                        <div 
-                          className="absolute top-0 bottom-0 w-0.5 bg-primary"
+                    <div className="absolute inset-0 flex items-center px-4">
+                      <div className="w-full h-16 flex items-center">
+                        {Array.from({ length: 100 }).map((_, i) => {
+                          const height = Math.sin(i * 0.2) * 20 + 30;
+                          return (
+                            <div
+                              key={i}
+                              className="w-1 mx-0.5 bg-primary-dark opacity-70"
+                              style={{
+                                height: `${height}%`,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    {/* Playhead */}
+                    <div 
+                      className="absolute top-0 bottom-0 w-0.5 bg-primary"
                           style={{ 
                             left: `${(currentAudioTime / (audioDuration || 1)) * 100}%` 
                           }}
-                        />
-                      </div>
-                    )}
+                    />
+                  </div>
+                )}
                     
                     {/* Button to start a new recording */}
                     <Button 

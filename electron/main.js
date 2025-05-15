@@ -61,42 +61,22 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
       .join(' ');
     console.log('🔍 main.js: Audio buffer header bytes:', bufferHeader);
     
-    // Check if the buffer is WebM/Opus (common from MediaRecorder)
+    // Critical fix: For WebM with PCM codec, we need to extract the PCM data
     // WebM magic bytes: 1A 45 DF A3
     const isWebM = bufferHeader.includes('1a 45 df a3');
     let processedBuffer = audioBuffer;
+    let finalEncoding = encoding;
     
     if (isWebM) {
       console.log('⚠️ main.js: Detected WebM format audio');
       
-      if (encoding === 'LINEAR16') {
-        // For PCM content, need to extract the raw PCM data from WebM container
-        console.log('⚠️ main.js: Received WebM+PCM but need raw PCM. Using as-is but might need adjustment.');
-        
-        // Automatically set encoding to match the appropriate format
-        console.log('🔄 main.js: Ensuring encoding is set to LINEAR16 for PCM audio');
-        encoding = 'LINEAR16';
-      } else if (encoding === 'LINEAR16' && options.forceLinear16) {
-        // If we specifically want to force LINEAR16 for a WebM file, we'll try a simple conversion
-        // In a real app, you'd want to do proper audio format conversion here
-        console.log('🔄 main.js: Attempting to convert WebM to LINEAR16 format');
-        
-        // This is a very naive approach - in production, use a proper audio conversion library
-        // Just for testing purposes, create a simple LINEAR16 buffer
-        const numSamples = audioBuffer.length / 2; // Assuming 16-bit samples
-        const linearBuffer = Buffer.alloc(numSamples * 2);
-        
-        // Just copy the data as-is (this won't work properly but is a placeholder for real conversion)
-        for (let i = 0; i < numSamples; i++) {
-          // Skip WebM header - very naive approach
-          const sourceIndex = Math.min(i + 1000, audioBuffer.length - 2);
-          if (sourceIndex + 1 < audioBuffer.length) {
-            linearBuffer.writeInt16LE(audioBuffer.readInt16LE(sourceIndex), i * 2);
-          }
-        }
-        
-        processedBuffer = linearBuffer;
-        encoding = 'LINEAR16';
+      // Explicitly set to OGG_OPUS for all WebM content unless LINEAR16 is forced
+      if (!options.forceLinear16) {
+        console.log('🔄 main.js: Using OGG_OPUS encoding for WebM audio');
+        finalEncoding = 'OGG_OPUS';
+      } else {
+        console.log('⚠️ main.js: ForceLinear16 set - attempting to treat WebM as LINEAR16');
+        finalEncoding = 'LINEAR16';
       }
     }
     
@@ -147,13 +127,33 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
       }
     }
     
+    // Boost audio levels for better speech detection (simple gain)
+    if (options.boostAudio && finalEncoding === 'LINEAR16') {
+      try {
+        console.log('🔊 main.js: Boosting audio levels');
+        // Only works for LINEAR16 format (16-bit PCM)
+        const view = new Int16Array(processedBuffer);
+        const gain = 1.5; // 50% volume boost
+        
+        for (let i = 0; i < view.length; i++) {
+          // Apply gain with clipping protection
+          view[i] = Math.max(-32768, Math.min(32767, Math.round(view[i] * gain)));
+        }
+        
+        console.log('✅ main.js: Audio levels boosted');
+      } catch (err) {
+        console.error('❌ main.js: Error boosting audio levels:', err);
+      }
+    }
+    
     const config = {
-      encoding: encoding,
+      encoding: finalEncoding,
       sampleRateHertz: sampleRateHertz,
       languageCode: languageCode,
       audioChannelCount: audioChannelCount,
       enableAutomaticPunctuation: true,
-      model: options.model || 'default',
+      // Use command and search model for better accuracy with short phrases
+      model: options.model || 'command_and_search',
       useEnhanced: true
     };
     
@@ -173,7 +173,7 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
       audio: audio,
     };
     
-    console.log('🚀 main.js: Sending audio to Google Speech API...');
+    console.log('🚀 main.js: Sending audio to Google Speech API with encoding:', finalEncoding);
     const [response] = await client.recognize(request);
     
     console.log('📥 main.js: Received response from Google Speech API:', {
