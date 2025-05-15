@@ -197,7 +197,7 @@ ipcMain.handle('invoke-google-speech', async (event, audioBuffer) => {
 });
 
 // Handle saving audio files to disk
-ipcMain.handle('save-audio-file', async (event, { buffer, filename }) => {
+ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['wav'] }) => {
   try {
     // Create recordings directory if it doesn't exist
     const recordingsDir = path.join(app.getPath('documents'), 'Friday Recordings');
@@ -207,24 +207,78 @@ ipcMain.handle('save-audio-file', async (event, { buffer, filename }) => {
 
     // Create a timestamp-based filename if none provided
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const finalFilename = filename || `recording-${timestamp}.wav`;
+    const baseFilename = filename || `recording-${timestamp}`;
     
-    // Full path to save the file
-    const filePath = path.join(recordingsDir, finalFilename);
+    // Remove any file extension from the base filename
+    const filenameWithoutExt = baseFilename.replace(/\.\w+$/, '');
     
-    // Write the buffer to disk
-    fs.writeFileSync(filePath, Buffer.from(buffer));
+    // Full path to save the file (without extension)
+    const baseFilePath = path.join(recordingsDir, filenameWithoutExt);
     
-    return {
+    console.log(`💾 Saving audio file: ${baseFilePath} with formats:`, formats);
+    
+    // Create an audio buffer for processing
+    const audioData = Buffer.from(buffer);
+    
+    // Default result - just save the raw buffer if no conversion is possible
+    let result = {
       success: true,
-      filePath,
-      message: `File saved to ${filePath}`
+      filePath: baseFilePath, // Use basePath as default
+      message: `File saved to ${baseFilePath}`
     };
+    
+    // If ffmpeg is available, convert to requested formats
+    try {
+      // We'll implement MP3 conversion here in a future update
+      // For now, just write the buffer as-is
+      fs.writeFileSync(`${baseFilePath}`, audioData);
+      
+      console.log(`📄 Audio file saved to: ${baseFilePath}`);
+      
+    } catch (conversionError) {
+      console.error('⚠️ Error during format conversion:', conversionError);
+      // Fall back to just saving the raw buffer
+      fs.writeFileSync(`${baseFilePath}`, audioData);
+    }
+    
+    return result;
   } catch (error) {
-    console.error('Error saving audio file:', error);
+    console.error('❌ Error saving audio file:', error);
     return {
       success: false,
       message: `Failed to save file: ${error.message}`
+    };
+  }
+});
+
+// Handle testing speech recognition with an existing file
+ipcMain.handle('test-speech-with-file', async (event, filePath) => {
+  try {
+    console.log(`📝 Testing speech recognition with file: ${filePath}`);
+    
+    // Check if the file exists
+    if (!fs.existsSync(filePath)) {
+      console.error(`❌ File not found: ${filePath}`);
+      return {
+        error: `File not found: ${filePath}`
+      };
+    }
+    
+    // Read the file contents
+    const fileBuffer = fs.readFileSync(filePath);
+    console.log(`📊 Read file: ${filePath}, size: ${fileBuffer.length} bytes`);
+    
+    // Use the existing Google Speech handler
+    const transcription = await handleGoogleSpeechAPI(fileBuffer);
+    console.log(`✅ Transcription result: ${transcription}`);
+    
+    return {
+      transcription
+    };
+  } catch (error) {
+    console.error(`❌ Error testing speech with file: ${error.message}`);
+    return {
+      error: `Failed to test speech: ${error.message}`
     };
   }
 });

@@ -27,6 +27,7 @@ All notable changes to this project will be documented in this file.
 - Extension auto-correction for audio files missing proper extensions
 - Robust MP3 conversion with improved error handling and file verification
 - WebM/Opus to MP3 conversion pipeline for improved transcription reliability
+- Added testSpeechWithFile handler to main.cjs to fix transcription with saved files
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -54,6 +55,7 @@ All notable changes to this project will be documented in this file.
 - Standardized audio conversion parameters (44.1kHz, 192kbps) for better compatibility
 - Enhanced useGoogleSpeech hook to use MP3 conversion for WebM/Opus audio
 - Improved handling of different saveAudioFile response formats for better backward compatibility
+- Synchronized main.cjs and preload.cjs with newer implementations in main.js and preload.js
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
@@ -80,6 +82,8 @@ All notable changes to this project will be documented in this file.
 - No speech detected errors when using WebM/Opus audio format
 - TypeScript errors in useGoogleSpeech hook
 - Fixed compatibility issues with older saveAudioFile response format that didn't include files array
+- Missing testSpeechWithFile handler in main.cjs preventing transcription of saved files
+- Inconsistencies between preload.cjs and preload.js causing missing functionality
 
 ## [0.2.1] - 2023-07-31
 
