@@ -12,6 +12,7 @@ interface UseGoogleSpeechReturn {
   resetTranscript: () => void;
   isProcessing: boolean;
   selectCredentialsFile: () => Promise<boolean>;
+  testWithFile: (filePath: string) => Promise<void>;
   debugInfo: {
     audioFormat: string;
     sampleRate: number;
@@ -41,6 +42,7 @@ interface ElectronWindow extends Window {
     receive: (channel: string, callback: (...args: unknown[]) => void) => void;
     invokeGoogleSpeech: (audioBuffer: ArrayBuffer, options?: RecordingOptions) => Promise<string>;
     selectCredentialsFile: () => Promise<{success: boolean, error?: string, canceled?: boolean}>;
+    testSpeechWithFile: (filePath: string) => Promise<{error?: string, transcription?: string}>;
   }
 }
 
@@ -462,6 +464,71 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
     setTranscript('');
   }, []);
 
+  // Test with existing file
+  const testWithFile = async (filePath: string): Promise<void> => {
+    try {
+      setIsProcessing(true);
+      setLastErrorMessage(null);
+      
+      console.log('🔄 Testing with file:', filePath);
+      
+      // Check if we have the Electron API
+      if (!(window as unknown as ElectronWindow).electronAPI?.testSpeechWithFile) {
+        const errorMsg = 'Test function not available - Electron API missing';
+        console.error('❌', errorMsg);
+        setLastErrorMessage(errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+      // Call the Electron API to test with file
+      const result = await (window as unknown as ElectronWindow).electronAPI.testSpeechWithFile(filePath);
+      
+      if (result.error) {
+        const errorMsg = `Error testing file: ${result.error}`;
+        console.error('❌', errorMsg);
+        setLastErrorMessage(errorMsg);
+        setError(new Error(errorMsg));
+        toast({
+          title: 'Test Failed',
+          description: errorMsg,
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      if (result.transcription) {
+        console.log('✅ Transcription result:', result.transcription);
+        setTranscript(result.transcription);
+        toast({
+          title: 'Test Success',
+          description: 'File transcribed successfully',
+          variant: 'default'
+        });
+      } else {
+        const errorMsg = 'No transcription returned';
+        console.warn('⚠️', errorMsg);
+        setLastErrorMessage(errorMsg);
+        toast({
+          title: 'Test Warning',
+          description: errorMsg,
+          variant: 'default'
+        });
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('❌ Exception in testWithFile:', errorMessage, err);
+      setLastErrorMessage(errorMessage);
+      setError(err instanceof Error ? err : new Error(String(err)));
+      toast({
+        title: 'Test Error',
+        description: errorMessage,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return {
     transcript,
     isRecording,
@@ -471,6 +538,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
     stopRecording,
     resetTranscript,
     selectCredentialsFile,
+    testWithFile,
     debugInfo: {
       audioFormat,
       sampleRate,

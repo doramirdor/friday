@@ -316,6 +316,54 @@ ipcMain.handle('select-credentials-file', async () => {
   return { success: false, canceled: true };
 });
 
+// Handle existing audio file transcription test
+ipcMain.handle('test-speech-with-file', async (event, filePath) => {
+  try {
+    console.log('🧪 Testing speech recognition with audio file:', filePath);
+
+    // Read the file
+    let audioBuffer;
+    try {
+      audioBuffer = fs.readFileSync(filePath);
+      console.log(`✅ Successfully read audio file: ${filePath}, size: ${audioBuffer.length} bytes`);
+    } catch (error) {
+      console.error(`❌ Error reading audio file: ${filePath}`, error);
+      return { error: `Failed to read audio file: ${error.message}` };
+    }
+
+    // Determine encoding based on file extension
+    const fileExt = path.extname(filePath).toLowerCase();
+    let encoding = 'LINEAR16'; // Default for WAV
+
+    if (fileExt === '.mp3') {
+      encoding = 'MP3';
+      console.log('🎵 Detected MP3 format, using MP3 encoding');
+    } else if (fileExt === '.ogg') {
+      encoding = 'OGG_OPUS';
+      console.log('🎵 Detected OGG format, using OGG_OPUS encoding');
+    } else if (fileExt === '.wav') {
+      encoding = 'LINEAR16';
+      console.log('🎵 Detected WAV format, using LINEAR16 encoding');
+    } else {
+      console.log(`⚠️ Unknown file extension: ${fileExt}, defaulting to LINEAR16 encoding`);
+    }
+
+    // Call the existing function to process the audio
+    const transcription = await handleGoogleSpeechAPI(audioBuffer, {
+      encoding,
+      // Use defaults for other options
+      sampleRateHertz: 16000,
+      languageCode: 'en-US'
+    });
+
+    console.log('📝 Transcription result:', transcription);
+    return { success: true, transcription };
+  } catch (error) {
+    console.error('❌ Error testing speech with file:', error);
+    return { error: error.message || 'Unknown error' };
+  }
+});
+
 app.whenReady().then(() => {
   // Set NODE_ENV to development if not set
   if (!process.env.NODE_ENV) {

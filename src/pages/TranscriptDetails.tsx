@@ -17,6 +17,8 @@ import { Toggle } from "@/components/ui/toggle";
 import { Slider } from "@/components/ui/slider";
 import useSystemAudio from "@/hooks/useSystemAudio";
 import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
+import { AudioTestButton } from "@/components/audio-test-button";
+import { Switch } from "@/components/ui/switch";
 
 interface TranscriptLine {
   id: string;
@@ -765,6 +767,11 @@ const TranscriptDetails = () => {
                         </span>
                       </div>
                     </div>
+                    
+                    {/* Test existing audio files */}
+                    <div className="mt-4">
+                      <AudioTestButton />
+                    </div>
                   </div>
                 ) : (
                   // Audio player controls
@@ -856,14 +863,18 @@ const TranscriptDetails = () => {
                 )}
                     
                     {/* Button to start a new recording */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="mt-2"
-                      onClick={handleStartStopRecording}
-                    >
-                      {isRecording ? "Stop Recording" : "Record New Audio"}
-                    </Button>
+                    <div className="flex gap-2 mt-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleStartStopRecording}
+                      >
+                        {isRecording ? "Stop Recording" : "Record New Audio"}
+                      </Button>
+                      
+                      {/* Add test button for existing recordings */}
+                      <AudioTestButton />
+                    </div>
                   </div>
                 )}
 

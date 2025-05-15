@@ -47,6 +47,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       console.error('Error selecting credentials file:', error);
       throw error;
     }
+  },
+  // Add method to test speech recognition with existing audio files
+  testSpeechWithFile: async (filePath) => {
+    try {
+      return await ipcRenderer.invoke('test-speech-with-file', filePath);
+    } catch (error) {
+      console.error('Error testing speech with file:', error);
+      throw error;
+    }
   }
 });
 
