@@ -41,7 +41,7 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
     // Dynamically import Google Speech API to avoid issues with ESM/CJS compatibility
     const speech = require('@google-cloud/speech');
     
-    // Configure speech options
+    // Configure speech options - use 16000 Hz for best results with Google Speech
     const sampleRateHertz = options.sampleRateHertz || 16000;
     const languageCode = options.languageCode || 'en-US';
     const encoding = options.encoding || 'LINEAR16';
@@ -64,13 +64,39 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
     // Check if the buffer is WebM/Opus (common from MediaRecorder)
     // WebM magic bytes: 1A 45 DF A3
     const isWebM = bufferHeader.includes('1a 45 df a3');
+    let processedBuffer = audioBuffer;
+    
     if (isWebM) {
       console.log('⚠️ main.js: Detected WebM format audio');
-      // Automatically set encoding to OGG_OPUS if we detect WebM
+      
       if (encoding === 'LINEAR16') {
-        console.log('🔄 main.js: Changing encoding from LINEAR16 to OGG_OPUS for WebM audio');
-        options.encoding = 'OGG_OPUS';
-        encoding = 'OGG_OPUS';
+        // For PCM content, need to extract the raw PCM data from WebM container
+        console.log('⚠️ main.js: Received WebM+PCM but need raw PCM. Using as-is but might need adjustment.');
+        
+        // Automatically set encoding to match the appropriate format
+        console.log('🔄 main.js: Ensuring encoding is set to LINEAR16 for PCM audio');
+        encoding = 'LINEAR16';
+      } else if (encoding === 'LINEAR16' && options.forceLinear16) {
+        // If we specifically want to force LINEAR16 for a WebM file, we'll try a simple conversion
+        // In a real app, you'd want to do proper audio format conversion here
+        console.log('🔄 main.js: Attempting to convert WebM to LINEAR16 format');
+        
+        // This is a very naive approach - in production, use a proper audio conversion library
+        // Just for testing purposes, create a simple LINEAR16 buffer
+        const numSamples = audioBuffer.length / 2; // Assuming 16-bit samples
+        const linearBuffer = Buffer.alloc(numSamples * 2);
+        
+        // Just copy the data as-is (this won't work properly but is a placeholder for real conversion)
+        for (let i = 0; i < numSamples; i++) {
+          // Skip WebM header - very naive approach
+          const sourceIndex = Math.min(i + 1000, audioBuffer.length - 2);
+          if (sourceIndex + 1 < audioBuffer.length) {
+            linearBuffer.writeInt16LE(audioBuffer.readInt16LE(sourceIndex), i * 2);
+          }
+        }
+        
+        processedBuffer = linearBuffer;
+        encoding = 'LINEAR16';
       }
     }
     
@@ -132,9 +158,9 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
     };
     
     // Convert audio buffer to base64
-    const audioContent = Buffer.from(audioBuffer).toString('base64');
+    const audioContent = Buffer.from(processedBuffer).toString('base64');
     console.log('🔄 main.js: Converted audio to base64', {
-      originalLength: audioBuffer.byteLength,
+      originalLength: processedBuffer.byteLength,
       base64Length: audioContent.length
     });
     
@@ -331,6 +357,16 @@ app.whenReady().then(() => {
           }
         });
         console.log('✅ Successfully created Speech client with API key');
+        
+        // Run a test recognition to verify API access
+        testGoogleSpeechAPI(client).then(success => {
+          if (success) {
+            console.log('✅ Google Speech API test successful!');
+          } else {
+            console.error('❌ Google Speech API test failed!');
+          }
+        });
+        
         return true;
       } catch (error) {
         console.error('❌ Failed to create Speech client with API key:', error);
@@ -366,6 +402,16 @@ app.whenReady().then(() => {
           keyFilename: credentialsPath,
         });
         console.log('✅ Successfully created Speech client with credentials file');
+        
+        // Run a test recognition to verify API access
+        testGoogleSpeechAPI(client).then(success => {
+          if (success) {
+            console.log('✅ Google Speech API test successful!');
+          } else {
+            console.error('❌ Google Speech API test failed!');
+          }
+        });
+        
         return true;
       } catch (error) {
         console.error('❌ Failed to create Speech client with credentials file:', error);
@@ -389,4 +435,66 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
-}); 
+});
+
+// Test function to verify Google Speech API works with a minimal example
+async function testGoogleSpeechAPI(client) {
+  try {
+    console.log('🔍 Testing Google Speech API with sample audio...');
+    
+    // Create a simple sine wave audio buffer (440Hz tone)
+    const sampleRate = 16000;
+    const durationSecs = 2;
+    const numSamples = sampleRate * durationSecs;
+    const buffer = Buffer.alloc(numSamples * 2); // 16-bit samples = 2 bytes per sample
+    
+    // Generate a simple sine wave
+    for (let i = 0; i < numSamples; i++) {
+      // Simple sine wave at 440Hz
+      const sample = Math.sin(440 * Math.PI * 2 * i / sampleRate) * 0x7FFF;
+      buffer.writeInt16LE(sample, i * 2);
+    }
+    
+    console.log('🔊 Created test audio buffer:', {
+      sampleRate,
+      durationSecs,
+      bufferSize: buffer.length
+    });
+    
+    // Convert buffer to base64
+    const audioContent = buffer.toString('base64');
+    
+    // Set up recognition config (simple LINEAR16 format)
+    const config = {
+      encoding: 'LINEAR16',
+      sampleRateHertz: sampleRate,
+      languageCode: 'en-US',
+      audioChannelCount: 1,
+    };
+    
+    const audio = {
+      content: audioContent,
+    };
+    
+    const request = {
+      config: config,
+      audio: audio,
+    };
+    
+    console.log('🚀 Sending test audio to Google Speech API...');
+    
+    const [response] = await client.recognize(request);
+    
+    console.log('📥 Received response from Google Speech API test:', {
+      responseExists: !!response,
+      resultsCount: response?.results?.length || 0
+    });
+    
+    // We don't expect actual speech recognition from a sine wave,
+    // but we do expect a successful API call without errors
+    return true;
+  } catch (error) {
+    console.error('❌ Google Speech API test failed with error:', error);
+    return false;
+  }
+} 

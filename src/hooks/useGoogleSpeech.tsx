@@ -12,6 +12,12 @@ interface UseGoogleSpeechReturn {
   resetTranscript: () => void;
   isProcessing: boolean;
   selectCredentialsFile: () => Promise<boolean>;
+  debugInfo: {
+    audioFormat: string;
+    sampleRate: number;
+    lastError: string | null;
+    recordedChunks: number;
+  };
 }
 
 // Options for recording
@@ -22,6 +28,7 @@ interface RecordingOptions {
   encoding?: 'LINEAR16' | 'FLAC' | 'MP3' | 'OGG_OPUS';
   audioChannelCount?: number;
   model?: 'default' | 'phone_call' | 'video' | 'command_and_search';
+  forceLinear16?: boolean;
 }
 
 // Define the Electron window interface
@@ -42,6 +49,11 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
   const [error, setError] = useState<Error | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
+  // Debug state
+  const [audioFormat, setAudioFormat] = useState<string>('unknown');
+  const [lastErrorMessage, setLastErrorMessage] = useState<string | null>(null);
+  const [recordedChunksCount, setRecordedChunksCount] = useState<number>(0);
+  
   // References to maintain state between renders
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -58,6 +70,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
   const encoding = defaultOptions.encoding || 'LINEAR16';
   const audioChannelCount = defaultOptions.audioChannelCount || 1;
   const model = defaultOptions.model || 'default';
+  const forceLinear16 = defaultOptions.forceLinear16 !== undefined ? defaultOptions.forceLinear16 : false;
 
   // Cleanup function
   useEffect(() => {
@@ -99,10 +112,16 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         options
       });
       
+      // Update debug info
+      setAudioFormat(audioBlob.type);
+      setRecordedChunksCount(audioChunksRef.current.length);
+      
       // Check if we have the Electron API
       if (!(window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
         console.error('❌ Google Speech API not available - Electron API missing');
-        throw new Error('Google Speech API not available');
+        const errorMsg = 'Google Speech API not available';
+        setLastErrorMessage(errorMsg);
+        throw new Error(errorMsg);
       }
       
       // Convert audio to format needed for Google Speech
@@ -132,7 +151,9 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         languageCode: options.languageCode || language,
         encoding: options.encoding || speechEncoding,
         audioChannelCount: options.audioChannelCount || audioChannelCount,
-        model: options.model || model
+        model: options.model || model,
+        // Add option to force LINEAR16 even for WebM audio (for testing)
+        forceLinear16: options.forceLinear16 || forceLinear16
       };
       
       console.log('🚀 Sending to Google Speech API with options:', speechOptions);
@@ -149,14 +170,23 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         // Check if the result starts with "Error:"
         if (result.startsWith('Error:')) {
           console.error('❌ Error from Google Speech API:', result);
+          setLastErrorMessage(result);
           toast({
             title: 'Transcription Error',
             description: result,
             variant: 'destructive'
           });
           setError(new Error(result));
+        } else if (result === 'No speech detected') {
+          console.warn('⚠️ No speech detected in audio');
+          // Don't treat "No speech detected" as a real error
+          // Just add it to the transcript so the user knows
+          setTranscript(prev => {
+            return prev ? `${prev} (No speech detected)` : 'No speech detected';
+          });
         } else {
           console.log('✅ Setting transcript with result');
+          setLastErrorMessage(null);
           setTranscript(prev => {
             // If there's existing text, add a space before new content
             return prev ? `${prev} ${result}` : result;
@@ -164,10 +194,12 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         }
       } else {
         console.warn('⚠️ Empty result from Google Speech API');
+        setLastErrorMessage('Empty result from API');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error('❌ Exception in processAudioChunk:', errorMessage, err);
+      setLastErrorMessage(errorMessage);
       setError(err instanceof Error ? err : new Error(String(err)));
       toast({
         title: 'Speech Recognition Error',
@@ -251,13 +283,17 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
     try {
       // Reset state
       setError(null);
+      setLastErrorMessage(null);
       audioChunksRef.current = [];
+      setRecordedChunksCount(0);
+      
       if (!options.continuous) {
         setTranscript('');
       }
 
       // Set better default sample rate for speech recognition
-      const useSampleRate = options.sampleRateHertz || 44100; // Higher quality audio (44.1kHz)
+      // Google Speech API works best with 16000 Hz
+      const useSampleRate = options.sampleRateHertz || 16000; // Standard rate for speech recognition
       
       console.log('🎤 Starting recording with sample rate:', useSampleRate);
 
@@ -303,6 +339,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
           console.log(`✅ Found supported format: ${format}`);
           mimeType = format;
           recorderOptions.mimeType = format;
+          setAudioFormat(format);
           break;
         } else {
           console.log(`❌ Format not supported: ${format}`);
@@ -318,6 +355,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         if (event.data.size > 0) {
           console.log(`📦 Received audio chunk: ${event.data.size} bytes, type: ${event.data.type}`);
           audioChunksRef.current.push(event.data);
+          setRecordedChunksCount(audioChunksRef.current.length);
           
           // If continuous transcription is enabled, process each chunk
           const isContinuous = options.continuous !== undefined ? options.continuous : continuous;
@@ -329,7 +367,9 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
               encoding: mimeType.includes('pcm') ? 'LINEAR16' : 
                        (mimeType.includes('opus') ? 'OGG_OPUS' : options.encoding),
               // Use the actual sample rate
-              sampleRateHertz: useSampleRate
+              sampleRateHertz: useSampleRate,
+              // Pass forceLinear16 option
+              forceLinear16: options.forceLinear16 || forceLinear16
             };
             processAudioChunk(event.data, audioOptions);
           }
@@ -346,6 +386,8 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         variant: 'default'
       });
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setLastErrorMessage(errorMessage);
       setError(err instanceof Error ? err : new Error(String(err)));
       toast({
         title: 'Recording Error',
@@ -354,7 +396,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       });
       console.error('Failed to start recording:', err);
     }
-  }, [continuous, sampleRate, audioChannelCount, language, encoding, model, getSystemAudioStream, toast]);
+  }, [continuous, sampleRate, audioChannelCount, language, encoding, model, getSystemAudioStream, toast, forceLinear16]);
 
   // Stop recording
   const stopRecording = useCallback((): void => {
@@ -423,7 +465,13 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
     startRecording,
     stopRecording,
     resetTranscript,
-    selectCredentialsFile
+    selectCredentialsFile,
+    debugInfo: {
+      audioFormat,
+      sampleRate,
+      lastError: lastErrorMessage,
+      recordedChunks: audioChunksRef.current.length
+    }
   };
 };
 
