@@ -176,6 +176,13 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         return false;
       }
       
+      // Show instructions toast
+      toast({
+        title: 'Select Google Cloud Credentials',
+        description: 'Select your google-credentials.json file from Google Cloud Console',
+        variant: 'default'
+      });
+      
       const result = await (window as unknown as ElectronWindow).electronAPI.selectCredentialsFile();
       
       if (result.success) {
@@ -184,12 +191,31 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
           description: 'Google Cloud credentials updated successfully',
           variant: 'default'
         });
+        // Provide info about restarting
+        toast({
+          title: 'Restart Required',
+          description: 'Please restart the app for the new credentials to take effect',
+          variant: 'default'
+        });
         return true;
+      } else if (result.canceled) {
+        toast({
+          title: 'Cancelled',
+          description: 'Credentials selection was cancelled',
+          variant: 'default'
+        });
       } else if (result.error) {
         toast({
           title: 'Error',
           description: `Failed to update credentials: ${result.error}`,
           variant: 'destructive'
+        });
+        // Show how to get credentials
+        toast({
+          title: 'How to Get Credentials',
+          description: 'Go to Google Cloud Console → APIs → Credentials → Create Service Account Key',
+          duration: 6000,
+          variant: 'default'
         });
       }
       return false;
@@ -224,13 +250,51 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       
       streamRef.current = stream;
 
-      // Create media recorder
-      const mediaRecorder = new MediaRecorder(stream);
+      // Check for supported MIME types
+      const checkMimeType = (mimeType: string) => {
+        try {
+          return MediaRecorder.isTypeSupported(mimeType);
+        } catch (e) {
+          return false;
+        }
+      };
+
+      // Find the best supported MIME type for Google Speech compatibility
+      let mimeType = 'audio/webm;codecs=pcm'; // Best for LINEAR16
+      let recorderOptions: MediaRecorderOptions = {
+        audioBitsPerSecond: 256000
+      };
+
+      console.log('🔍 Checking supported audio formats for MediaRecorder');
+      
+      // Try different formats in order of preference for Google Speech
+      const formats = [
+        'audio/wav',
+        'audio/webm;codecs=pcm',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/webm;codecs=opus'
+      ];
+      
+      for (const format of formats) {
+        if (checkMimeType(format)) {
+          console.log(`✅ Found supported format: ${format}`);
+          mimeType = format;
+          recorderOptions.mimeType = format;
+          break;
+        } else {
+          console.log(`❌ Format not supported: ${format}`);
+        }
+      }
+      
+      console.log(`📊 Setting up MediaRecorder with ${mimeType}`);
+      const mediaRecorder = new MediaRecorder(stream, recorderOptions);
       mediaRecorderRef.current = mediaRecorder;
 
       // Set up event handlers
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
+          console.log(`📦 Received audio chunk: ${event.data.size} bytes, type: ${event.data.type}`);
           audioChunksRef.current.push(event.data);
           
           // If continuous transcription is enabled, process each chunk

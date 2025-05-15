@@ -54,6 +54,26 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
       audioChannelCount
     });
     
+    // Debug input audio format
+    const inputBufferArray = new Uint8Array(audioBuffer);
+    const bufferHeader = Array.from(inputBufferArray.slice(0, 16))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join(' ');
+    console.log('🔍 main.js: Audio buffer header bytes:', bufferHeader);
+    
+    // Check if the buffer is WebM/Opus (common from MediaRecorder)
+    // WebM magic bytes: 1A 45 DF A3
+    const isWebM = bufferHeader.includes('1a 45 df a3');
+    if (isWebM) {
+      console.log('⚠️ main.js: Detected WebM format audio');
+      // Automatically set encoding to OGG_OPUS if we detect WebM
+      if (encoding === 'LINEAR16') {
+        console.log('🔄 main.js: Changing encoding from LINEAR16 to OGG_OPUS for WebM audio');
+        options.encoding = 'OGG_OPUS';
+        encoding = 'OGG_OPUS';
+      }
+    }
+    
     // First check for API key in environment variable
     const apiKey = process.env.GOOGLE_SPEECH_API_KEY;
     
@@ -137,7 +157,7 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
     
     if (!response || !response.results || response.results.length === 0) {
       console.log('⚠️ main.js: No transcription results returned');
-      return '';
+      return 'No speech detected';
     }
     
     const transcription = response.results
@@ -149,17 +169,42 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
   } catch (error) {
     console.error('❌ main.js: Error with speech recognition:', error);
     
+    // Attempt to extract more detailed error information
+    const errorDetails = {
+      code: error.code,
+      status: error.status,
+      details: error.details,
+      message: error.message
+    };
+    
+    console.error('❌ main.js: Error details:', JSON.stringify(errorDetails, null, 2));
+    
     // Provide more specific error messages for common issues
-    if (error.message.includes('API key')) {
+    if (error.message && error.message.includes('API key')) {
       const errorMsg = "Error: Invalid Google API key. Please check your authentication settings.";
       console.error(errorMsg);
       return errorMsg;
-    } else if (error.message.includes('credentials')) {
+    } else if (error.message && error.message.includes('credentials')) {
       const errorMsg = "Error: Google credentials file is missing or invalid. Please set up authentication.";
       console.error(errorMsg);
       return errorMsg;
+    } else if (error.code === 3 || (error.message && error.message.includes('format'))) {
+      // Google Speech API returns code 3 for invalid argument (often audio format issues)
+      const errorMsg = "Error: Audio format not supported. Try changing the encoding in settings.";
+      console.error(errorMsg);
+      return errorMsg;
+    } else if (error.code === 7) {
+      // Permission denied
+      const errorMsg = "Error: Permission denied. Check your Google Cloud Speech permissions.";
+      console.error(errorMsg);
+      return errorMsg;
+    } else if (error.code === 16) {
+      // Unauthenticated
+      const errorMsg = "Error: Authentication failed. Check your Google Cloud credentials.";
+      console.error(errorMsg);
+      return errorMsg;
     } else {
-      const errorMsg = "Sorry, there was an error transcribing the audio. Please try again.";
+      const errorMsg = `Sorry, there was an error transcribing the audio: ${error.message || 'Unknown error'}`;
       console.error(errorMsg);
       return errorMsg;
     }
