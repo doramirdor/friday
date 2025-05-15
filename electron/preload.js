@@ -24,9 +24,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Add Google Speech API invocation method
   invokeGoogleSpeech: async (audioBuffer, options = {}) => {
     try {
-      return await ipcRenderer.invoke('invoke-google-speech', audioBuffer, options);
+      console.log('🔄 preload.js: Invoking Google Speech API with options:', {
+        bufferSize: audioBuffer.byteLength,
+        options: JSON.stringify(options)
+      });
+      const result = await ipcRenderer.invoke('invoke-google-speech', audioBuffer, options);
+      console.log('📥 preload.js: Received response from main process:', { 
+        resultLength: result?.length,
+        resultPreview: result?.substring(0, 50) + (result?.length > 50 ? '...' : '')
+      });
+      return result;
     } catch (error) {
-      console.error('Error invoking Google Speech API:', error);
+      console.error('❌ preload.js: Error invoking Google Speech API:', error);
       throw error;
     }
   },

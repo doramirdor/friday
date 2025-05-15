@@ -93,14 +93,22 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
     
     try {
       setIsProcessing(true);
+      console.log('🔍 Processing audio chunk', { 
+        blobSize: audioBlob.size, 
+        blobType: audioBlob.type,
+        options
+      });
       
       // Check if we have the Electron API
       if (!(window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
+        console.error('❌ Google Speech API not available - Electron API missing');
         throw new Error('Google Speech API not available');
       }
       
       // Convert audio to format needed for Google Speech
+      console.log('🔄 Converting audio to ArrayBuffer');
       const audioBuffer = await convertAudio(audioBlob);
+      console.log('✅ Audio converted', { bufferByteLength: audioBuffer.byteLength });
       
       // Combine default options with any overrides
       const speechOptions = {
@@ -111,12 +119,20 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         model: options.model || model
       };
       
+      console.log('🚀 Sending to Google Speech API with options:', speechOptions);
+      
       // Call Google Speech API via Electron
       const result = await (window as unknown as ElectronWindow).electronAPI.invokeGoogleSpeech(audioBuffer, speechOptions);
+      
+      console.log('📥 Received result from Google Speech API:', { 
+        resultLength: result?.length,
+        result: result?.substring(0, 100) + (result?.length > 100 ? '...' : '')
+      });
       
       if (result) {
         // Check if the result starts with "Error:"
         if (result.startsWith('Error:')) {
+          console.error('❌ Error from Google Speech API:', result);
           toast({
             title: 'Transcription Error',
             description: result,
@@ -124,14 +140,18 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
           });
           setError(new Error(result));
         } else {
+          console.log('✅ Setting transcript with result');
           setTranscript(prev => {
             // If there's existing text, add a space before new content
             return prev ? `${prev} ${result}` : result;
           });
         }
+      } else {
+        console.warn('⚠️ Empty result from Google Speech API');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('❌ Exception in processAudioChunk:', errorMessage, err);
       setError(err instanceof Error ? err : new Error(String(err)));
       toast({
         title: 'Speech Recognition Error',
