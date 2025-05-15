@@ -134,20 +134,11 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       // WebM container format is not directly compatible with Google Speech
       let speechEncoding: 'LINEAR16' | 'FLAC' | 'MP3' | 'OGG_OPUS' = encoding as any;
       
-      if (audioBlob.type.includes('webm')) {
-        // For WebM format, always use OGG_OPUS unless forceLinear16 is true
-        if (options.forceLinear16) {
-          speechEncoding = 'LINEAR16';
-          console.log('🎯 Forcing LINEAR16 encoding for WebM audio (experimental)');
-        } else {
-          speechEncoding = 'OGG_OPUS';
-          console.log('🎯 Using OGG_OPUS encoding for WebM audio');
-        }
-      } else if (audioBlob.type.includes('ogg')) {
+      if (audioBlob.type.includes('webm') || audioBlob.type.includes('ogg')) {
         speechEncoding = 'OGG_OPUS';
-        console.log('🎯 Using OGG_OPUS encoding for OGG audio');
+        console.log('🎯 Using OGG_OPUS encoding');
       } else {
-        speechEncoding = 'LINEAR16';
+        speechEncoding = 'LINEAR16';   // only for real WAV/raw PCM
         console.log('🎯 Using LINEAR16 encoding for other audio');
       }
       
@@ -336,11 +327,10 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       
       // Try different formats in order of preference for Google Speech
       const formats = [
-        'audio/wav',
-        'audio/webm;codecs=pcm',
-        'audio/webm',
         'audio/ogg;codecs=opus',
-        'audio/webm;codecs=opus'
+        'audio/webm;codecs=opus',
+        'audio/webm',           // fall-backs
+        'audio/wav'
       ];
       
       for (const format of formats) {
@@ -372,9 +362,8 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
             // Pass the detected MIME type encoding to ensure proper format handling
             const audioOptions: RecordingOptions = {
               ...options,
-              // For WebM, use OGG_OPUS encoding, unless forceLinear16 is true
-              encoding: (event.data.type.includes('webm') && !options.forceLinear16 ? 'OGG_OPUS' : 
-                       event.data.type.includes('ogg') ? 'OGG_OPUS' : 'LINEAR16') as 'LINEAR16' | 'FLAC' | 'MP3' | 'OGG_OPUS',
+              // Always use OGG_OPUS for WebM and OGG containers
+              encoding: 'OGG_OPUS',
               // Use the actual sample rate
               sampleRateHertz: useSampleRate,
               // Pass forceLinear16 option
@@ -428,15 +417,14 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
             // Get MIME type from the event data
             const mimeType = event.data.type;
             const finalOptions: RecordingOptions = {
-              // Set encoding based on MIME type
-              encoding: (mimeType.includes('webm') && !forceLinear16 ? 'OGG_OPUS' : 
-                       mimeType.includes('ogg') ? 'OGG_OPUS' : 'LINEAR16') as 'LINEAR16' | 'FLAC' | 'MP3' | 'OGG_OPUS',
+              // Always use OGG_OPUS for WebM and OGG containers
+              encoding: 'OGG_OPUS',
               sampleRateHertz: sampleRate,
               languageCode: language,
               continuous: false,
               model: 'command_and_search', // Better for short phrases
               boostAudio: true,           // Boost audio for better detection
-              forceLinear16: forceLinear16
+              forceLinear16: false
             };
             
             if (!continuous && (window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
