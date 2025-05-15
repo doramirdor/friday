@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
 - Improved MP3 support in API key-based Google Speech transcription
 - Optimized audio file format handling for more accurate transcription results
 - Extension auto-correction for audio files missing proper extensions
+- Robust MP3 conversion with improved error handling and file verification
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -48,6 +49,8 @@ All notable changes to this project will be documented in this file.
 - Refactored main.js to support both service account and API key authentication methods
 - Enhanced preload.js to expose new API key-based transcription functionality
 - Improved file path handling for recordings without extensions
+- Simplified MP3 conversion process with enhanced reliability
+- Standardized audio conversion parameters (44.1kHz, 192kbps) for better compatibility
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
@@ -69,6 +72,7 @@ All notable changes to this project will be documented in this file.
 - MP3 files being saved without proper file extensions
 - Transcription errors due to missing file extensions
 - Audio file lookup failing for files without extensions
+- MP3 conversion failures with more robust conversion strategy
 
 ## [0.2.1] - 2023-07-31
 
