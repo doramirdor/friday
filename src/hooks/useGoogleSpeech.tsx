@@ -481,6 +481,27 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       
       // Check if we have the Electron API
       if (!(window as unknown as ElectronWindow).electronAPI?.testSpeechWithFile) {
+        // If we're not in Electron, provide a mock implementation for dev mode
+        if (!(window as unknown as ElectronWindow).electronAPI?.isElectron) {
+          console.log('⚠️ Running in development mode - using mock test implementation');
+          
+          // Create a simulated delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Provide a mock transcription result
+          const mockTranscription = "This is a simulated transcription result for development testing. The actual Google Speech API is only available in the Electron app.";
+          setTranscript(mockTranscription);
+          
+          toast({
+            title: 'Dev Mode Test',
+            description: 'Mock transcription created (Electron required for real API access)',
+            variant: 'default'
+          });
+          
+          return;
+        }
+        
+        // If we should be in Electron but the API is missing, show an error
         const errorMsg = 'Test function not available - Electron API missing';
         console.error('❌', errorMsg);
         setLastErrorMessage(errorMsg);
