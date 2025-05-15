@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - Optimized audio file format handling for more accurate transcription results
 - Extension auto-correction for audio files missing proper extensions
 - Robust MP3 conversion with improved error handling and file verification
+- WebM/Opus to MP3 conversion pipeline for improved transcription reliability
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -51,6 +52,7 @@ All notable changes to this project will be documented in this file.
 - Improved file path handling for recordings without extensions
 - Simplified MP3 conversion process with enhanced reliability
 - Standardized audio conversion parameters (44.1kHz, 192kbps) for better compatibility
+- Enhanced useGoogleSpeech hook to use MP3 conversion for WebM/Opus audio
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
@@ -73,6 +75,8 @@ All notable changes to this project will be documented in this file.
 - Transcription errors due to missing file extensions
 - Audio file lookup failing for files without extensions
 - MP3 conversion failures with more robust conversion strategy
+- WebM/Opus format transcription issues with Google Speech API
+- No speech detected errors when using WebM/Opus audio format
 
 ## [0.2.1] - 2023-07-31
 
