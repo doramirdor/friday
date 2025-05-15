@@ -19,7 +19,7 @@ interface RecordingOptions {
   sampleRateHertz?: number;
   languageCode?: string;
   continuous?: boolean;
-  encoding?: 'LINEAR16' | 'FLAC' | 'MP3';
+  encoding?: 'LINEAR16' | 'FLAC' | 'MP3' | 'OGG_OPUS';
   audioChannelCount?: number;
   model?: 'default' | 'phone_call' | 'video' | 'command_and_search';
 }
@@ -110,11 +110,27 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       const audioBuffer = await convertAudio(audioBlob);
       console.log('✅ Audio converted', { bufferByteLength: audioBuffer.byteLength });
       
+      // Determine proper encoding based on MIME type
+      let speechEncoding = encoding;
+      if (audioBlob.type.includes('webm;codecs=pcm')) {
+        // WebM with PCM codec should use LINEAR16
+        speechEncoding = 'LINEAR16';
+        console.log('🎯 Using LINEAR16 encoding for PCM audio');
+      } else if (audioBlob.type.includes('webm;codecs=opus') || audioBlob.type.includes('ogg;codecs=opus')) {
+        // WebM or OGG with Opus codec should use OGG_OPUS
+        speechEncoding = 'OGG_OPUS';
+        console.log('🎯 Using OGG_OPUS encoding for Opus audio');
+      } else if (audioBlob.type.includes('webm')) {
+        // Plain WebM likely uses Opus, so use OGG_OPUS
+        speechEncoding = 'OGG_OPUS';
+        console.log('🎯 Using OGG_OPUS encoding for WebM audio');
+      }
+      
       // Combine default options with any overrides
       const speechOptions = {
         sampleRateHertz: options.sampleRateHertz || sampleRate,
         languageCode: options.languageCode || language,
-        encoding: options.encoding || encoding,
+        encoding: options.encoding || speechEncoding,
         audioChannelCount: options.audioChannelCount || audioChannelCount,
         model: options.model || model
       };
@@ -240,12 +256,18 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         setTranscript('');
       }
 
+      // Set better default sample rate for speech recognition
+      const useSampleRate = options.sampleRateHertz || 44100; // Higher quality audio (44.1kHz)
+      
+      console.log('🎤 Starting recording with sample rate:', useSampleRate);
+
       // Get audio stream using our system audio hook
       const stream = await getSystemAudioStream({
-        sampleRate: options.sampleRateHertz || sampleRate,
-        channelCount: options.audioChannelCount || audioChannelCount,
+        sampleRate: useSampleRate,
+        channelCount: options.audioChannelCount || 1, // Mono is better for speech
         echoCancellation: true,
         noiseSuppression: true,
+        autoGainControl: true,
       });
       
       streamRef.current = stream;
@@ -300,13 +322,22 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
           // If continuous transcription is enabled, process each chunk
           const isContinuous = options.continuous !== undefined ? options.continuous : continuous;
           if (isContinuous && (window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
-            processAudioChunk(event.data, options);
+            // Pass the detected MIME type encoding to ensure proper format handling
+            const audioOptions = {
+              ...options,
+              // Set encoding based on MIME type
+              encoding: mimeType.includes('pcm') ? 'LINEAR16' : 
+                       (mimeType.includes('opus') ? 'OGG_OPUS' : options.encoding),
+              // Use the actual sample rate
+              sampleRateHertz: useSampleRate
+            };
+            processAudioChunk(event.data, audioOptions);
           }
         }
       };
 
-      // Start recording
-      mediaRecorder.start(2000); // Capture in 2-second chunks for streaming
+      // Start recording in smaller chunks for better real-time processing
+      mediaRecorder.start(1000); // Capture in 1-second chunks for streaming
       setIsRecording(true);
       
       toast({
@@ -329,13 +360,37 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
   const stopRecording = useCallback((): void => {
     // Stop the media recorder
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
+      console.log('🛑 Stopping recording, processing final audio');
       
-      // Process all chunks at once if not in continuous mode
-      if (!continuous && audioChunksRef.current.length > 0) {
-        const completeBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        processAudioChunk(completeBlob);
+      // Add event handler for final chunk
+      if (mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.addEventListener('dataavailable', async (event) => {
+          if (event.data.size > 0) {
+            console.log(`📦 Received final audio chunk: ${event.data.size} bytes, type: ${event.data.type}`);
+            audioChunksRef.current.push(event.data);
+            
+            // Get MIME type from the event data
+            const mimeType = event.data.type;
+            const finalOptions = {
+              // Set encoding based on MIME type
+              encoding: mimeType.includes('pcm') ? 'LINEAR16' : 
+                      (mimeType.includes('opus') ? 'OGG_OPUS' : encoding),
+              sampleRateHertz: sampleRate,
+              languageCode: language,
+              continuous: false
+            };
+            
+            if (!continuous && (window as unknown as ElectronWindow).electronAPI?.invokeGoogleSpeech) {
+              console.log('🔄 Processing complete recording for transcription');
+              // Process all chunks at once
+              const completeBlob = new Blob(audioChunksRef.current, { type: mimeType });
+              await processAudioChunk(completeBlob, finalOptions);
+            }
+          }
+        }, { once: true });
       }
+      
+      mediaRecorderRef.current.stop();
       
       toast({
         title: 'Recording Stopped',
@@ -353,7 +408,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
     }
     
     setIsRecording(false);
-  }, [isRecording, continuous, toast]);
+  }, [isRecording, continuous, sampleRate, language, encoding, toast]);
 
   // Reset transcript
   const resetTranscript = useCallback((): void => {
