@@ -125,6 +125,13 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         isFinalChunk
       });
       
+      // Debug: Log detailed information about the audio blob
+      console.log('🔬 Audio blob details:', {
+        size: audioBlob.size,
+        type: audioBlob.type,
+        timestamp: new Date().toISOString()
+      });
+      
       // Update debug info
       setAudioFormat(audioBlob.type);
       setRecordedChunksCount(audioChunksRef.current.length);
@@ -140,7 +147,12 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       // Convert audio to format needed for Google Speech
       console.log('🔄 Converting audio to ArrayBuffer');
       const audioBuffer = await convertAudio(audioBlob);
-      console.log('✅ Audio converted', { bufferByteLength: audioBuffer.byteLength });
+      console.log('✅ Audio converted', { 
+        bufferByteLength: audioBuffer.byteLength,
+        blobType: audioBlob.type,
+        originalSize: audioBlob.size,
+        conversionRatio: audioBuffer.byteLength / audioBlob.size
+      });
       
       let transcriptionResult: string | undefined = undefined;
       
@@ -155,8 +167,8 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
           console.log('📦 Saving audio as MP3 for better compatibility with Google Speech API');
           
           try {
-            // Save with MP3 prioritized
-            console.log(`💾 Attempting to save audio with filename: ${filename}, buffer size: ${audioBuffer.byteLength}`);
+            // Save with multiple formats specifically listing both
+            console.log(`💾 Attempting to save audio with filename: ${filename}, buffer size: ${audioBuffer.byteLength}, formats: ['mp3', 'wav']`);
             const saveResult = await (window as unknown as ElectronWindow).electronAPI.saveAudioFile(
               audioBuffer, 
               filename, 
@@ -267,6 +279,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
         };
         
         console.log('🚀 Sending to Google Speech API with options:', speechOptions);
+        console.log('🔍 Buffer size being sent:', audioBuffer.byteLength);
         
         // Call Google Speech API via Electron
         const result = await (window as unknown as ElectronWindow).electronAPI.invokeGoogleSpeech(audioBuffer, speechOptions);
@@ -534,6 +547,20 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
     // Stop the media recorder
     if (mediaRecorderRef.current && isRecording) {
       console.log('🛑 Stopping recording, processing final audio');
+      console.log('🔍 Current chunks collected:', audioChunksRef.current.length);
+      
+      if (audioChunksRef.current.length === 0) {
+        console.warn('⚠️ No audio chunks collected during recording');
+      } else {
+        // Log information about collected chunks
+        const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0);
+        console.log('📊 Audio chunks summary:', {
+          count: audioChunksRef.current.length,
+          totalSize,
+          averageSize: totalSize / audioChunksRef.current.length,
+          type: audioChunksRef.current[0]?.type || 'unknown'
+        });
+      }
       
       // Add event handler for final chunk
       if (mediaRecorderRef.current.state !== 'inactive') {
@@ -560,6 +587,32 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
               console.log('🔄 Processing complete recording for transcription');
               // Process all chunks at once
               const completeBlob = new Blob(audioChunksRef.current, { type: mimeType });
+              console.log('📊 Created complete blob:', { 
+                size: completeBlob.size, 
+                type: completeBlob.type, 
+                chunksCount: audioChunksRef.current.length 
+              });
+              
+              // For debugging, save the original audio blob directly to check if it has valid content
+              if ((window as unknown as ElectronWindow).electronAPI?.saveAudioFile) {
+                const debugTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const debugFilename = `debug-recording-${debugTimestamp}`;
+                console.log(`🔍 DEBUG: Saving original blob for inspection: ${debugFilename}`);
+                
+                try {
+                  const debugBuffer = await convertAudio(completeBlob);
+                  console.log(`🔍 DEBUG: Converting debug blob succeeded, buffer size: ${debugBuffer.byteLength}`);
+                  const debugSaveResult = await (window as unknown as ElectronWindow).electronAPI.saveAudioFile(
+                    debugBuffer,
+                    debugFilename,
+                    ['wav'] // Save just as WAV for debugging
+                  );
+                  console.log('🔍 DEBUG: Save result:', JSON.stringify(debugSaveResult, null, 2));
+                } catch (debugError) {
+                  console.error('❌ DEBUG: Error saving debug file:', debugError);
+                }
+              }
+              
               processAudioChunk(completeBlob, finalOptions, true);
             }
           }

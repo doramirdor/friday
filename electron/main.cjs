@@ -31,28 +31,41 @@ if (process.platform === 'win32') {
 let mainWindow;
 
 // Handle the Google Speech-to-Text API calls
-async function handleGoogleSpeechAPI(audioBuffer) {
+async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
+  console.log('📊 handleGoogleSpeechAPI called with buffer size:', audioBuffer?.length || 0, 'options:', JSON.stringify(options));
+  
   try {
     // First check for API key in environment variable
     const apiKey = process.env.GOOGLE_SPEECH_API_KEY;
     
     if (apiKey) {
       // Use direct HTTP request with API key
-      console.log("Using API key authentication for Google Speech");
+      console.log("🔑 Using API key authentication for Google Speech");
       const https = require('https');
       const url = `https://speech.googleapis.com/v1/speech:recognize?key=${apiKey}`;
+      
+      // Configure encoding based on options
+      const encoding = options.encoding || 'LINEAR16';
+      const sampleRateHertz = options.sampleRateHertz || 48000;
+      const languageCode = options.languageCode || 'en-US';
+      
+      console.log(`📝 Speech config: encoding=${encoding}, sampleRate=${sampleRateHertz}, languageCode=${languageCode}`);
       
       // Prepare request data
       const requestData = JSON.stringify({
         config: {
-          encoding: 'LINEAR16',
-          sampleRateHertz: 48000,
-          languageCode: 'en-US',
+          encoding: encoding,
+          sampleRateHertz: sampleRateHertz,
+          languageCode: languageCode,
+          enableAutomaticPunctuation: true,
+          model: options.model || 'command_and_search',
         },
         audio: {
           content: Buffer.from(audioBuffer).toString('base64')
         }
       });
+      
+      console.log(`🔍 Request payload size: ${Buffer.byteLength(requestData)} bytes`);
       
       // Make HTTP request to Google Speech API
       const response = await new Promise((resolve, reject) => {
@@ -66,6 +79,7 @@ async function handleGoogleSpeechAPI(audioBuffer) {
             }
           },
           (res) => {
+            console.log(`🌐 Google API response status: ${res.statusCode}`);
             let data = '';
             res.on('data', (chunk) => {
               data += chunk;
@@ -74,43 +88,62 @@ async function handleGoogleSpeechAPI(audioBuffer) {
               if (res.statusCode >= 200 && res.statusCode < 300) {
                 resolve(data);
               } else {
+                console.error(`❌ API error response: ${data}`);
                 reject(new Error(`HTTP error ${res.statusCode}: ${data}`));
               }
             });
           }
         );
         
-        req.on('error', reject);
+        req.on('error', (err) => {
+          console.error('❌ Request error:', err);
+          reject(err);
+        });
         req.write(requestData);
         req.end();
       });
       
       // Parse the response
       const result = JSON.parse(response);
-      console.log("API response:", result);
+      console.log("🎯 API response:", JSON.stringify(result, null, 2));
       
       if (result.results && result.results.length > 0) {
         const transcription = result.results
           .map(result => result.alternatives[0].transcript)
           .join('\n');
+        console.log(`✅ Transcription result: "${transcription}"`);
         return transcription;
       } else {
+        console.log('⚠️ No transcription results in response');
         return "No speech detected";
       }
     } else {
       // Fall back to service account credentials file
-      console.log("Using service account authentication for Google Speech");
+      console.log("🔑 Using service account authentication for Google Speech");
       const speech = require('@google-cloud/speech');
       
       try {
+        const credentialsPath = path.join(__dirname, 'google-credentials.json');
+        console.log(`🔍 Looking for credentials at: ${credentialsPath}`);
+        console.log(`🔍 Credentials file exists: ${fs.existsSync(credentialsPath)}`);
+        
         const client = new speech.SpeechClient({
-          keyFilename: path.join(__dirname, 'google-credentials.json'),
+          keyFilename: credentialsPath,
         });
         
+        // Configure encoding based on options
+        const encoding = options.encoding || 'LINEAR16';
+        const sampleRateHertz = options.sampleRateHertz || 48000;
+        const languageCode = options.languageCode || 'en-US';
+        
+        console.log(`📝 Speech config: encoding=${encoding}, sampleRate=${sampleRateHertz}, languageCode=${languageCode}`);
+        
         const config = {
-          encoding: 'LINEAR16',
-          sampleRateHertz: 48000,
-          languageCode: 'en-US',
+          encoding: encoding,
+          sampleRateHertz: sampleRateHertz,
+          languageCode: languageCode,
+          enableAutomaticPunctuation: true,
+          model: options.model || 'command_and_search',
         };
         
         const audio = {
@@ -122,21 +155,30 @@ async function handleGoogleSpeechAPI(audioBuffer) {
           audio: audio,
         };
         
+        console.log('🚀 Sending request to Google Cloud Speech API');
         const [response] = await client.recognize(request);
+        console.log('🎯 API response:', JSON.stringify(response, null, 2));
+        
+        if (!response || !response.results || response.results.length === 0) {
+          console.log('⚠️ No transcription results in response');
+          return "No speech detected";
+        }
+        
         const transcription = response.results
           .map(result => result.alternatives[0].transcript)
           .join('\n');
           
+        console.log(`✅ Transcription result: "${transcription}"`);
         return transcription;
       } catch (credErr) {
-        console.error('Error with service account authentication:', credErr);
+        console.error('❌ Error with service account authentication:', credErr);
         throw new Error('No valid Google Speech authentication method found. Please provide either an API key or a credentials file.');
       }
     }
   } catch (error) {
-    console.error('Error with speech recognition:', error);
+    console.error('❌ Error with speech recognition:', error);
     // If there's an error, return a fallback message
-    return "Sorry, there was an error transcribing the audio. Please try again.";
+    return `Error: ${error.message || 'Unknown error with speech recognition'}`;
   }
 }
 
@@ -298,7 +340,24 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
     }
     
     // Check if the file exists
-    if (!fs.existsSync(filePathWithExt)) {
+    const fileExists = fs.existsSync(filePathWithExt);
+    console.log(`🔍 File exists (${filePathWithExt}): ${fileExists}`);
+    
+    if (!fileExists) {
+      // Try to list files in directory to see what's available
+      try {
+        const dirPath = path.dirname(filePathWithExt);
+        console.log(`📂 Checking directory: ${dirPath}`);
+        if (fs.existsSync(dirPath)) {
+          const files = fs.readdirSync(dirPath);
+          console.log(`📄 Files in directory: ${files.join(', ')}`);
+        } else {
+          console.log(`❌ Directory doesn't exist: ${dirPath}`);
+        }
+      } catch (dirErr) {
+        console.error(`❌ Error listing directory: ${dirErr.message}`);
+      }
+      
       console.error(`❌ File not found: ${filePathWithExt}`);
       return {
         error: `File not found: ${filePathWithExt}`
@@ -308,6 +367,10 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
     // Read the file contents
     const fileBuffer = fs.readFileSync(filePathWithExt);
     console.log(`📊 Read file: ${filePathWithExt}, size: ${fileBuffer.length} bytes`);
+    
+    // Get file stats
+    const stats = fs.statSync(filePathWithExt);
+    console.log(`📊 File stats: size=${stats.size}, created=${stats.birthtime}, modified=${stats.mtime}`);
     
     // Determine encoding based on file extension
     const fileExt = path.extname(filePathWithExt).toLowerCase();
@@ -323,16 +386,37 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
       encoding = 'LINEAR16';
       console.log('🎵 Detected WAV format, using LINEAR16 encoding');
     } else {
-      console.log(`⚠️ Unknown file extension: ${fileExt}, defaulting to LINEAR16 encoding`);
+      console.log(`⚠️ Unknown file extension: ${fileExt}, checking file signature`);
+      
+      // Check file signature
+      if (fileBuffer.length > 4) {
+        // Check for MP3 signature
+        if (fileBuffer[0] === 0x49 && fileBuffer[1] === 0x44 && fileBuffer[2] === 0x33 || 
+            (fileBuffer[0] === 0xFF && (fileBuffer[1] & 0xE0) === 0xE0)) {
+          console.log('🎵 Detected MP3 file signature, using MP3 encoding');
+          encoding = 'MP3';
+        }
+        // Check for WAV signature (RIFF)
+        else if (fileBuffer[0] === 0x52 && fileBuffer[1] === 0x49 && fileBuffer[2] === 0x46 && fileBuffer[3] === 0x46) {
+          console.log('🎵 Detected WAV/RIFF file signature, using LINEAR16 encoding');
+          encoding = 'LINEAR16';
+        }
+        // Check for OGG signature ("OggS")
+        else if (fileBuffer[0] === 0x4F && fileBuffer[1] === 0x67 && fileBuffer[2] === 0x67 && fileBuffer[3] === 0x53) {
+          console.log('🎵 Detected OGG file signature, using OGG_OPUS encoding');
+          encoding = 'OGG_OPUS';
+        }
+      }
     }
     
     // Use the existing Google Speech handler
     const transcription = await handleGoogleSpeechAPI(fileBuffer, {
       encoding,
       sampleRateHertz: 16000,
-      languageCode: 'en-US'
+      languageCode: 'en-US',
+      model: 'command_and_search'
     });
-    console.log(`✅ Transcription result: ${transcription}`);
+    console.log(`✅ Transcription result: "${transcription}"`);
     
     return {
       transcription
