@@ -28,6 +28,10 @@ All notable changes to this project will be documented in this file.
 - Robust MP3 conversion with improved error handling and file verification
 - WebM/Opus to MP3 conversion pipeline for improved transcription reliability
 - Added testSpeechWithFile handler to main.cjs to fix transcription with saved files
+- Detailed diagnostic logging throughout the audio processing pipeline
+- Debug file generation for audio format troubleshooting
+- File signature detection to ensure correct audio format identification
+- Directory content logging to diagnose file existence issues
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -76,7 +80,7 @@ All notable changes to this project will be documented in this file.
 - File extension duplication when saving recordings
 - MP3 files being saved without proper file extensions
 - Transcription errors due to missing file extensions
-- Audio file lookup failing for files without extensions
+- File lookup failing for files without extensions
 - MP3 conversion failures with more robust conversion strategy
 - WebM/Opus format transcription issues with Google Speech API
 - No speech detected errors when using WebM/Opus audio format
@@ -88,6 +92,9 @@ All notable changes to this project will be documented in this file.
 - Improved transcription reliability by only processing at the end of recording instead of per chunk
 - Fixed "File not found" errors by properly handling MP3/WAV extensions in file path resolution
 - Fixed "No speech detected" issues by consolidating audio chunks for better speech recognition
+- Enhanced logging for audio processing to facilitate troubleshooting
+- Added MIME type detection from file signatures for more reliable format identification
+- Improved error detection in file handling by checking directory contents when files not found
 
 ## [0.2.1] - 2023-07-31
 
