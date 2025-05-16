@@ -190,7 +190,7 @@ const createWindow = async () => {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "../preload/index.js"),
     },
   });
 
@@ -208,7 +208,7 @@ const createWindow = async () => {
       global.mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
     }
   } else {
-    global.mainWindow.loadFile(path.join(__dirname, "screens/permission-denied/screen.html"));
+    global.mainWindow.loadFile(path.join(__dirname, "../renderer/screens/permission-denied/screen.html"));
   }
 };
 

@@ -64,6 +64,8 @@ All notable changes to this project will be documented in this file.
 - Standardized on .js file format instead of using both .js and .cjs
 - Simplified authentication to use only API key method, removing Google certification files
 - Updated build configuration to use consolidated file structure
+- Restructured Electron code into a layered architecture (main, preload, renderer) for better organization and separation of concerns
+- Removed duplicate electron directory to reduce confusion and consolidate all Electron code
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
