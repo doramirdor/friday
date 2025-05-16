@@ -223,28 +223,54 @@ ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['
     // Create an audio buffer for processing
     const audioData = Buffer.from(buffer);
     
-    // Default result - just save the raw buffer if no conversion is possible
-    let result = {
-      success: true,
-      filePath: baseFilePath, // Use basePath as default
-      message: `File saved to ${baseFilePath}`
-    };
+    // Array to store saved files
+    const savedFiles = [];
     
-    // If ffmpeg is available, convert to requested formats
-    try {
-      // We'll implement MP3 conversion here in a future update
-      // For now, just write the buffer as-is
-      fs.writeFileSync(`${baseFilePath}`, audioData);
-      
-      console.log(`📄 Audio file saved to: ${baseFilePath}`);
-      
-    } catch (conversionError) {
-      console.error('⚠️ Error during format conversion:', conversionError);
-      // Fall back to just saving the raw buffer
-      fs.writeFileSync(`${baseFilePath}`, audioData);
+    // Always save as WAV first, regardless of requested formats
+    const wavFilePath = `${baseFilePath}.wav`;
+    fs.writeFileSync(wavFilePath, audioData);
+    console.log(`📄 WAV file saved to: ${wavFilePath}`);
+    savedFiles.push({ format: 'wav', path: wavFilePath });
+    
+    // If MP3 is requested, convert the WAV to MP3
+    if (formats.includes('mp3')) {
+      try {
+        // Check if ffmpeg is available
+        const mp3FilePath = `${baseFilePath}.mp3`;
+        
+        // Try conversion with ffmpeg
+        try {
+          // Simple ffmpeg command
+          const { exec } = require('child_process');
+          const { promisify } = require('util');
+          const execPromise = promisify(exec);
+          
+          console.log(`🔄 Converting ${wavFilePath} to ${mp3FilePath}`);
+          await execPromise(`ffmpeg -i "${wavFilePath}" -vn -ar 44100 -ac 2 -b:a 192k "${mp3FilePath}" -y`);
+          
+          // Verify the MP3 file was created
+          if (fs.existsSync(mp3FilePath)) {
+            console.log(`✅ MP3 file saved to: ${mp3FilePath}`);
+            savedFiles.push({ format: 'mp3', path: mp3FilePath });
+          } else {
+            console.warn('⚠️ MP3 file was not created');
+          }
+        } catch (convErr) {
+          console.error('❌ Error converting to MP3:', convErr);
+        }
+      } catch (ffmpegErr) {
+        console.error('❌ Error using ffmpeg for MP3 conversion:', ffmpegErr);
+      }
     }
     
-    return result;
+    // Return success with array of saved files
+    return {
+      success: true,
+      files: savedFiles,
+      filePath: baseFilePath, // Legacy support without extension
+      primaryFilePath: wavFilePath, // For backward compatibility with extension
+      message: `Files saved: ${savedFiles.map(f => f.format).join(', ')}`
+    };
   } catch (error) {
     console.error('❌ Error saving audio file:', error);
     return {
@@ -259,20 +285,53 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
   try {
     console.log(`📝 Testing speech recognition with file: ${filePath}`);
     
+    // Ensure file has proper extension
+    let filePathWithExt = filePath;
+    if (!path.extname(filePath)) {
+      if (fs.existsSync(`${filePath}.mp3`)) {
+        filePathWithExt = `${filePath}.mp3`;
+        console.log(`📊 Adding .mp3 extension: ${filePathWithExt}`);
+      } else if (fs.existsSync(`${filePath}.wav`)) {
+        filePathWithExt = `${filePath}.wav`;
+        console.log(`📊 Adding .wav extension: ${filePathWithExt}`);
+      }
+    }
+    
     // Check if the file exists
-    if (!fs.existsSync(filePath)) {
-      console.error(`❌ File not found: ${filePath}`);
+    if (!fs.existsSync(filePathWithExt)) {
+      console.error(`❌ File not found: ${filePathWithExt}`);
       return {
-        error: `File not found: ${filePath}`
+        error: `File not found: ${filePathWithExt}`
       };
     }
     
     // Read the file contents
-    const fileBuffer = fs.readFileSync(filePath);
-    console.log(`📊 Read file: ${filePath}, size: ${fileBuffer.length} bytes`);
+    const fileBuffer = fs.readFileSync(filePathWithExt);
+    console.log(`📊 Read file: ${filePathWithExt}, size: ${fileBuffer.length} bytes`);
+    
+    // Determine encoding based on file extension
+    const fileExt = path.extname(filePathWithExt).toLowerCase();
+    let encoding = 'LINEAR16'; // Default for WAV
+    
+    if (fileExt === '.mp3') {
+      encoding = 'MP3';
+      console.log('🎵 Detected MP3 format, using MP3 encoding');
+    } else if (fileExt === '.ogg') {
+      encoding = 'OGG_OPUS';
+      console.log('🎵 Detected OGG format, using OGG_OPUS encoding');
+    } else if (fileExt === '.wav') {
+      encoding = 'LINEAR16';
+      console.log('🎵 Detected WAV format, using LINEAR16 encoding');
+    } else {
+      console.log(`⚠️ Unknown file extension: ${fileExt}, defaulting to LINEAR16 encoding`);
+    }
     
     // Use the existing Google Speech handler
-    const transcription = await handleGoogleSpeechAPI(fileBuffer);
+    const transcription = await handleGoogleSpeechAPI(fileBuffer, {
+      encoding,
+      sampleRateHertz: 16000,
+      languageCode: 'en-US'
+    });
     console.log(`✅ Transcription result: ${transcription}`);
     
     return {
