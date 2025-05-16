@@ -148,6 +148,9 @@ const createWindow = async () => {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
+      // Allow Node.js modules in preload script
+      sandbox: false,
+      enableRemoteModule: false,
     },
     autoHideMenuBar: false,
     titleBarStyle: 'hiddenInset',

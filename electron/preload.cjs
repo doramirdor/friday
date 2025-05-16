@@ -1,5 +1,4 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const path = require('path');
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -7,10 +6,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Expose methods to the renderer process
   platform: process.platform,
   isElectron: true,
-  // Add application path for accessing resources
+  // Simplify appPath to avoid using path module
   appPath: process.env.NODE_ENV === 'production' 
-    ? path.join(__dirname, '..') 
-    : process.cwd(),
+    ? '../' // Relative path from preload script to app root in production
+    : process.cwd(), // Current working directory in development
   // Add more methods as needed
   sendMessage: (channel, data) => {
     // Whitelist channels that can be used

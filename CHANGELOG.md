@@ -84,6 +84,7 @@ All notable changes to this project will be documented in this file.
 - Fixed compatibility issues with older saveAudioFile response format that didn't include files array
 - Missing testSpeechWithFile handler in main.cjs preventing transcription of saved files
 - Inconsistencies between preload.cjs and preload.js causing missing functionality
+- Preload script module loading error by removing path module dependency
 
 ## [0.2.1] - 2023-07-31
 
