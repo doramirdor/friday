@@ -60,6 +60,10 @@ All notable changes to this project will be documented in this file.
 - Enhanced useGoogleSpeech hook to use MP3 conversion for WebM/Opus audio
 - Improved handling of different saveAudioFile response formats for better backward compatibility
 - Synchronized main.cjs and preload.cjs with newer implementations in main.js and preload.js
+- Consolidated Electron code by moving all functionality to src/electron directory
+- Standardized on .js file format instead of using both .js and .cjs
+- Simplified authentication to use only API key method, removing Google certification files
+- Updated build configuration to use consolidated file structure
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
