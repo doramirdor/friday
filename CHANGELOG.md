@@ -85,6 +85,9 @@ All notable changes to this project will be documented in this file.
 - Missing testSpeechWithFile handler in main.cjs preventing transcription of saved files
 - Inconsistencies between preload.cjs and preload.js causing missing functionality
 - Preload script module loading error by removing path module dependency
+- Improved transcription reliability by only processing at the end of recording instead of per chunk
+- Fixed "File not found" errors by properly handling MP3/WAV extensions in file path resolution
+- Fixed "No speech detected" issues by consolidating audio chunks for better speech recognition
 
 ## [0.2.1] - 2023-07-31
 
