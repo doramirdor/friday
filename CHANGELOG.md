@@ -41,6 +41,11 @@ All notable changes to this project will be documented in this file.
 - Enhanced error UI for file not found scenarios
 - Auto-open folder after recording is complete
 - Progress indication during audio format conversion
+- Comprehensive diagnostic tools panel for troubleshooting recording issues
+- Environment and dependency checking utilities (ffmpeg, permissions)
+- Automatic FLAC file detection and batch conversion tools
+- System path verification and directory access checking
+- Real-time status reporting for all diagnostic operations
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -118,6 +123,10 @@ All notable changes to this project will be documented in this file.
 - Improved cleanup of temporary FLAC files after successful MP3 conversion
 - Added safeguards to handle scenarios where recording files aren't properly created
 - Enhanced file verification before attempting conversions to prevent errors
+- Missing execute permissions on Swift recorder binary
+- Addressed path-related issues that could prevent proper file access
+- Improved error recovery with auto-diagnosis of common recording problems
+- Multiple fallback mechanisms for FLAC to MP3 conversion
 
 ## [0.2.1] - 2023-07-31
 
