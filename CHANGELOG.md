@@ -166,6 +166,10 @@ All notable changes to this project will be documented in this file.
 - Resolved issue where recordings were not stopping properly when using system audio or microphone
 - Added fallback handling for MediaRecorder when native recording is unavailable
 - Improved logging throughout the recording process for better diagnostics
+- Fixed initialization timing issues with recording services that caused first recording attempt to fail
+- Separated microphone and system audio recording hooks for better isolation and error handling
+- Added service initialization checks to prevent premature recording attempts
+- Enhanced error reporting for recording service availability
 
 ## [0.2.1] - 2023-07-31
 
