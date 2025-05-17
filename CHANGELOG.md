@@ -35,6 +35,12 @@ All notable changes to this project will be documented in this file.
 - Automatic conversion of FLAC to MP3 for better compatibility and playback
 - Built-in audio player for previewing recorded MP3 files
 - File size information display for recorded audio files
+- Manual FLAC to MP3 conversion button in the UI for direct user control
+- Improved filename handling to prevent duplication of file extensions
+- Detailed error reporting in Swift recorder with local error messages
+- Enhanced error UI for file not found scenarios
+- Auto-open folder after recording is complete
+- Progress indication during audio format conversion
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -108,6 +114,10 @@ All notable changes to this project will be documented in this file.
 - Improved error detection in file handling by checking directory contents when files not found
 - FLAC recordings not being converted to MP3, causing playback compatibility issues
 - Recordings saved in FLAC format being inaccessible for playback in the application
+- Fixed incorrect path handling in Swift recorder when filename already contains extension
+- Improved cleanup of temporary FLAC files after successful MP3 conversion
+- Added safeguards to handle scenarios where recording files aren't properly created
+- Enhanced file verification before attempting conversions to prevent errors
 
 ## [0.2.1] - 2023-07-31
 
