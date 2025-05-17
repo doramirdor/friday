@@ -57,6 +57,13 @@ All notable changes to this project will be documented in this file.
 - Toggle between system audio and microphone recording sources
 - Unified MP3 conversion pipeline for both recording sources
 - Simplified permissions model with source-specific checks
+- Combined recording functionality to capture both system audio and microphone simultaneously
+- Temporary file management for handling separate audio streams before combination
+- ffmpeg integration for merging system audio and microphone recordings
+- Enhanced Swift recorder with support for multiple audio sources
+- New "both" option for audioSource parameter in recording utilities
+- IPC handlers for combined recording operations
+- Appropriate permission checking for combined recording mode
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
