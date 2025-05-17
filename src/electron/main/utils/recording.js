@@ -1,8 +1,8 @@
-const { spawn } = require("node:child_process");
-const fs = require("fs");
-const path = require("path");
-const { dialog } = require("electron");
-const { checkPermissions } = require("./permission");
+import { spawn } from "node:child_process";
+import fs from "fs";
+import path from "path";
+import { dialog } from "electron";
+import { checkPermissions } from "./permission.js";
 
 let recordingProcess = null;
 
@@ -49,11 +49,11 @@ const initRecording = (filepath, filename) => {
   });
 };
 
-module.exports.startRecording = async ({ filepath, filename }) => {
+export async function startRecording({ filepath, filename }) {
   const isPermissionGranted = await checkPermissions();
 
   if (!isPermissionGranted) {
-    global.mainWindow.loadFile("./src/electron/screens/permission-denied/screen.html");
+    global.mainWindow.loadFile("./src/electron/renderer/screens/permission-denied/screen.html");
     return;
   }
 
@@ -93,9 +93,9 @@ module.exports.startRecording = async ({ filepath, filename }) => {
     // Wait a bit before retrying
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
-};
+}
 
-module.exports.stopRecording = () => {
+export function stopRecording() {
   if (recordingProcess !== null) {
     try {
       recordingProcess.kill("SIGINT");
@@ -105,4 +105,4 @@ module.exports.stopRecording = () => {
       recordingProcess = null;
     }
   }
-}; 
+} 

@@ -1,13 +1,21 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require("electron");
-const os = require("os");
-const path = require("path");
-const fs = require("fs");
-const speech = require("@google-cloud/speech");
-const { promisify } = require("util");
-const exec = promisify(require("child_process").exec);
+import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import os from "os";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
+import speech from "@google-cloud/speech";
+import { promisify } from "util";
+import { exec as execCallback } from "child_process";
 
-const { checkPermissions } = require("./utils/permission");
-const { startRecording, stopRecording } = require("./utils/recording");
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Import local modules using dynamic import since they're CommonJS
+const { checkPermissions } = await import("./utils/permission.js");
+const { startRecording, stopRecording } = await import("./utils/recording.js");
+
+const exec = promisify(execCallback);
 
 // Create or ensure the Recordings directory exists
 const ensureRecordingsDirectory = () => {

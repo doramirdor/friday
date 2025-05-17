@@ -1,14 +1,12 @@
-const { promisify } = require("util");
-const { exec } = require("child_process");
-const execAsync = promisify(exec);
+import { systemPreferences } from 'electron';
 
-module.exports.checkPermissions = async () => {
-  try {
-    const { stdout: checkPermissionStdout } = await execAsync("./src/swift/Recorder --check-permissions");
-    const { code: checkPermissionCode } = JSON.parse(checkPermissionStdout);
-    return checkPermissionCode === "PERMISSION_GRANTED";
-  } catch (error) {
-    console.error("Error checking permissions:", error);
-    return false;
+// Check if we have permission to record system audio
+export async function checkPermissions() {
+  // macOS requires screen capture permission to record system audio
+  if (process.platform === 'darwin') {
+    return systemPreferences.getMediaAccessStatus('screen') === 'granted';
   }
-}; 
+  
+  // On other platforms, we don't need special permissions
+  return true;
+} 
