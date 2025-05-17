@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import RecordingsTable, { Recording } from "@/components/recordings-table";
@@ -33,17 +34,12 @@ const sampleRecordings: Recording[] = [
 
 const Library = () => {
   const [recordings, setRecordings] = useState<Recording[]>([]);
-  const [showEmpty, setShowEmpty] = useState(true);
+  const [showEmpty, setShowEmpty] = useState(false); // Changed to false to show recordings by default
   const navigate = useNavigate();
   
   useEffect(() => {
-    // Simulate loading data
-    const timer = setTimeout(() => {
-      setRecordings(sampleRecordings);
-      setShowEmpty(false);
-    }, 1000);
-    
-    return () => clearTimeout(timer);
+    // Load sample data immediately instead of empty state
+    setRecordings(sampleRecordings);
   }, []);
   
   const handleStartRecording = () => {
@@ -72,6 +68,11 @@ const Library = () => {
   const toggleEmptyState = () => {
     setShowEmpty(!showEmpty);
   };
+  
+  // Open existing recording with transcript
+  const handleOpenRecording = (id: string) => {
+    navigate(`/transcript/${id}`);
+  };
 
   return (
     <main className="flex-1 px-6 py-4">
@@ -79,7 +80,6 @@ const Library = () => {
         <h2 className="text-2xl font-medium">Recordings</h2>
         
         <div className="flex gap-3">
-          {/* Updated button to go directly to transcript page */}
           <Button 
             onClick={handleStartRecording}
             className="flex items-center gap-2"

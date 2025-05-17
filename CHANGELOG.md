@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Switched from Toggle to Switch component for better UX
 - Added gradient styling for primary action buttons
 - Improved recording button UI with larger size and clearer status display
+- Added default meeting recordings display in library view
 
 ## [0.2.0] - 2023-07-30
 
