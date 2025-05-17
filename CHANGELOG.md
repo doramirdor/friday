@@ -32,6 +32,9 @@ All notable changes to this project will be documented in this file.
 - Debug file generation for audio format troubleshooting
 - File signature detection to ensure correct audio format identification
 - Directory content logging to diagnose file existence issues
+- Automatic conversion of FLAC to MP3 for better compatibility and playback
+- Built-in audio player for previewing recorded MP3 files
+- File size information display for recorded audio files
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -103,6 +106,8 @@ All notable changes to this project will be documented in this file.
 - Enhanced logging for audio processing to facilitate troubleshooting
 - Added MIME type detection from file signatures for more reliable format identification
 - Improved error detection in file handling by checking directory contents when files not found
+- FLAC recordings not being converted to MP3, causing playback compatibility issues
+- Recordings saved in FLAC format being inaccessible for playback in the application
 
 ## [0.2.1] - 2023-07-31
 
