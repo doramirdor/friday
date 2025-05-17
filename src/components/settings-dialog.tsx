@@ -58,8 +58,12 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               <Keyboard className="w-4 h-4" />
               Shortcuts
             </TabsTrigger>
-            <TabsTrigger value="transcription" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+            <TabsTrigger value="meeting" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
               <Mic className="w-4 h-4" />
+              Meeting
+            </TabsTrigger>
+            <TabsTrigger value="transcription" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+              <File className="w-4 h-4" />
               Transcription
             </TabsTrigger>
             <TabsTrigger value="context" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
@@ -161,7 +165,7 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
             </div>
           </TabsContent>
           
-          <TabsContent value="transcription" className="p-6 pt-4">
+          <TabsContent value="meeting" className="p-6 pt-4">
             <div className="space-y-6">
               <div className="flex items-center justify-between space-x-2">
                 <Label htmlFor="live-transcription" className="flex flex-col gap-0.5">
@@ -176,9 +180,47 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               </div>
               
               <div className="space-y-3">
+                <h3 className="text-sm font-medium">Audio Settings</h3>
+                <div className="flex items-center justify-between space-x-2">
+                  <Label htmlFor="high-quality" className="flex flex-col gap-0.5">
+                    <span>High Quality Audio</span>
+                    <span className="text-sm text-muted-foreground font-normal">Record in higher fidelity (uses more storage)</span>
+                  </Label>
+                  <Switch id="high-quality" />
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium">Recording Behavior</h3>
+                <div className="flex items-center justify-between space-x-2">
+                  <Label htmlFor="auto-pause" className="flex flex-col gap-0.5">
+                    <span>Auto-pause in silence</span>
+                    <span className="text-sm text-muted-foreground font-normal">Automatically pause when no one is speaking</span>
+                  </Label>
+                  <Switch id="auto-pause" />
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="transcription" className="p-6 pt-4">
+            <div className="space-y-6">
+              <div className="space-y-3">
                 <Label htmlFor="api-key" className="text-sm font-medium">Gemini API Key</Label>
                 <Input type="password" id="api-key" placeholder="Enter your API key" />
                 <p className="text-xs text-muted-foreground">Your API key is stored locally and never shared</p>
+              </div>
+              
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium">Transcription Model</h3>
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" className="w-full justify-start">
+                    <div className="flex flex-col items-start">
+                      <span>Google Cloud Speech-to-Text</span>
+                      <span className="text-xs text-muted-foreground">Higher accuracy, requires API key</span>
+                    </div>
+                  </Button>
+                </div>
               </div>
             </div>
           </TabsContent>

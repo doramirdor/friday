@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 - Improved recording button UI with larger size and clearer status display
 - Added default meeting recordings display in library view
 - Added auto-playback of audio after stopping recording
+- Moved Live Transcription setting to Meeting tab in settings
+- Changed recording button to green color scheme
 
 ## [0.2.0] - 2023-07-30
 
