@@ -178,6 +178,9 @@ const TranscriptDetails = () => {
   // Add state for tracking which recording source is active
   const [recordingSource, setRecordingSource] = useState('system'); // 'system' or 'mic'
 
+  // Add initialization check for recording services
+  const [recordingServicesInitialized, setRecordingServicesInitialized] = useState(false);
+
   // Format time in mm:ss format
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -325,6 +328,31 @@ const TranscriptDetails = () => {
     }
   }, [volume, isMuted]);
 
+  // Add an effect to initialize the recording services
+  useEffect(() => {
+    const checkRecordingServices = async () => {
+      console.log("Checking recording services status...");
+      console.log("System audio available:", isNativeSystemAudioAvailable);
+      console.log("Mic recording available:", isMicRecordingAvailable);
+
+      // If not already initialized, we'll wait a moment and check again
+      if (!isNativeSystemAudioAvailable || !isMicRecordingAvailable) {
+        console.log("At least one recording service isn't available, will initialize...");
+        
+        // Wait for services to finish initializing
+        setTimeout(() => {
+          console.log("After delay - System audio available:", isNativeSystemAudioAvailable);
+          console.log("After delay - Mic recording available:", isMicRecordingAvailable);
+          setRecordingServicesInitialized(true);
+        }, 1000);
+      } else {
+        setRecordingServicesInitialized(true);
+      }
+    };
+
+    checkRecordingServices();
+  }, [isNativeSystemAudioAvailable, isMicRecordingAvailable]);
+
   const handlePlayPause = () => {
     if (!recordedAudioUrl || !audioRef.current) {
       toast.error("No recorded audio available");
@@ -362,6 +390,7 @@ const TranscriptDetails = () => {
   const handleStartStopRecording = useCallback(async () => {
     console.log("handleStartStopRecording isRecording: ", isRecording, "isMicRecording: ", isMicRecording, "recordingSource: ", recordingSource);
     console.log("isNativeRecording: ", isNativeRecording);
+    console.log("Recording services initialized:", recordingServicesInitialized);
     
     // If already recording, stop the active recording
     if (isRecording || isNativeRecording || isMicRecording) {
@@ -388,7 +417,14 @@ const TranscriptDetails = () => {
     }
 
     console.log("recordingSource: ", recordingSource);
-    console.log("isNativeSystemAudioAvailable (typeof):", typeof isNativeSystemAudioAvailable, isNativeSystemAudioAvailable);
+    console.log("isNativeSystemAudioAvailable: ", isNativeSystemAudioAvailable);
+    
+    // Check if services are initialized
+    if (!recordingServicesInitialized) {
+      console.log("Recording services not yet initialized, please try again in a moment");
+      toast.error("Recording services initializing, please try again in a moment");
+      return;
+    }
 
     // Otherwise start a new recording with the selected source
     if (recordingSource === 'system' && isNativeSystemAudioAvailable === true) {
@@ -454,7 +490,7 @@ const TranscriptDetails = () => {
         toast.error("Failed to access microphone");
       }
     }
-  }, [isRecording, isNativeRecording, isMicRecording, recordingSource, startNativeRecording, stopNativeRecording, startMicRecording, stopMicRecording]);
+  }, [isRecording, isNativeRecording, isMicRecording, recordingSource, recordingServicesInitialized, startNativeRecording, stopNativeRecording, startMicRecording, stopMicRecording]);
   
   // Handle audio time change (seeking)
   const handleAudioTimeChange = (value: number[]) => {

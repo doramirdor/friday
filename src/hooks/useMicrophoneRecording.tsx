@@ -49,6 +49,7 @@ export default function useMicrophoneRecording(): UseMicrophoneRecordingReturn {
       electronAPI?.isElectron && 
       electronAPI.micRecording
     );
+    console.log("Microphone recording availability check:", isAvailable);
     setIsAvailable(isAvailable);
   }, []);
 
@@ -59,11 +60,13 @@ export default function useMicrophoneRecording(): UseMicrophoneRecordingReturn {
       // Listen for recording status updates
       electronAPI.micRecording.onStatusUpdate(async (status, timestamp, filepath) => {
         if (status === 'START_RECORDING') {
+          console.log("Microphone recording started event received");
           setIsRecording(true);
           setRecordingPath(filepath);
           setRecordingStartTime(timestamp);
           toast.success('Microphone recording started');
         } else if (status === 'STOP_RECORDING') {
+          console.log("Microphone recording stopped event received");
           setIsRecording(false);
           setRecordingStartTime(null);
           
@@ -75,6 +78,7 @@ export default function useMicrophoneRecording(): UseMicrophoneRecordingReturn {
 
       // Listen for recording errors
       electronAPI.micRecording.onError((errorCode) => {
+        console.log("Microphone recording error:", errorCode);
         setIsRecording(false);
         setRecordingStartTime(null);
         
@@ -109,14 +113,18 @@ export default function useMicrophoneRecording(): UseMicrophoneRecordingReturn {
 
   // Start recording microphone
   const startRecording = useCallback(async (options?: { filepath?: string; filename?: string }): Promise<boolean> => {
+    console.log("Starting microphone recording with options:", options);
     const electronAPI = (window as unknown as ElectronWindow).electronAPI;
     if (!electronAPI?.micRecording) {
+      console.error("Microphone recording API not available");
       toast.error('Microphone recording is not available');
       return false;
     }
     
     try {
+      console.log("Calling Electron API to start microphone recording");
       const result = await electronAPI.micRecording.startRecording(options);
+      console.log("Start microphone recording result:", result);
       
       if (!result.success) {
         toast.error(`Failed to start recording: ${result.error || 'Unknown error'}`);
@@ -133,11 +141,16 @@ export default function useMicrophoneRecording(): UseMicrophoneRecordingReturn {
 
   // Stop recording microphone
   const stopRecording = useCallback(async (): Promise<boolean> => {
+    console.log("Stopping microphone recording");
     const electronAPI = (window as unknown as ElectronWindow).electronAPI;
-    if (!electronAPI?.micRecording) return false;
+    if (!electronAPI?.micRecording) {
+      console.error("Microphone recording API not available for stopping");
+      return false;
+    }
     
     try {
       const result = await electronAPI.micRecording.stopRecording();
+      console.log("Stop microphone recording result:", result);
       return result.success;
     } catch (error) {
       console.error('Error stopping recording:', error);

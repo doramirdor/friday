@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
+import path from 'path';
+import fs from 'fs';
 
 // Define the window interface with our Electron API
 interface ElectronWindow extends Window {
@@ -7,7 +9,6 @@ interface ElectronWindow extends Window {
     isElectron: boolean;
     platform: string;
     systemAudio: {
-      checkPermissions: () => Promise<{ granted: boolean }>;
       startRecording: (options?: { filepath?: string; filename?: string }) => Promise<{ 
         success: boolean; 
         filepath?: string; 
@@ -17,50 +18,39 @@ interface ElectronWindow extends Window {
       stopRecording: () => Promise<{ success: boolean; error?: string }>;
       onStatusUpdate: (callback: (status: string, timestamp: number, filepath: string) => void) => void;
       onError: (callback: (errorCode: string) => void) => void;
-      selectFolder: () => void;
-      onFolderSelected: (callback: (path: string) => void) => void;
     };
+    saveAudioFile: (file: Buffer, filename: string, formats: string[]) => Promise<{ success: boolean; files?: Record<string, string> }>;
   };
 }
 
-// Hook return type
 interface UseSystemAudioRecordingReturn {
   isAvailable: boolean;
   isRecording: boolean;
-  hasPermission: boolean;
   recordingPath: string | null;
   recordingDuration: number;
-  checkPermissions: () => Promise<boolean>;
   startRecording: (options?: { filepath?: string; filename?: string }) => Promise<boolean>;
   stopRecording: () => Promise<boolean>;
-  selectSaveFolder: () => Promise<string | null>;
 }
 
 /**
- * A hook for using native macOS system audio recording
+ * A hook for recording system audio using Electron's native APIs
  */
 export default function useSystemAudioRecording(): UseSystemAudioRecordingReturn {
   const [isAvailable, setIsAvailable] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
-  const [hasPermission, setHasPermission] = useState<boolean>(false);
   const [recordingPath, setRecordingPath] = useState<string | null>(null);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
 
-  // Check if the system audio API is available (Electron + macOS)
+  // Check if the system audio recording API is available (Electron)
   useEffect(() => {
     const electronAPI = (window as unknown as ElectronWindow).electronAPI;
     const isAvailable = !!(
       electronAPI?.isElectron && 
-      electronAPI.platform === 'darwin' && 
       electronAPI.systemAudio
     );
+    console.log("System audio recording availability check:", isAvailable);
     setIsAvailable(isAvailable);
-
-    // If available, check permissions immediately
-    if (isAvailable) {
-      checkPermissions();
-    }
   }, []);
 
   // Set up event listeners for recording status
@@ -68,21 +58,27 @@ export default function useSystemAudioRecording(): UseSystemAudioRecordingReturn
     const electronAPI = (window as unknown as ElectronWindow).electronAPI;
     if (electronAPI?.systemAudio) {
       // Listen for recording status updates
-      electronAPI.systemAudio.onStatusUpdate((status, timestamp, filepath) => {
+      electronAPI.systemAudio.onStatusUpdate(async (status, timestamp, filepath) => {
         if (status === 'START_RECORDING') {
+          console.log("System audio recording started event received");
           setIsRecording(true);
           setRecordingPath(filepath);
           setRecordingStartTime(timestamp);
           toast.success('System audio recording started');
         } else if (status === 'STOP_RECORDING') {
+          console.log("System audio recording stopped event received");
           setIsRecording(false);
           setRecordingStartTime(null);
+          
+          // Update the recording path and show a success message
+          setRecordingPath(filepath);
           toast.success('Recording saved to: ' + filepath);
         }
       });
 
       // Listen for recording errors
       electronAPI.systemAudio.onError((errorCode) => {
+        console.log("System audio recording error:", errorCode);
         setIsRecording(false);
         setRecordingStartTime(null);
         
@@ -90,6 +86,8 @@ export default function useSystemAudioRecording(): UseSystemAudioRecordingReturn
           toast.error('Recording failed: File already exists');
         } else if (errorCode === 'START_FAILED') {
           toast.error('Failed to start recording');
+        } else if (errorCode === 'PERMISSION_DENIED') {
+          toast.error('Screen recording permission is required for system audio');
         } else {
           toast.error(`Recording error: ${errorCode}`);
         }
@@ -115,39 +113,20 @@ export default function useSystemAudioRecording(): UseSystemAudioRecordingReturn
     };
   }, [isRecording, recordingStartTime]);
 
-  // Check if we have permission to record system audio
-  const checkPermissions = useCallback(async (): Promise<boolean> => {
-    const electronAPI = (window as unknown as ElectronWindow).electronAPI;
-    if (!electronAPI?.systemAudio) return false;
-    
-    try {
-      const { granted } = await electronAPI.systemAudio.checkPermissions();
-      setHasPermission(granted);
-      return granted;
-    } catch (error) {
-      console.error('Error checking permissions:', error);
-      setHasPermission(false);
-      return false;
-    }
-  }, []);
-
   // Start recording system audio
   const startRecording = useCallback(async (options?: { filepath?: string; filename?: string }): Promise<boolean> => {
+    console.log("Starting system audio recording with options:", options);
     const electronAPI = (window as unknown as ElectronWindow).electronAPI;
     if (!electronAPI?.systemAudio) {
+      console.error("System audio recording API not available");
       toast.error('System audio recording is not available');
       return false;
     }
     
     try {
-      // Check permissions first
-      const hasPermission = await checkPermissions();
-      if (!hasPermission) {
-        toast.error('Permission to record system audio was denied');
-        return false;
-      }
-
+      console.log("Calling Electron API to start system recording");
       const result = await electronAPI.systemAudio.startRecording(options);
+      console.log("Start recording result:", result);
       
       if (!result.success) {
         toast.error(`Failed to start recording: ${result.error || 'Unknown error'}`);
@@ -160,15 +139,20 @@ export default function useSystemAudioRecording(): UseSystemAudioRecordingReturn
       toast.error('Failed to start recording');
       return false;
     }
-  }, [checkPermissions]);
+  }, []);
 
   // Stop recording system audio
   const stopRecording = useCallback(async (): Promise<boolean> => {
+    console.log("Stopping system audio recording");
     const electronAPI = (window as unknown as ElectronWindow).electronAPI;
-    if (!electronAPI?.systemAudio) return false;
+    if (!electronAPI?.systemAudio) {
+      console.error("System audio recording API not available for stopping");
+      return false;
+    }
     
     try {
       const result = await electronAPI.systemAudio.stopRecording();
+      console.log("Stop recording result:", result);
       return result.success;
     } catch (error) {
       console.error('Error stopping recording:', error);
@@ -177,32 +161,12 @@ export default function useSystemAudioRecording(): UseSystemAudioRecordingReturn
     }
   }, []);
 
-  // Select a folder to save recordings
-  const selectSaveFolder = useCallback((): Promise<string | null> => {
-    return new Promise((resolve) => {
-      const electronAPI = (window as unknown as ElectronWindow).electronAPI;
-      if (!electronAPI?.systemAudio) {
-        resolve(null);
-        return;
-      }
-
-      electronAPI.systemAudio.onFolderSelected((path) => {
-        resolve(path);
-      });
-
-      electronAPI.systemAudio.selectFolder();
-    });
-  }, []);
-
   return {
     isAvailable,
     isRecording,
-    hasPermission,
     recordingPath,
     recordingDuration,
-    checkPermissions,
     startRecording,
-    stopRecording,
-    selectSaveFolder,
+    stopRecording
   };
 } 
