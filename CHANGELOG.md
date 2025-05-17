@@ -170,6 +170,8 @@ All notable changes to this project will be documented in this file.
 - Separated microphone and system audio recording hooks for better isolation and error handling
 - Added service initialization checks to prevent premature recording attempts
 - Enhanced error reporting for recording service availability
+- Implemented direct API checks for recording services to eliminate state synchronization issues
+- Added initialization timeout to ensure Electron IPC channels are fully established
 
 ## [0.2.1] - 2023-07-31
 
