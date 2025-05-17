@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX, Broadcast } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useGoogleSpeech from "@/hooks/useGoogleSpeech";
 import { Toggle } from "@/components/ui/toggle";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 
 interface TranscriptLine {
   id: string;
@@ -566,19 +567,17 @@ const TranscriptDetails = () => {
               {/* Recording controls for new meeting or Waveform player for existing */}
               <div className="p-6 border-b">
                 {isNewMeeting || transcriptLines.length === 0 ? (
-                  <div className="flex flex-col items-center gap-4 py-8">
-                    <div className="flex items-center justify-center mb-4 space-x-2">
+                  <div className="flex flex-col items-center gap-6 py-8">
+                    <div className="flex items-center justify-center mb-4 space-x-4">
                       <Button
-                        variant={isRecording ? "destructive" : "default"}
-                        size="lg"
+                        variant={isRecording ? "recording_active" : "recording"}
+                        size="xl"
                         onClick={handleStartStopRecording}
-                        className={`h-16 w-16 rounded-full flex items-center justify-center ${
-                          isRecording ? "animate-pulse" : ""
-                        }`}
+                        className={`h-16 w-16 rounded-full flex items-center justify-center shadow-lg`}
                       >
                         {isRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
                       </Button>
-                      <div className="text-sm font-medium">
+                      <div className="text-base font-medium">
                         {isRecording 
                           ? `Recording: ${formatTime(recordingDuration)}` 
                           : "Click to start recording"}
@@ -586,20 +585,20 @@ const TranscriptDetails = () => {
                     </div>
                     
                     {/* Add toggle for live transcript */}
-                    <div className="flex items-center gap-2 mt-2">
-                      <div className="flex items-center space-x-2">
-                        <Toggle
-                          pressed={isLiveTranscript}
-                          onPressedChange={handleToggleLiveTranscript}
+                    <div className="flex items-center gap-4 mt-2 p-4 bg-accent/10 rounded-lg shadow-sm border border-accent/20">
+                      <Broadcast className="h-5 w-5 text-primary" />
+                      <div>
+                        <div className="text-sm font-medium mb-1">Live Transcript</div>
+                        <div className="text-xs text-muted-foreground">
+                          {isLiveTranscript ? "Text is transcribed while you speak" : "Text is transcribed after recording"}
+                        </div>
+                      </div>
+                      <div className="ml-auto">
+                        <Switch
+                          checked={isLiveTranscript}
+                          onCheckedChange={handleToggleLiveTranscript}
                           aria-label="Toggle live transcript"
-                        >
-                          {isLiveTranscript ? 
-                            <ToggleRight className="h-5 w-5" /> : 
-                            <ToggleLeft className="h-5 w-5" />}
-                        </Toggle>
-                        <span className="text-sm font-medium">
-                          {isLiveTranscript ? "Live Transcript: On" : "Live Transcript: Off"}
-                        </span>
+                        />
                       </div>
                     </div>
                   </div>
@@ -720,15 +719,15 @@ const TranscriptDetails = () => {
                     {/* Show toggle for live transcript during recording */}
                     {isRecording && (
                       <div className="flex items-center gap-2 mt-2">
-                        <Toggle
-                          pressed={isLiveTranscript}
-                          onPressedChange={handleToggleLiveTranscript}
+                        <Switch
+                          checked={isLiveTranscript}
+                          onCheckedChange={handleToggleLiveTranscript}
                           aria-label="Toggle live transcript"
                         >
                           {isLiveTranscript ? 
                             <ToggleRight className="h-4 w-4" /> : 
                             <ToggleLeft className="h-4 w-4" />}
-                        </Toggle>
+                        </Switch>
                         <span className="text-xs">
                           {isLiveTranscript ? "Live Transcript: On" : "Live Transcript: Off"}
                         </span>

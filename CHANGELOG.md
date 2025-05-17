@@ -1,8 +1,14 @@
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+- Improved UI design for recording and live transcript buttons
+- Consolidated "New Meeting" button to header only
+- Enhanced visual presentation of recording controls
+- Switched from Toggle to Switch component for better UX
+- Added gradient styling for primary action buttons
 
 ## [0.2.0] - 2023-07-30
 
