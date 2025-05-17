@@ -360,34 +360,101 @@ const TranscriptDetails = () => {
   
   // Handle starting and stopping recording
   const handleStartStopRecording = useCallback(async () => {
+    console.log("handleStartStopRecording isRecording: ", isRecording, "isMicRecording: ", isMicRecording, "recordingSource: ", recordingSource);
+    console.log("isNativeRecording: ", isNativeRecording);
+    
     // If already recording, stop the active recording
-    if (isRecording || isMicRecording) {
-      if (isRecording) {
-        await stopNativeRecording();
+    if (isRecording || isNativeRecording || isMicRecording) {
+      console.log("Stopping recording...");
+      
+      if (isNativeRecording) {
+        console.log("Stopping native system audio recording");
+        const result = await stopNativeRecording();
+        console.log("Native system audio recording stopped:", result);
       } else if (isMicRecording) {
-        await stopMicRecording();
+        console.log("Stopping microphone recording");
+        const result = await stopMicRecording();
+        console.log("Microphone recording stopped:", result);
+      } else {
+        // Stop the fallback MediaRecorder if it's active
+        console.log("Stopping fallback MediaRecorder");
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+          mediaRecorderRef.current.stop();
+          // The onstop event handler will handle cleanup
+          console.log("MediaRecorder stopped");
+        }
       }
       return;
     }
 
+    console.log("recordingSource: ", recordingSource);
+    console.log("isNativeSystemAudioAvailable (typeof):", typeof isNativeSystemAudioAvailable, isNativeSystemAudioAvailable);
+
     // Otherwise start a new recording with the selected source
-    if (recordingSource === 'system' && isNativeSystemAudioAvailable) {
+    if (recordingSource === 'system' && isNativeSystemAudioAvailable === true) {
       // System audio recording
+      console.log("Starting system audio recording");
       const success = await startNativeRecording();
+      console.log("System audio recording started: ", success);
       if (!success) {
         toast.error("Failed to start system audio recording");
       }
     } else if (recordingSource === 'mic' && isMicRecordingAvailable) {
       // Microphone recording
+      console.log("Starting microphone recording");
       const success = await startMicRecording();
+      console.log("Microphone recording started: ", success);
       if (!success) {
         toast.error("Failed to start microphone recording");
       }
     } else {
+      console.log("Fallback to MediaRecorder");
       // Fallback to MediaRecorder if native recording is not available
-      // (existing code for fallback recording)
+      try {
+        // Request microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        
+        // Create and configure MediaRecorder
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+        
+        // Set up event handlers
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+        
+        mediaRecorderRef.current.onstop = () => {
+          // Create audio blob and URL
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+          const url = URL.createObjectURL(audioBlob);
+          setRecordedAudioUrl(url);
+          
+          // Clean up stream tracks
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+          }
+          
+          // Stop the recording timer
+          stopRecordingTimer();
+          setIsRecording(false);
+          
+          toast.success("Recording completed");
+        };
+        
+        // Start recording
+        mediaRecorderRef.current.start();
+        setIsRecording(true);
+        startRecordingTimer();
+        toast.success("Recording started");
+      } catch (error) {
+        console.error("Error starting recording:", error);
+        toast.error("Failed to access microphone");
+      }
     }
-  }, [isRecording, isMicRecording, recordingSource, startNativeRecording, stopNativeRecording, startMicRecording, stopMicRecording]);
+  }, [isRecording, isNativeRecording, isMicRecording, recordingSource, startNativeRecording, stopNativeRecording, startMicRecording, stopMicRecording]);
   
   // Handle audio time change (seeking)
   const handleAudioTimeChange = (value: number[]) => {
