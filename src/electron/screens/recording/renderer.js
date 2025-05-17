@@ -4,6 +4,7 @@ const os = require("os");
 const fs = require("fs");
 const { exec } = require("child_process");
 const { promisify } = require("util");
+const diagnostics = require("../../utils/diagnostics");
 
 const execAsync = promisify(exec);
 
@@ -31,10 +32,28 @@ document.getElementById("start-recording").addEventListener("click", () => {
   const startButton = document.getElementById("start-recording");
   startButton.innerHTML = `Starting <span class="inline-block ml-4 w-4 h-4 border-4 border-t-transparent border-white rounded-full animate-spin"></span>`;
 
-  ipcRenderer.send("start-recording", {
-    filepath: selectedFolderPath,
-    filename: recordingFilename,
-  });
+  // First run diagnostics to ensure everything is ready
+  diagnostics.runRecordingDiagnostics(selectedFolderPath)
+    .then(results => {
+      // If there are issues, show them but proceed
+      if (results.issues && results.issues.length > 0) {
+        console.warn('Diagnostic issues found:', results.issues);
+      }
+      
+      // Start recording
+      ipcRenderer.send("start-recording", {
+        filepath: selectedFolderPath,
+        filename: recordingFilename,
+      });
+    })
+    .catch(error => {
+      console.error('Error running diagnostics:', error);
+      // Start recording anyway
+      ipcRenderer.send("start-recording", {
+        filepath: selectedFolderPath,
+        filename: recordingFilename,
+      });
+    });
 });
 
 document.getElementById("stop-recording").addEventListener("click", () => {
@@ -45,55 +64,257 @@ document.getElementById("stop-recording").addEventListener("click", () => {
   ipcRenderer.send("stop-recording");
 });
 
-// Convert FLAC to MP3 directly from the renderer
-async function convertFlacToMp3(flacPath) {
+// Diagnostic tool buttons
+document.getElementById("run-diagnostics").addEventListener("click", async () => {
+  showStatus("Running diagnostics...", "blue");
+  
   try {
-    // Create status container
-    const statusContainer = document.createElement("div");
-    statusContainer.id = "conversion-status";
-    statusContainer.className = "mt-2 p-2 bg-blue-100 text-blue-700 rounded-md";
-    statusContainer.innerText = "Converting FLAC to MP3...";
-    document.querySelector(".bg-white").appendChild(statusContainer);
+    const results = await diagnostics.runRecordingDiagnostics(selectedFolderPath);
+    await diagnostics.showDiagnosticResults(results);
+    showStatus(`Diagnostics complete. ${results.issues.length} issues found.`, 
+      results.issues.length > 0 ? "orange" : "green");
+  } catch (error) {
+    console.error("Error running diagnostics:", error);
+    showStatus(`Error running diagnostics: ${error.message}`, "red");
+  }
+});
+
+document.getElementById("fix-issues").addEventListener("click", async () => {
+  showStatus("Attempting to fix common issues...", "blue");
+  
+  try {
+    const fixes = await diagnostics.fixCommonIssues(selectedFolderPath);
+    showDiagnosticResults(fixes);
+    showStatus(`Auto-fix complete. ${fixes.length} items addressed.`, "green");
+  } catch (error) {
+    console.error("Error fixing issues:", error);
+    showStatus(`Error fixing issues: ${error.message}`, "red");
+  }
+});
+
+document.getElementById("find-flac").addEventListener("click", async () => {
+  showStatus("Looking for FLAC files to convert...", "blue");
+  
+  try {
+    // Find all FLAC files recursively
+    const { stdout } = await execAsync(`find "${selectedFolderPath}" -name "*.flac" -type f`);
+    const flacFiles = stdout.trim().split('\n').filter(line => line.length > 0);
+    
+    if (flacFiles.length === 0) {
+      showStatus("No FLAC files found.", "orange");
+      return;
+    }
+    
+    showStatus(`Found ${flacFiles.length} FLAC files. Converting...`, "blue");
+    
+    // Convert each FLAC file
+    const results = [];
+    for (const flacPath of flacFiles) {
+      try {
+        const mp3Path = await convertFlacToMp3(flacPath, true);
+        if (mp3Path) {
+          results.push(`✓ Converted: ${path.basename(flacPath)} → ${path.basename(mp3Path)}`);
+        } else {
+          results.push(`✗ Failed to convert: ${path.basename(flacPath)}`);
+        }
+      } catch (error) {
+        results.push(`✗ Error converting ${path.basename(flacPath)}: ${error.message}`);
+      }
+    }
+    
+    showDiagnosticResults(results);
+    showStatus(`Conversion complete. ${results.filter(r => r.startsWith('✓')).length}/${flacFiles.length} files converted.`, "green");
+  } catch (error) {
+    console.error("Error finding/converting FLAC files:", error);
+    showStatus(`Error finding/converting FLAC files: ${error.message}`, "red");
+  }
+});
+
+document.getElementById("check-permissions").addEventListener("click", async () => {
+  showStatus("Checking permissions and paths...", "blue");
+  
+  try {
+    // Check Swift recorder permissions
+    const recorderPath = './src/swift/Recorder';
+    let results = [];
+    
+    // Check if recorder exists
+    if (fs.existsSync(recorderPath)) {
+      results.push(`✓ Swift recorder exists at ${recorderPath}`);
+      
+      // Check permissions
+      const { stdout } = await execAsync(`ls -la ${recorderPath}`);
+      results.push(`File info: ${stdout.trim()}`);
+      
+      // Check if executable
+      const hasExecute = stdout.includes('x');
+      if (hasExecute) {
+        results.push('✓ Recorder has execute permissions');
+      } else {
+        results.push('✗ Recorder MISSING execute permissions');
+        
+        // Fix permissions
+        await execAsync(`chmod +x ${recorderPath}`);
+        results.push('✓ Fixed permissions with chmod +x');
+      }
+    } else {
+      results.push(`✗ Swift recorder NOT FOUND at ${recorderPath}`);
+    }
+    
+    // Check if output directory exists and is writable
+    if (fs.existsSync(selectedFolderPath)) {
+      results.push(`✓ Output directory exists: ${selectedFolderPath}`);
+      
+      // Check if writable
+      try {
+        const testFile = path.join(selectedFolderPath, `test-${Date.now()}.txt`);
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        results.push('✓ Output directory is writable');
+      } catch (error) {
+        results.push(`✗ Output directory is NOT writable: ${error.message}`);
+      }
+    } else {
+      results.push(`✗ Output directory does NOT exist: ${selectedFolderPath}`);
+      
+      // Try to create it
+      try {
+        fs.mkdirSync(selectedFolderPath, { recursive: true });
+        results.push(`✓ Created output directory: ${selectedFolderPath}`);
+      } catch (error) {
+        results.push(`✗ Failed to create output directory: ${error.message}`);
+      }
+    }
+    
+    showDiagnosticResults(results);
+    showStatus("Permission check complete", "green");
+  } catch (error) {
+    console.error("Error checking permissions:", error);
+    showStatus(`Error checking permissions: ${error.message}`, "red");
+  }
+});
+
+// Helper function to show status messages
+function showStatus(message, color) {
+  const container = document.getElementById("diagnostic-results");
+  container.className = `mt-4 p-2 bg-${color}-100 text-${color}-700 rounded-md`;
+  container.textContent = message;
+  container.classList.remove("hidden");
+}
+
+// Helper function to show diagnostic results
+function showDiagnosticResults(results) {
+  const container = document.getElementById("diagnostic-results");
+  container.innerHTML = '';
+  container.className = "mt-4 p-3 bg-gray-100 text-gray-800 rounded-md";
+  
+  const title = document.createElement("h4");
+  title.className = "font-medium mb-2";
+  title.textContent = "Diagnostic Results";
+  container.appendChild(title);
+  
+  const list = document.createElement("ul");
+  list.className = "text-sm space-y-1";
+  
+  results.forEach(result => {
+    const item = document.createElement("li");
+    item.className = result.startsWith('✓') ? "text-green-600" : 
+                     result.startsWith('✗') ? "text-red-600" : 
+                     "text-gray-600";
+    item.textContent = result;
+    list.appendChild(item);
+  });
+  
+  container.appendChild(list);
+  container.classList.remove("hidden");
+}
+
+// Convert FLAC to MP3 directly from the renderer
+async function convertFlacToMp3(flacPath, silent = false) {
+  try {
+    if (!silent) {
+      // Create status container
+      const statusContainer = document.createElement("div");
+      statusContainer.id = "conversion-status";
+      statusContainer.className = "mt-2 p-2 bg-blue-100 text-blue-700 rounded-md";
+      statusContainer.innerText = "Converting FLAC to MP3...";
+      document.querySelector(".bg-white").appendChild(statusContainer);
+    }
     
     // Create the MP3 path by replacing the extension
     const mp3Path = flacPath.replace(".flac", ".mp3");
     
     console.log(`Converting ${flacPath} to ${mp3Path}`);
     
-    // Run ffmpeg to convert
-    await execAsync(`ffmpeg -i "${flacPath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
+    // First check if the FLAC file exists
+    if (!fs.existsSync(flacPath)) {
+      console.error(`FLAC file doesn't exist: ${flacPath}`);
+      
+      if (!silent) {
+        const statusContainer = document.getElementById("conversion-status");
+        if (statusContainer) {
+          statusContainer.className = "mt-2 p-2 bg-red-100 text-red-700 rounded-md";
+          statusContainer.innerText = `Error: FLAC file not found: ${flacPath}`;
+          
+          // Remove status after a delay
+          setTimeout(() => {
+            statusContainer.remove();
+          }, 5000);
+        }
+      }
+      
+      return null;
+    }
+    
+    // Run ffmpeg with explicit verbose mode
+    await execAsync(`ffmpeg -v verbose -i "${flacPath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
     
     // Verify the conversion worked
     if (!fs.existsSync(mp3Path)) {
       throw new Error("MP3 file wasn't created");
     }
     
+    // Get file sizes for reporting
+    const flacSize = fs.statSync(flacPath).size;
+    const mp3Size = fs.statSync(mp3Path).size;
+    
+    console.log(`Conversion successful:
+      FLAC: ${flacPath} (${(flacSize / 1024 / 1024).toFixed(2)} MB)
+      MP3: ${mp3Path} (${(mp3Size / 1024 / 1024).toFixed(2)} MB)`);
+    
     // Delete the original FLAC file
     fs.unlinkSync(flacPath);
     
-    // Update status
-    statusContainer.className = "mt-2 p-2 bg-green-100 text-green-700 rounded-md";
-    statusContainer.innerText = "Conversion complete!";
-    
-    // Remove status after a delay
-    setTimeout(() => {
-      statusContainer.remove();
-    }, 3000);
+    if (!silent) {
+      // Update status
+      const statusContainer = document.getElementById("conversion-status");
+      if (statusContainer) {
+        statusContainer.className = "mt-2 p-2 bg-green-100 text-green-700 rounded-md";
+        statusContainer.innerText = "Conversion complete!";
+        
+        // Remove status after a delay
+        setTimeout(() => {
+          statusContainer.remove();
+        }, 3000);
+      }
+    }
     
     return mp3Path;
   } catch (error) {
     console.error("Conversion error:", error);
     
-    // Update status
-    const statusContainer = document.getElementById("conversion-status");
-    if (statusContainer) {
-      statusContainer.className = "mt-2 p-2 bg-red-100 text-red-700 rounded-md";
-      statusContainer.innerText = `Conversion failed: ${error.message}`;
-      
-      // Remove status after a delay
-      setTimeout(() => {
-        statusContainer.remove();
-      }, 5000);
+    if (!silent) {
+      // Update status
+      const statusContainer = document.getElementById("conversion-status");
+      if (statusContainer) {
+        statusContainer.className = "mt-2 p-2 bg-red-100 text-red-700 rounded-md";
+        statusContainer.innerText = `Conversion failed: ${error.message}`;
+        
+        // Remove status after a delay
+        setTimeout(() => {
+          statusContainer.remove();
+        }, 5000);
+      }
     }
     
     return null;
@@ -214,6 +435,36 @@ ipcRenderer.on("recording-status", (_, status, timestamp, filepath) => {
     if (fileExists) {
       // Create audio player for the file
       createAudioPlayer(filepath);
+      
+      // Run auto-diagnostics
+      if (fileExt === '.flac') {
+        showStatus("Recording saved as FLAC. Running auto-conversion...", "blue");
+        
+        // Try to auto-convert
+        convertFlacToMp3(filepath)
+          .then(mp3Path => {
+            if (mp3Path) {
+              currentRecordingPath = mp3Path;
+              showStatus("Auto-conversion to MP3 successful", "green");
+              
+              // Update UI
+              const fileSize = fs.existsSync(mp3Path) ? 
+                `(${(fs.statSync(mp3Path).size / 1024 / 1024).toFixed(2)} MB)` : '';
+              
+              document.getElementById("output-file-path").innerHTML = 
+                `<span class="font-bold">🎵 MP3</span> ${mp3Path} ${fileSize}`;
+              
+              // Create MP3 player
+              createAudioPlayer(mp3Path);
+            } else {
+              showStatus("Auto-conversion to MP3 failed. Please use manual conversion.", "orange");
+            }
+          })
+          .catch(error => {
+            console.error("Auto-conversion error:", error);
+            showStatus(`Auto-conversion error: ${error.message}`, "red");
+          });
+      }
     } else {
       // Show error message if file doesn't exist
       const errorContainer = document.createElement("div");
@@ -221,9 +472,12 @@ ipcRenderer.on("recording-status", (_, status, timestamp, filepath) => {
       errorContainer.innerHTML = `
         <h3 class="font-bold">Error: File Not Found</h3>
         <p>The recording file could not be found at: ${filepath}</p>
-        <p class="mt-2">Please try recording again.</p>
+        <p class="mt-2">Please try recording again or run diagnostics.</p>
       `;
       document.querySelector(".bg-white").appendChild(errorContainer);
+      
+      // Suggest running diagnostics
+      showStatus("Recording file not found. Run diagnostics to troubleshoot.", "red");
     }
   }
 });
