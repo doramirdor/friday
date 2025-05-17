@@ -11,7 +11,7 @@ func handleInterruptSignal(signal: Int32) {
     }
 }
 
-class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
+class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDelegate {
     static var screenCaptureStream: SCStream?
     static var audioFileForRecording: AVAudioFile?
     var contentEligibleForSharing: SCShareableContent?
@@ -22,6 +22,9 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     var streamFunctionTimeout: TimeInterval = 2.0 // Increased timeout for slower systems
     var tempWavPath: String?
     var finalMp3Path: String?
+    var audioSource: String = "system" // Default to system audio
+    var microphoneRecorder: AVAudioRecorder?
+    var audioSession: AVAudioSession?
 
     override init() {
         super.init()
@@ -85,19 +88,134 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
                 recordingFilename = String(recordingFilename![..<dotIndex])
             }
         }
+        
+        // Check if audio source is specified
+        if let sourceIndex = arguments.firstIndex(of: "--source"), sourceIndex + 1 < arguments.count {
+            let source = arguments[sourceIndex + 1].lowercased()
+            if source == "mic" || source == "system" {
+                audioSource = source
+                print("Using audio source: \(audioSource)")
+            } else {
+                print("Invalid audio source: \(source). Using default: system")
+            }
+        }
     }
 
     func executeRecordingProcess() {
-        // First check permissions
-        if !CGPreflightScreenCaptureAccess() {
-            ResponseHandler.returnResponse(["code": "PERMISSION_DENIED", "error": "Screen recording permission is required"])
-            return
+        if audioSource == "system" {
+            // First check permissions for system audio
+            if !CGPreflightScreenCaptureAccess() {
+                ResponseHandler.returnResponse(["code": "PERMISSION_DENIED", "error": "Screen recording permission is required for system audio"])
+                return
+            }
+            
+            self.updateAvailableContent()
+        } else {
+            // Microphone recording
+            setupMicrophoneRecording()
         }
         
-        self.updateAvailableContent()
         setupInterruptSignalHandler()
-        setupStreamFunctionTimeout()
+        if audioSource == "system" {
+            setupStreamFunctionTimeout()
+        }
         semaphoreRecordingStopped.wait()
+    }
+    
+    func setupMicrophoneRecording() {
+        print("Setting up microphone recording...")
+        
+        // Create timestamp and filename
+        let timestamp = Date()
+        let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
+        
+        // Generate unique timestamp-based filename if none provided
+        let baseFilename: String
+        if let providedFilename = self.recordingFilename, !providedFilename.isEmpty {
+            baseFilename = providedFilename
+        } else {
+            baseFilename = timestamp.toFormattedFileName()
+        }
+        
+        // Set up temporary WAV path and final MP3 path
+        self.tempWavPath = "\(self.recordingPath!)/\(baseFilename).wav"
+        self.finalMp3Path = "\(self.recordingPath!)/\(baseFilename).mp3"
+        
+        print("Will save recording to: \(tempWavPath!)")
+        
+        // Set up audio session
+        do {
+            audioSession = AVAudioSession.sharedInstance()
+            try audioSession?.setCategory(.record)
+            try audioSession?.setActive(true)
+            
+            // Configure recording settings
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 44100.0,
+                AVNumberOfChannelsKey: 2,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            ]
+            
+            // Create recorder
+            microphoneRecorder = try AVAudioRecorder(url: URL(fileURLWithPath: tempWavPath!), settings: settings)
+            microphoneRecorder?.delegate = self
+            
+            if microphoneRecorder?.prepareToRecord() == true {
+                // Start recording
+                let success = microphoneRecorder?.record() ?? false
+                
+                if success {
+                    print("Microphone recording started successfully")
+                    
+                    // Notify recording started
+                    ResponseHandler.returnResponse([
+                        "code": "RECORDING_STARTED", 
+                        "path": self.finalMp3Path!, 
+                        "timestamp": formattedTimestamp
+                    ], shouldExitProcess: false)
+                } else {
+                    print("Failed to start microphone recording")
+                    ResponseHandler.returnResponse([
+                        "code": "CAPTURE_FAILED", 
+                        "error": "Failed to start microphone recording"
+                    ])
+                }
+            } else {
+                print("Failed to prepare microphone recording")
+                ResponseHandler.returnResponse([
+                    "code": "CAPTURE_FAILED", 
+                    "error": "Failed to prepare microphone recording"
+                ])
+            }
+        } catch {
+            print("Microphone recording setup error: \(error.localizedDescription)")
+            ResponseHandler.returnResponse([
+                "code": "CAPTURE_FAILED", 
+                "error": "Microphone setup error: \(error.localizedDescription)"
+            ])
+        }
+    }
+    
+    // AVAudioRecorderDelegate method
+    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        print("Microphone recording finished, success: \(flag)")
+        if flag {
+            convertAndFinish()
+        } else {
+            ResponseHandler.returnResponse([
+                "code": "RECORDING_STOPPED", 
+                "error": "Recording failed to complete properly"
+            ])
+        }
+    }
+    
+    func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+        print("Microphone recording encode error: \(error?.localizedDescription ?? "unknown")")
+        ResponseHandler.returnResponse([
+            "code": "RECORDING_ERROR", 
+            "error": "Encoding error: \(error?.localizedDescription ?? "unknown")"
+        ])
     }
 
     func setupInterruptSignalHandler() {
@@ -108,6 +226,12 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     func convertAndFinish() {
         let timestamp = Date()
         let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
+        
+        // If this is a microphone recording, stop it first
+        if audioSource == "mic" && microphoneRecorder?.isRecording == true {
+            microphoneRecorder?.stop()
+            try? audioSession?.setActive(false)
+        }
         
         // Store the path for response
         let outputPath = finalMp3Path ?? tempWavPath ?? ""
@@ -418,9 +542,17 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
 
     static func terminateRecording() {
         print("Terminating recording...")
+        
+        // Stop screen capture stream if active
         screenCaptureStream?.stopCapture()
         screenCaptureStream = nil
         audioFileForRecording = nil
+        
+        // Stop microphone recording if active
+        if let recorder = recorderInstance?.microphoneRecorder, recorder.isRecording {
+            recorder.stop()
+            try? recorderInstance?.audioSession?.setActive(false)
+        }
     }
 }
 

@@ -51,42 +51,44 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }
   },
   
-  // File handling methods
-  saveAudioFile: async (buffer, filename, formats = ['wav']) => {
-    try {
-      console.log(`🔄 preload.js: Saving audio file ${filename}, buffer size: ${buffer.byteLength}, formats:`, formats);
-      const result = await ipcRenderer.invoke('save-audio-file', { buffer, filename, formats });
-      console.log(`📄 preload.js: Save result:`, result);
-      return result;
-    } catch (error) {
-      console.error('❌ preload.js: Error saving audio file:', error);
-      throw error;
+  // Microphone Recording methods
+  micRecording: {
+    // Start recording microphone
+    startRecording: async (options = {}) => {
+      return await ipcRenderer.invoke("start-mic-recording", options);
+    },
+    
+    // Stop recording microphone
+    stopRecording: async () => {
+      return await ipcRenderer.invoke("stop-mic-recording");
+    },
+    
+    // Listen for recording status updates (uses same channels as system audio)
+    onStatusUpdate: (callback) => {
+      ipcRenderer.on("recording-status", (_, status, timestamp, filepath) => {
+        callback(status, timestamp, filepath);
+      });
+    },
+    
+    // Listen for recording errors
+    onError: (callback) => {
+      ipcRenderer.on("recording-error", (_, errorCode) => {
+        callback(errorCode);
+      });
     }
   },
   
-  // Google Speech API methods
-  invokeGoogleSpeech: async (audioBuffer, options = {}) => {
-    try {
-      console.log(`🔄 preload.js: Invoking Google Speech API with buffer size: ${audioBuffer.byteLength}, options:`, options);
-      const result = await ipcRenderer.invoke('invoke-google-speech', audioBuffer, options);
-      console.log(`📄 preload.js: Speech API result: ${result?.substring(0, 50)}${result?.length > 50 ? '...' : ''}`);
-      return result;
-    } catch (error) {
-      console.error('❌ preload.js: Error invoking Google Speech API:', error);
-      throw error;
-    }
+  // Audio File methods
+  saveAudioFile: async (buffer, filename, formats = ['wav', 'mp3']) => {
+    return await ipcRenderer.invoke("save-audio-file", { buffer, filename, formats });
   },
-
-  // Test speech with file
-  testSpeechWithFile: async (filePath) => {
-    try {
-      console.log(`🔄 preload.js: Testing speech with file: ${filePath}`);
-      const result = await ipcRenderer.invoke('test-speech-with-file', filePath);
-      console.log(`📄 preload.js: Test result:`, result);
-      return result;
-    } catch (error) {
-      console.error('❌ preload.js: Error testing speech with file:', error);
-      throw error;
-    }
+  
+  // Test functions for diagnostics
+  testAudio: async (apiKey) => {
+    return await ipcRenderer.invoke("test-audio", apiKey);
+  },
+  
+  testSpeechWithFile: async (filePath, apiKey) => {
+    return await ipcRenderer.invoke("test-speech-with-file", { filePath, apiKey });
   }
 }); 

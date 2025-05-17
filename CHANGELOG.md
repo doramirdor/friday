@@ -53,6 +53,10 @@ All notable changes to this project will be documented in this file.
 - Auto-opening of file location after successful recording
 - Enhanced permission validation and directory access checking
 - Comprehensive startup error detection and reporting
+- Direct microphone recording support using AVAudioRecorder in Swift
+- Toggle between system audio and microphone recording sources
+- Unified MP3 conversion pipeline for both recording sources
+- Simplified permissions model with source-specific checks
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -97,6 +101,9 @@ All notable changes to this project will be documented in this file.
 - Improved error reporting with more detailed logs throughout the recording process
 - Added detailed debug output to Swift recorder to aid in troubleshooting
 - Enhanced recorder process error handling with multiple fallback strategies
+- Refactored recording API to support multiple audio input sources
+- Expanded Swift recorder to handle both system audio and microphone input
+- Simplified IPC interface with unified error handling across recording sources
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
@@ -152,6 +159,8 @@ All notable changes to this project will be documented in this file.
 - Added cleanup of conflicting files before recording begins
 - Improved filename sanitization to avoid special character issues
 - Enhanced ffmpeg detection with more detailed error messaging
+- Simplified microphone access with improved permission handling
+- Added proper resource cleanup when switching between recording sources
 
 ## [0.2.1] - 2023-07-31
 

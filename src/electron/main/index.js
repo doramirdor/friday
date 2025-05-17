@@ -196,8 +196,8 @@ const createWindow = async () => {
     width: 1200,
     height: 800,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
       preload: path.join(__dirname, "../preload/index.cjs"),
     },
   });
@@ -316,12 +316,40 @@ ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['
       results.wav = wavPath;
     }
     
-    // Save MP3 if requested and WAV is also available
-    if (formats.includes('mp3') && results.wav) {
+    // Save MP3 if requested
+    if (formats.includes('mp3')) {
       try {
         const mp3Path = path.join(recordingsDir, `${baseFilename}.mp3`);
-        // Use simple command to convert
-        await exec(`ffmpeg -i "${results.wav}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
+        
+        // Check if input is FLAC format
+        const isFLAC = filename.toLowerCase().endsWith('.flac') || 
+                      (buffer.length > 4 && 
+                       buffer[0] === 0x66 && // 'f'
+                       buffer[1] === 0x4C && // 'L'
+                       buffer[2] === 0x61 && // 'a'
+                       buffer[3] === 0x43);  // 'C'
+        
+        if (isFLAC) {
+          console.log('🎵 main.js: Converting FLAC to MP3');
+          // Save FLAC first
+          const flacPath = path.join(recordingsDir, `${baseFilename}.flac`);
+          fs.writeFileSync(flacPath, Buffer.from(buffer));
+          // Convert FLAC to MP3
+          await exec(`ffmpeg -i "${flacPath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
+          // Clean up FLAC file
+          fs.unlinkSync(flacPath);
+        } else {
+          // Convert WAV to MP3
+          const wavPath = results.wav || path.join(recordingsDir, `${baseFilename}.wav`);
+          if (!results.wav) {
+            fs.writeFileSync(wavPath, Buffer.from(buffer));
+          }
+          await exec(`ffmpeg -i "${wavPath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
+          if (!results.wav) {
+            fs.unlinkSync(wavPath);
+          }
+        }
+        
         console.log(`✅ main.js: Saved MP3 file: ${mp3Path}`);
         results.mp3 = mp3Path;
       } catch (error) {
@@ -461,6 +489,38 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
   } catch (error) {
     console.error('❌ main.js: Error testing speech with file:', error);
     return `Error: ${error.message || 'Unknown error'}`;
+  }
+});
+
+// Add these new IPC handlers for microphone recording
+
+// Start mic recording
+ipcMain.handle("start-mic-recording", async (_, options = {}) => {
+  try {
+    const filepath = options.filepath || ensureRecordingsDirectory();
+    const filename = options.filename || `mic-recording-${Date.now()}`;
+
+    await startRecording({
+      filepath,
+      filename,
+      source: "mic" // Specify microphone as the source
+    });
+
+    return { success: true, filepath, filename };
+  } catch (error) {
+    console.error("Error starting microphone recording:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop mic recording (reuses the same stop function as system recording)
+ipcMain.handle("stop-mic-recording", async () => {
+  try {
+    const result = await stopRecording();
+    return { success: true, ...result };
+  } catch (error) {
+    console.error("Error stopping microphone recording:", error);
+    return { success: false, error: error.message };
   }
 });
 

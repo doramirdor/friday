@@ -58,7 +58,7 @@ const convertFlacToMp3 = async (flacPath) => {
   }
 };
 
-const initRecording = (filepath, filename) => {
+const initRecording = (filepath, filename, source = 'system') => {
   return new Promise((resolve) => {
     // Ensure the filepath exists and is writable
     if (!fs.existsSync(filepath)) {
@@ -72,10 +72,11 @@ const initRecording = (filepath, filename) => {
       }
     }
     
-    console.log(`Starting Swift recorder with path: ${filepath}, filename: ${filename || "auto-generated"}`);
+    console.log(`Starting Swift recorder with path: ${filepath}, filename: ${filename || "auto-generated"}, source: ${source}`);
     
     const args = ["--record", filepath];
     if (filename) args.push("--filename", filename);
+    args.push("--source", source);
 
     // Set up the recorder process
     try {
@@ -201,10 +202,16 @@ const initRecording = (filepath, filename) => {
   });
 };
 
-export async function startRecording({ filepath, filename }) {
-  const isPermissionGranted = await checkPermissions();
+export async function startRecording({ filepath, filename, source = 'system' }) {
+  // For microphone recording, we don't need screen capture permission
+  const isPermissionNeeded = source === 'system';
+  let isPermissionGranted = true;
+  
+  if (isPermissionNeeded) {
+    isPermissionGranted = await checkPermissions();
+  }
 
-  if (!isPermissionGranted) {
+  if (isPermissionNeeded && !isPermissionGranted) {
     global.mainWindow.webContents.send("recording-error", "PERMISSION_DENIED");
     return;
   }
@@ -229,14 +236,14 @@ export async function startRecording({ filepath, filename }) {
     return;
   }
 
-  console.log(`Starting recording with path: ${filepath}, filename: ${filenameWithoutExt}`);
+  console.log(`Starting ${source} recording with path: ${filepath}, filename: ${filenameWithoutExt}`);
   
   let attempts = 0;
   const maxAttempts = 3;
   
   while (attempts < maxAttempts) {
     console.log(`Recording attempt ${attempts + 1} of ${maxAttempts}`);
-    const recordingStarted = await initRecording(filepath, filenameWithoutExt);
+    const recordingStarted = await initRecording(filepath, filenameWithoutExt, source);
 
     if (recordingStarted) {
       console.log("Recording started successfully");
