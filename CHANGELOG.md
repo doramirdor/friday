@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Added gradient styling for primary action buttons
 - Improved recording button UI with larger size and clearer status display
 - Added default meeting recordings display in library view
+- Added auto-playback of audio after stopping recording
 
 ## [0.2.0] - 2023-07-30
 

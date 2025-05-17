@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -190,11 +189,28 @@ const TranscriptDetails = () => {
     };
   }, []);
   
-  // Update audio source when recorded audio URL changes
+  // Update audio source when recorded audio URL changes and play automatically
   useEffect(() => {
     if (audioRef.current && recordedAudioUrl) {
       audioRef.current.src = recordedAudioUrl;
       audioRef.current.load();
+      
+      // Add a small delay before playing to ensure audio is properly loaded
+      const playTimeout = setTimeout(() => {
+        if (audioRef.current) {
+          audioRef.current.play()
+            .then(() => {
+              setIsPlaying(true);
+              toast.success("Playing recorded audio");
+            })
+            .catch(error => {
+              console.error("Error playing audio:", error);
+              toast.error("Failed to play audio automatically");
+            });
+        }
+      }, 500);
+      
+      return () => clearTimeout(playTimeout);
     }
   }, [recordedAudioUrl]);
   
@@ -385,7 +401,7 @@ const TranscriptDetails = () => {
       stopRecordingTimer();
       
       setIsRecording(false);
-      toast.info("Recording stopped");
+      toast.info("Recording stopped - Audio will play automatically");
     }
   }, [isRecording, speech, isNewMeeting, isElectron, isLiveTranscript, currentSpeakerId]);
   
