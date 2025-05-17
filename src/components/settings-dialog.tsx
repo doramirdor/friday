@@ -1,4 +1,3 @@
-
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Settings, Keyboard, Mic, Info, File } from "lucide-react"
@@ -58,6 +57,10 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               <Keyboard className="w-4 h-4" />
               Shortcuts
             </TabsTrigger>
+            <TabsTrigger value="context" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+              <File className="w-4 h-4" />
+              Context
+            </TabsTrigger>
             <TabsTrigger value="meeting" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
               <Mic className="w-4 h-4" />
               Meeting
@@ -65,10 +68,6 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
             <TabsTrigger value="transcription" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
               <File className="w-4 h-4" />
               Transcription
-            </TabsTrigger>
-            <TabsTrigger value="context" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
-              <File className="w-4 h-4" />
-              Context
             </TabsTrigger>
             <TabsTrigger value="about" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
               <Info className="w-4 h-4" />
@@ -165,6 +164,10 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
             </div>
           </TabsContent>
           
+          <TabsContent value="context" className="p-6 pt-4">
+            <ContextSettings />
+          </TabsContent>
+          
           <TabsContent value="meeting" className="p-6 pt-4">
             <div className="space-y-6">
               <div className="flex items-center justify-between space-x-2">
@@ -223,10 +226,6 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
                 </div>
               </div>
             </div>
-          </TabsContent>
-          
-          <TabsContent value="context" className="p-6 pt-4">
-            <ContextSettings />
           </TabsContent>
           
           <TabsContent value="about" className="p-6 pt-4">

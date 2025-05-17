@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Added auto-playback of audio after stopping recording
 - Moved Live Transcription setting to Meeting tab in settings
 - Changed recording button to green color scheme
+- Reordered settings tabs to place Context tab before Meeting tab
 
 ## [0.2.0] - 2023-07-30
 
