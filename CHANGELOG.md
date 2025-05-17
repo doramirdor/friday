@@ -162,6 +162,10 @@ All notable changes to this project will be documented in this file.
 - Simplified microphone access with improved permission handling
 - Added proper resource cleanup when switching between recording sources
 - Fixed reference errors in TranscriptDetails.tsx related to recording function names
+- Fixed type checking issue with system audio availability status being incorrectly handled
+- Resolved issue where recordings were not stopping properly when using system audio or microphone
+- Added fallback handling for MediaRecorder when native recording is unavailable
+- Improved logging throughout the recording process for better diagnostics
 
 ## [0.2.1] - 2023-07-31
 
