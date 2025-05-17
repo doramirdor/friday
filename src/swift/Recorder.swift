@@ -1,5 +1,15 @@
 import AVFoundation
 import ScreenCaptureKit
+import Foundation
+
+// Global signal handler
+var recorderInstance: RecorderCLI?
+func handleInterruptSignal(signal: Int32) {
+    if signal == SIGINT {
+        RecorderCLI.terminateRecording()
+        recorderInstance?.convertAndFinish()
+    }
+}
 
 class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     static var screenCaptureStream: SCStream?
@@ -10,9 +20,12 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     var recordingFilename: String?
     var streamFunctionCalled = false
     var streamFunctionTimeout: TimeInterval = 0.5 // Timeout in seconds
+    var tempWavPath: String?
+    var finalMp3Path: String?
 
     override init() {
         super.init()
+        recorderInstance = self
         processCommandLineArguments()
     }
 
@@ -57,17 +70,134 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     }
 
     func setupInterruptSignalHandler() {
-        let interruptSignalHandler: @convention(c) (Int32) -> Void = { signal in
-            if signal == SIGINT {
-                RecorderCLI.terminateRecording()
-
-                let timestamp = Date()
-                let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
-                ResponseHandler.returnResponse(["code": "RECORDING_STOPPED", "timestamp": formattedTimestamp])
+        // Use the global function as signal handler
+        signal(SIGINT, handleInterruptSignal)
+    }
+    
+    func convertAndFinish() {
+        let timestamp = Date()
+        let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
+        
+        // Store the path for response
+        let outputPath = finalMp3Path ?? tempWavPath ?? ""
+        
+        // If we have a WAV file, convert it to MP3
+        if let wavPath = tempWavPath, FileManager.default.fileExists(atPath: wavPath) {
+            let mp3Path = wavPath.replacingOccurrences(of: ".wav", with: ".mp3")
+            
+            // Verify the MP3 path doesn't already exist (avoid overwriting)
+            if FileManager.default.fileExists(atPath: mp3Path) {
+                do {
+                    try FileManager.default.removeItem(atPath: mp3Path)
+                    print("Removed existing MP3 file at path: \(mp3Path)")
+                } catch {
+                    print("Failed to remove existing MP3 file: \(error.localizedDescription)")
+                }
             }
+            
+            // Use shell for conversion with improved parameters
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/sh")
+            task.arguments = [
+                "-c",
+                "ffmpeg -i \"\(wavPath)\" -codec:a libmp3lame -qscale:a 2 -ar 44100 \"\(mp3Path)\" -y"
+            ]
+            
+            do {
+                try task.run()
+                task.waitUntilExit()
+                
+                // Verify the conversion succeeded
+                if task.terminationStatus == 0 && FileManager.default.fileExists(atPath: mp3Path) {
+                    // Get file sizes for logging
+                    if let wavAttrs = try? FileManager.default.attributesOfItem(atPath: wavPath),
+                       let mp3Attrs = try? FileManager.default.attributesOfItem(atPath: mp3Path),
+                       let wavSize = wavAttrs[.size] as? UInt64,
+                       let mp3Size = mp3Attrs[.size] as? UInt64 {
+                        print("WAV: \(wavSize / 1024) KB, MP3: \(mp3Size / 1024) KB")
+                    }
+                    
+                    // Successfully converted
+                    ResponseHandler.returnResponse([
+                        "code": "RECORDING_STOPPED", 
+                        "timestamp": formattedTimestamp,
+                        "path": mp3Path
+                    ])
+                    
+                    // Clean up temporary WAV file
+                    do {
+                        try FileManager.default.removeItem(atPath: wavPath)
+                        print("Removed temporary WAV file: \(wavPath)")
+                    } catch {
+                        print("Failed to remove temporary WAV file: \(error.localizedDescription)")
+                    }
+                } else {
+                    // Conversion failed - try a second method with different parameters
+                    let alternativeTask = Process()
+                    alternativeTask.executableURL = URL(fileURLWithPath: "/bin/sh")
+                    alternativeTask.arguments = [
+                        "-c",
+                        "ffmpeg -y -i \"\(wavPath)\" -f mp3 -b:a 192k \"\(mp3Path)\""
+                    ]
+                    
+                    print("First conversion approach failed. Trying alternative method...")
+                    
+                    do {
+                        try alternativeTask.run()
+                        alternativeTask.waitUntilExit()
+                        
+                        if alternativeTask.terminationStatus == 0 && FileManager.default.fileExists(atPath: mp3Path) {
+                            print("Alternative conversion successful")
+                            
+                            // Successfully converted with alternative method
+                            ResponseHandler.returnResponse([
+                                "code": "RECORDING_STOPPED", 
+                                "timestamp": formattedTimestamp,
+                                "path": mp3Path
+                            ])
+                            
+                            // Clean up
+                            try? FileManager.default.removeItem(atPath: wavPath)
+                        } else {
+                            print("Both conversion methods failed. Returning WAV file.")
+                            // Both conversions failed
+                            ResponseHandler.returnResponse([
+                                "code": "RECORDING_STOPPED", 
+                                "timestamp": formattedTimestamp,
+                                "path": wavPath,
+                                "error": "MP3 conversion failed with both methods"
+                            ])
+                        }
+                    } catch {
+                        print("Alternative conversion method failed: \(error.localizedDescription)")
+                        // Return the WAV file if conversion consistently fails
+                        ResponseHandler.returnResponse([
+                            "code": "RECORDING_STOPPED", 
+                            "timestamp": formattedTimestamp,
+                            "path": wavPath,
+                            "error": "MP3 conversion error: \(error.localizedDescription)"
+                        ])
+                    }
+                }
+            } catch {
+                print("Initial conversion failed: \(error.localizedDescription)")
+                // Shell execution failed
+                ResponseHandler.returnResponse([
+                    "code": "RECORDING_STOPPED", 
+                    "timestamp": formattedTimestamp,
+                    "path": wavPath,
+                    "error": "MP3 conversion error: \(error.localizedDescription)"
+                ])
+            }
+        } else {
+            // No WAV file found
+            ResponseHandler.returnResponse([
+                "code": "RECORDING_STOPPED", 
+                "timestamp": formattedTimestamp,
+                "path": outputPath,
+                "error": "No recording file created"
+            ])
         }
-
-        signal(SIGINT, interruptSignalHandler)
     }
 
     func setupStreamFunctionTimeout() {
@@ -88,12 +218,21 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
                     baseFilename = timestamp.toFormattedFileName()
                 }
                 
-                // Ensure path has FLAC extension
-                let pathForAudioFile = "\(self.recordingPath!)/\(baseFilename).flac"
-                print("Saving recording to: \(pathForAudioFile)")
-                self.prepareAudioFile(at: pathForAudioFile)
+                // First save as WAV (much more reliable format for capturing)
+                self.tempWavPath = "\(self.recordingPath!)/\(baseFilename).wav"
+                print("Saving recording to temporary WAV: \(self.tempWavPath!)")
+                
+                // Set the final MP3 path
+                self.finalMp3Path = "\(self.recordingPath!)/\(baseFilename).mp3"
+                
+                // Prepare the audio file (using WAV for capture)
+                self.prepareAudioFile(at: self.tempWavPath!)
 
-                ResponseHandler.returnResponse(["code": "RECORDING_STARTED", "path": pathForAudioFile, "timestamp": formattedTimestamp], shouldExitProcess: false)
+                ResponseHandler.returnResponse([
+                    "code": "RECORDING_STARTED", 
+                    "path": self.finalMp3Path!, 
+                    "timestamp": formattedTimestamp
+                ], shouldExitProcess: false)
             }
         }
     }
@@ -119,7 +258,17 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
 
     func prepareAudioFile(at path: String) {
         do {
-            RecorderCLI.audioFileForRecording = try AVAudioFile(forWriting: URL(fileURLWithPath: path), settings: [AVSampleRateKey: 48000, AVNumberOfChannelsKey: 2, AVFormatIDKey: kAudioFormatFLAC], commonFormat: .pcmFormatFloat32, interleaved: false)
+            // Use WAV format for capture (more reliable)
+            RecorderCLI.audioFileForRecording = try AVAudioFile(
+                forWriting: URL(fileURLWithPath: path),
+                settings: [
+                    AVSampleRateKey: 48000,
+                    AVNumberOfChannelsKey: 2,
+                    AVFormatIDKey: kAudioFormatLinearPCM
+                ],
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
         } catch {
             ResponseHandler.returnResponse(["code": "AUDIO_FILE_CREATION_FAILED", "error": error.localizedDescription])
         }
