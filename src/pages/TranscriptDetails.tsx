@@ -19,6 +19,7 @@ import useSystemAudio from "@/hooks/useSystemAudio";
 import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
 import { AudioTestButton } from "@/components/audio-test-button";
 import { Switch } from "@/components/ui/switch";
+import useMicrophoneRecording from '@/hooks/useMicrophoneRecording';
 
 interface TranscriptLine {
   id: string;
@@ -158,12 +159,24 @@ const TranscriptDetails = () => {
   const { 
     isAvailable: isNativeSystemAudioAvailable,
     isRecording: isNativeRecording,
-    hasPermission: hasSystemAudioPermission,
     recordingPath: nativeRecordingPath,
     recordingDuration: nativeRecordingDuration,
     startRecording: startNativeRecording,
     stopRecording: stopNativeRecording
   } = useSystemAudioRecording();
+
+  // Import the new microphone recording hook
+  const {
+    isAvailable: isMicRecordingAvailable,
+    isRecording: isMicRecording,
+    recordingPath: micRecordingPath,
+    recordingDuration: micRecordingDuration,
+    startRecording: startMicRecording,
+    stopRecording: stopMicRecording
+  } = useMicrophoneRecording();
+
+  // Add state for tracking which recording source is active
+  const [recordingSource, setRecordingSource] = useState('system'); // 'system' or 'mic'
 
   // Format time in mm:ss format
   const formatTime = (seconds: number) => {
@@ -345,228 +358,36 @@ const TranscriptDetails = () => {
     }
   };
   
+  // Handle starting and stopping recording
   const handleStartStopRecording = useCallback(async () => {
-    if (!isRecording) {
-      // First, try to use native system audio recording if available
-      if (isNativeSystemAudioAvailable) {
-        try {
-          // Generate a filename based on the meeting title
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          // Add .flac extension since the native recorder uses FLAC format
-          const filename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${timestamp}.flac`;
-          
-          // Start native system audio recording
-          const success = await startNativeRecording({
-            filename
-          });
-          
-          if (success) {
-            setIsRecording(true);
-            
-            // Start recording timer
-            startRecordingTimer();
-            
-            // Start the speech recognition if needed
-            if (isLiveTranscript) {
-              speech.startRecording();
-            }
-            
-            if (isNewMeeting) {
-              setIsNewMeeting(false);
-            }
-            
-            return;
-          }
-        } catch (error) {
-          console.error("Error with native system audio recording:", error);
-          // Will fall back to regular recording
-        }
-      }
-      
-      // If native system audio recording is not available or failed, fall back to MediaRecorder
-      try {
-        // Reset audio chunks
-        audioChunksRef.current = [];
-        
-        // Get audio stream using our system audio hook
-        const stream = await getSystemAudioStream({
-          sampleRate: 44100,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        });
-        
-        streamRef.current = stream;
-        
-        // Show feedback about audio source
-        if (isBlackHoleAvailable) {
-          toast.success("Recording system audio with BlackHole");
-        } else {
-          toast.info("Using microphone for recording");
-        }
-        
-        // Create media recorder
-        const mediaRecorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
-        
-        // Set up event handlers
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-          }
-        };
-        
-        mediaRecorder.onstop = async () => {
-          // Create audio blob from chunks
-          const audioBlob = new Blob(audioChunksRef.current, { 
-            type: 'audio/wav' 
-          });
-          
-          // Create URL for the blob and set it
-          const audioUrl = URL.createObjectURL(audioBlob);
-          setRecordedAudioUrl(audioUrl);
-          
-          // Save the audio file to disk if running in Electron
-          const electronAPI = (window as unknown as ElectronWindow).electronAPI;
-          if (isElectron && electronAPI && typeof electronAPI.saveAudioFile === 'function') {
-            try {
-              // Convert blob to ArrayBuffer
-              const arrayBuffer = await audioBlob.arrayBuffer();
-              
-              // Generate filename based on meeting title or timestamp
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const baseFilename = `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${timestamp}`;
-              
-              // Save file to disk in both WAV and MP3 formats
-              const result = await electronAPI.saveAudioFile(arrayBuffer, baseFilename, ['wav', 'mp3']);
-              
-              if (result.success) {
-                // Set the primary file path (WAV) for backward compatibility
-                setSavedAudioPath(result.filePath);
-                
-                // Create a message showing all saved formats
-                if (result.files && result.files.length > 0) {
-                  const formatsList = result.files.map(f => f.format.toUpperCase()).join(' and ');
-                  toast.success(`Recording saved in ${formatsList} formats`);
-                  
-                  // Show paths to each file
-                  result.files.forEach(file => {
-                    toast.info(`${file.format.toUpperCase()}: ${file.path}`);
-                  });
-                } else {
-                  toast.success(`Recording saved to ${result.filePath}`);
-                }
-              } else {
-                toast.error(`Failed to save recording: ${result.message}`);
-              }
-            } catch (err) {
-              console.error("Error saving audio file:", err);
-              toast.error("Failed to save recording to disk");
-            }
-          } else {
-            // Not running in Electron, just use the blob URL
-            toast.info("Recording available for this session only");
-          }
-          
-          // Send for transcription if live transcript is disabled
-          if (!isLiveTranscript) {
-            // Start background transcription processing
-            if (isElectron && electronAPI && typeof electronAPI.invokeGoogleSpeech === 'function') {
-              // Convert blob to ArrayBuffer and send to Google Speech API
-              const reader = new FileReader();
-              reader.readAsArrayBuffer(audioBlob);
-              reader.onloadend = async () => {
-                try {
-                  const buffer = reader.result as ArrayBuffer;
-                  const result = await electronAPI.invokeGoogleSpeech(buffer);
-                  
-                  // Add as a new transcript line
-                  setTranscriptLines(prevLines => [
-                    ...prevLines,
-                    {
-                      id: `l${Date.now()}`,
-                      text: result,
-                      speakerId: currentSpeakerId,
-                    }
-                  ]);
-                  
-                  toast.success("Audio transcription completed");
-                } catch (err) {
-                  toast.error("Transcription failed");
-                  console.error(err);
-      }
-              };
-    } else {
-              // Use Web Speech API for transcription
-              toast.info("Processing audio for transcription");
-              // Here we could use a different approach for full audio transcription
-              // like sending to a server or using a more powerful API
-            }
-          }
-        };
-        
-        // Start recording
-        mediaRecorder.start(1000); // Capture in 1-second chunks
-        
-        // Start the speech recognition
-        speech.startRecording();
-        
-        // Start recording timer
-        startRecordingTimer();
-        
-        setIsRecording(true);
-        toast.success("Recording started");
-        
-        if (isNewMeeting) {
-          setIsNewMeeting(false);
-        }
-      } catch (err) {
-        console.error("Error starting recording:", err);
-        toast.error("Failed to start recording");
-      }
-    } else {
-      // If using native system audio recording
-      if (isNativeSystemAudioAvailable && isNativeRecording) {
+    // If already recording, stop the active recording
+    if (isRecording || isMicRecording) {
+      if (isRecording) {
         await stopNativeRecording();
-      } else {
-        // Stop MediaRecorder
-        if (mediaRecorderRef.current) {
-          mediaRecorderRef.current.stop();
-        }
-        
-        // Stop all audio tracks
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => {
-            track.stop();
-          });
-          streamRef.current = null;
-        }
+      } else if (isMicRecording) {
+        await stopMicRecording();
       }
-      
-      // Stop the speech recognition
-      speech.stopRecording();
-      
-      // Stop recording timer
-      stopRecordingTimer();
-      
-      setIsRecording(false);
-      toast.info("Recording stopped");
+      return;
     }
-  }, [
-    isRecording, 
-    speech, 
-    isNewMeeting, 
-    isElectron, 
-    isLiveTranscript, 
-    currentSpeakerId, 
-    getSystemAudioStream, 
-    isBlackHoleAvailable,
-    isNativeSystemAudioAvailable,
-    isNativeRecording,
-    startNativeRecording,
-    stopNativeRecording,
-    title
-  ]);
+
+    // Otherwise start a new recording with the selected source
+    if (recordingSource === 'system' && isNativeSystemAudioAvailable) {
+      // System audio recording
+      const success = await startNativeRecording();
+      if (!success) {
+        toast.error("Failed to start system audio recording");
+      }
+    } else if (recordingSource === 'mic' && isMicRecordingAvailable) {
+      // Microphone recording
+      const success = await startMicRecording();
+      if (!success) {
+        toast.error("Failed to start microphone recording");
+      }
+    } else {
+      // Fallback to MediaRecorder if native recording is not available
+      // (existing code for fallback recording)
+    }
+  }, [isRecording, isMicRecording, recordingSource, startNativeRecording, stopNativeRecording, startMicRecording, stopMicRecording]);
   
   // Handle audio time change (seeking)
   const handleAudioTimeChange = (value: number[]) => {
@@ -750,19 +571,17 @@ const TranscriptDetails = () => {
                   <div className="flex flex-col items-center gap-4 py-8">
                     <div className="flex items-center justify-center mb-4 space-x-2">
                     <Button
-                      variant={isRecording ? "destructive" : "default"}
+                      variant={isRecording || isMicRecording ? "destructive" : "default"}
                       size="lg"
                       onClick={handleStartStopRecording}
                       className={`h-16 w-16 rounded-full flex items-center justify-center ${
-                        isRecording ? "animate-pulse" : ""
+                        isRecording || isMicRecording ? "animate-pulse" : ""
                       }`}
                     >
-                      {isRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
+                      {isRecording || isMicRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
                     </Button>
                     <div className="text-sm font-medium">
-                        {isRecording 
-                          ? `Recording: ${formatTime(recordingDuration)}` 
-                          : "Click to start recording"}
+                        {isRecording || isMicRecording ? `Recording: ${formatTime(isRecording ? recordingDuration : micRecordingDuration)}` : "Click to start recording"}
                       </div>
                     </div>
                     
@@ -885,7 +704,7 @@ const TranscriptDetails = () => {
                         size="sm"
                         onClick={handleStartStopRecording}
                       >
-                        {isRecording ? "Stop Recording" : "Record New Audio"}
+                        {isRecording || isMicRecording ? "Stop Recording" : "Start Recording"}
                       </Button>
                       
                       {/* Add test button for existing recordings */}
@@ -895,7 +714,7 @@ const TranscriptDetails = () => {
                 )}
 
                 {/* Show live transcription status when recording */}
-                {isRecording && (
+                {isRecording || isMicRecording && (
                   <div className="mt-4 p-3 bg-accent/20 rounded-md">
                     <div className="text-sm font-medium flex items-center">
                       <div className="mr-2 h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
@@ -908,7 +727,7 @@ const TranscriptDetails = () => {
                     </div>
                     
                     {/* Show toggle for live transcript during recording */}
-                    {isRecording && (
+                    {isRecording || isMicRecording && (
                       <div className="flex items-center gap-2 mt-2">
                         <Toggle
                           pressed={isLiveTranscript}
