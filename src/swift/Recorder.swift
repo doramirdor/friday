@@ -42,6 +42,10 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
 
         if let filenameIndex = arguments.firstIndex(of: "--filename"), filenameIndex + 1 < arguments.count {
             recordingFilename = arguments[filenameIndex + 1]
+            // Remove any extension from the filename if present
+            if let dotIndex = recordingFilename?.lastIndex(of: ".") {
+                recordingFilename = String(recordingFilename![..<dotIndex])
+            }
         }
     }
 
@@ -76,9 +80,17 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
                 let timestamp = Date()
                 let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
 
-                let filename = self.recordingFilename ?? timestamp.toFormattedFileName()
-                let filenameSanitized = filename.hasSuffix(".flac") ? String(filename.dropLast(5)) : filename
-                let pathForAudioFile = "\(self.recordingPath!)/\(filenameSanitized).flac"
+                // Generate unique timestamp-based filename if none provided
+                let baseFilename: String
+                if let providedFilename = self.recordingFilename, !providedFilename.isEmpty {
+                    baseFilename = providedFilename
+                } else {
+                    baseFilename = timestamp.toFormattedFileName()
+                }
+                
+                // Ensure path has FLAC extension
+                let pathForAudioFile = "\(self.recordingPath!)/\(baseFilename).flac"
+                print("Saving recording to: \(pathForAudioFile)")
                 self.prepareAudioFile(at: pathForAudioFile)
 
                 ResponseHandler.returnResponse(["code": "RECORDING_STARTED", "path": pathForAudioFile, "timestamp": formattedTimestamp], shouldExitProcess: false)
@@ -109,7 +121,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
         do {
             RecorderCLI.audioFileForRecording = try AVAudioFile(forWriting: URL(fileURLWithPath: path), settings: [AVSampleRateKey: 48000, AVNumberOfChannelsKey: 2, AVFormatIDKey: kAudioFormatFLAC], commonFormat: .pcmFormatFloat32, interleaved: false)
         } catch {
-            ResponseHandler.returnResponse(["code": "AUDIO_FILE_CREATION_FAILED"])
+            ResponseHandler.returnResponse(["code": "AUDIO_FILE_CREATION_FAILED", "error": error.localizedDescription])
         }
     }
 
@@ -123,7 +135,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
             try RecorderCLI.screenCaptureStream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
             try await RecorderCLI.screenCaptureStream?.startCapture()
         } catch {
-            ResponseHandler.returnResponse(["code": "CAPTURE_FAILED"])
+            ResponseHandler.returnResponse(["code": "CAPTURE_FAILED", "error": error.localizedDescription])
         }
     }
 
@@ -144,12 +156,12 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
         do {
             try RecorderCLI.audioFileForRecording?.write(from: audioBuffer)
         } catch {
-            ResponseHandler.returnResponse(["code": "AUDIO_BUFFER_WRITE_FAILED"])
+            ResponseHandler.returnResponse(["code": "AUDIO_BUFFER_WRITE_FAILED", "error": error.localizedDescription])
         }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        ResponseHandler.returnResponse(["code": "STREAM_ERROR"], shouldExitProcess: false)
+        ResponseHandler.returnResponse(["code": "STREAM_ERROR", "error": error.localizedDescription], shouldExitProcess: false)
         RecorderCLI.terminateRecording()
         semaphoreRecordingStopped.signal()
     }

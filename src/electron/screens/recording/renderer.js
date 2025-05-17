@@ -2,6 +2,10 @@ const { ipcRenderer, shell } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
+const { exec } = require("child_process");
+const { promisify } = require("util");
+
+const execAsync = promisify(exec);
 
 let selectedFolderPath = path.join(os.homedir(), "Desktop");
 document.getElementById("selected-folder-path").textContent = selectedFolderPath;
@@ -41,17 +45,67 @@ document.getElementById("stop-recording").addEventListener("click", () => {
   ipcRenderer.send("stop-recording");
 });
 
+// Convert FLAC to MP3 directly from the renderer
+async function convertFlacToMp3(flacPath) {
+  try {
+    // Create status container
+    const statusContainer = document.createElement("div");
+    statusContainer.id = "conversion-status";
+    statusContainer.className = "mt-2 p-2 bg-blue-100 text-blue-700 rounded-md";
+    statusContainer.innerText = "Converting FLAC to MP3...";
+    document.querySelector(".bg-white").appendChild(statusContainer);
+    
+    // Create the MP3 path by replacing the extension
+    const mp3Path = flacPath.replace(".flac", ".mp3");
+    
+    console.log(`Converting ${flacPath} to ${mp3Path}`);
+    
+    // Run ffmpeg to convert
+    await execAsync(`ffmpeg -i "${flacPath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
+    
+    // Verify the conversion worked
+    if (!fs.existsSync(mp3Path)) {
+      throw new Error("MP3 file wasn't created");
+    }
+    
+    // Delete the original FLAC file
+    fs.unlinkSync(flacPath);
+    
+    // Update status
+    statusContainer.className = "mt-2 p-2 bg-green-100 text-green-700 rounded-md";
+    statusContainer.innerText = "Conversion complete!";
+    
+    // Remove status after a delay
+    setTimeout(() => {
+      statusContainer.remove();
+    }, 3000);
+    
+    return mp3Path;
+  } catch (error) {
+    console.error("Conversion error:", error);
+    
+    // Update status
+    const statusContainer = document.getElementById("conversion-status");
+    if (statusContainer) {
+      statusContainer.className = "mt-2 p-2 bg-red-100 text-red-700 rounded-md";
+      statusContainer.innerText = `Conversion failed: ${error.message}`;
+      
+      // Remove status after a delay
+      setTimeout(() => {
+        statusContainer.remove();
+      }, 5000);
+    }
+    
+    return null;
+  }
+}
+
 // Add audio player to the page
 const createAudioPlayer = (filePath) => {
   // Remove any existing player
   const existingPlayer = document.getElementById("audio-player-container");
   if (existingPlayer) {
     existingPlayer.remove();
-  }
-
-  // Only create player for MP3 files
-  if (!filePath.toLowerCase().endsWith('.mp3')) {
-    return;
   }
 
   const playerContainer = document.createElement("div");
@@ -62,13 +116,50 @@ const createAudioPlayer = (filePath) => {
   audioTitle.textContent = "Recording Preview";
   audioTitle.className = "text-lg font-medium mb-2";
   
-  const player = document.createElement("audio");
-  player.controls = true;
-  player.className = "w-full";
-  player.src = `file://${filePath}`;
-  
-  playerContainer.appendChild(audioTitle);
-  playerContainer.appendChild(player);
+  // If it's a FLAC file, show a conversion button
+  if (filePath.toLowerCase().endsWith('.flac')) {
+    audioTitle.textContent = "FLAC Recording (Convert to listen)";
+    
+    const convertButton = document.createElement("button");
+    convertButton.textContent = "Convert to MP3";
+    convertButton.className = "bg-blue-500 hover:bg-blue-600 text-white font-medium py-1 px-2 rounded-md text-sm mt-2";
+    
+    convertButton.addEventListener("click", async () => {
+      convertButton.disabled = true;
+      convertButton.textContent = "Converting...";
+      
+      const mp3Path = await convertFlacToMp3(filePath);
+      if (mp3Path) {
+        // Update UI to show the MP3 file
+        currentRecordingPath = mp3Path;
+        
+        // Display file information
+        const fileSize = fs.existsSync(mp3Path) ? 
+          `(${(fs.statSync(mp3Path).size / 1024 / 1024).toFixed(2)} MB)` : '';
+        
+        document.getElementById("output-file-path").innerHTML = 
+          `<span class="font-bold">🎵 MP3</span> ${mp3Path} ${fileSize}`;
+        
+        // Create MP3 player
+        createAudioPlayer(mp3Path);
+      } else {
+        convertButton.disabled = false;
+        convertButton.textContent = "Try Again";
+      }
+    });
+    
+    playerContainer.appendChild(audioTitle);
+    playerContainer.appendChild(convertButton);
+  } else {
+    // For MP3 files, show the audio player
+    const player = document.createElement("audio");
+    player.controls = true;
+    player.className = "w-full";
+    player.src = `file://${filePath}`;
+    
+    playerContainer.appendChild(audioTitle);
+    playerContainer.appendChild(player);
+  }
   
   // Add to page
   document.querySelector(".bg-white").appendChild(playerContainer);
@@ -108,17 +199,32 @@ ipcRenderer.on("recording-status", (_, status, timestamp, filepath) => {
     // Update the current recording path
     currentRecordingPath = filepath;
     
+    // Check if the file actually exists
+    const fileExists = fs.existsSync(filepath);
+    
     // Display file information
     const fileExt = path.extname(filepath).toLowerCase();
-    const fileSize = fs.existsSync(filepath) ? 
+    const fileSize = fileExists ? 
       `(${(fs.statSync(filepath).size / 1024 / 1024).toFixed(2)} MB)` : '';
     
     const fileTypeEmoji = fileExt === '.mp3' ? '🎵 MP3' : '🔊 FLAC';
     document.getElementById("output-file-path").innerHTML = 
       `<span class="font-bold">${fileTypeEmoji}</span> ${filepath} ${fileSize}`;
     
-    // Create audio player for MP3 files
-    createAudioPlayer(filepath);
+    if (fileExists) {
+      // Create audio player for the file
+      createAudioPlayer(filepath);
+    } else {
+      // Show error message if file doesn't exist
+      const errorContainer = document.createElement("div");
+      errorContainer.className = "mt-4 p-4 bg-red-100 text-red-700 rounded-md";
+      errorContainer.innerHTML = `
+        <h3 class="font-bold">Error: File Not Found</h3>
+        <p>The recording file could not be found at: ${filepath}</p>
+        <p class="mt-2">Please try recording again.</p>
+      `;
+      document.querySelector(".bg-white").appendChild(errorContainer);
+    }
   }
 });
 
