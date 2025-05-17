@@ -67,6 +67,7 @@ All notable changes to this project will be documented in this file.
 - Restructured Electron code into a layered architecture (main, preload, renderer) for better organization and separation of concerns
 - Removed duplicate electron directory to reduce confusion and consolidate all Electron code
 - Converted Electron code from CommonJS to ES modules to align with package.json type:module setting
+- Modified preload script to use CommonJS format with .cjs extension for better Electron compatibility
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
