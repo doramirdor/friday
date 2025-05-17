@@ -70,6 +70,21 @@ interface ElectronWindow extends Window {
       filePath?: string;
       message?: string;
     }>;
+    systemAudio?: {
+      checkPermissions: () => Promise<{ granted: boolean }>;
+      startRecording: (options?: { filepath?: string; filename?: string }) => Promise<{ success: boolean }>;
+      stopRecording: () => Promise<{ success: boolean }>;
+      onStatusUpdate: (callback: (status: string, timestamp: number, filepath: string) => void) => void;
+      onError: (callback: (errorCode: string) => void) => void;
+      selectFolder: () => void;
+      onFolderSelected: (callback: (path: string) => void) => void;
+    };
+    micRecording?: {
+      startRecording: (options?: { filepath?: string; filename?: string }) => Promise<{ success: boolean }>;
+      stopRecording: () => Promise<{ success: boolean }>;
+      onStatusUpdate: (callback: (status: string, timestamp: number, filepath: string) => void) => void;
+      onError: (callback: (errorCode: string) => void) => void;
+    };
   }
 }
 
@@ -178,7 +193,8 @@ const TranscriptDetails = () => {
   // Add state for tracking which recording source is active
   const [recordingSource, setRecordingSource] = useState('system'); // 'system' or 'mic'
 
-  // Add initialization check for recording services
+  // Replace the initialization approach with a more reliable one
+  const initStatusRef = useRef({ checked: false });
   const [recordingServicesInitialized, setRecordingServicesInitialized] = useState(false);
 
   // Format time in mm:ss format
@@ -328,30 +344,43 @@ const TranscriptDetails = () => {
     }
   }, [volume, isMuted]);
 
-  // Add an effect to initialize the recording services
+  // Update the initialization effect for more reliability
   useEffect(() => {
+    // Skip if we've already completed initialization
+    if (initStatusRef.current.checked) {
+      return;
+    }
+
     const checkRecordingServices = async () => {
       console.log("Checking recording services status...");
-      console.log("System audio available:", isNativeSystemAudioAvailable);
-      console.log("Mic recording available:", isMicRecordingAvailable);
+      console.log("System audio available (from hook):", isNativeSystemAudioAvailable);
+      console.log("Mic recording available (from hook):", isMicRecordingAvailable);
 
-      // If not already initialized, we'll wait a moment and check again
-      if (!isNativeSystemAudioAvailable || !isMicRecordingAvailable) {
-        console.log("At least one recording service isn't available, will initialize...");
+      // Track that we've checked at least once
+      initStatusRef.current.checked = true;
+
+      // Force a delay to ensure Electron IPC calls have completed
+      console.log("Waiting for services to fully initialize...");
+      setTimeout(() => {
+        // Read the state directly from the refs
+        const electronAPI = (window as unknown as ElectronWindow).electronAPI;
+        const systemAvailable = !!(electronAPI?.isElectron && electronAPI.systemAudio);
+        const micAvailable = !!(electronAPI?.isElectron && electronAPI.micRecording);
         
-        // Wait for services to finish initializing
-        setTimeout(() => {
-          console.log("After delay - System audio available:", isNativeSystemAudioAvailable);
-          console.log("After delay - Mic recording available:", isMicRecordingAvailable);
-          setRecordingServicesInitialized(true);
-        }, 1000);
-      } else {
+        console.log("After delay - Direct check for system audio:", systemAvailable);
+        console.log("After delay - Direct check for microphone:", micAvailable);
+        
+        // Set up initialization state based on direct check
         setRecordingServicesInitialized(true);
-      }
+
+        // Update availability info
+        console.log("All recording services initialized");
+      }, 1500); // Longer delay to ensure everything is ready
     };
 
+    // Start the initialization check
     checkRecordingServices();
-  }, [isNativeSystemAudioAvailable, isMicRecordingAvailable]);
+  }, []); // Empty dependency array - we only want to check once on mount
 
   const handlePlayPause = () => {
     if (!recordedAudioUrl || !audioRef.current) {
@@ -386,11 +415,20 @@ const TranscriptDetails = () => {
     }
   };
   
-  // Handle starting and stopping recording
+  // Update the handleStartStopRecording function to account for any remaining sync issues
   const handleStartStopRecording = useCallback(async () => {
+    // Read current state
     console.log("handleStartStopRecording isRecording: ", isRecording, "isMicRecording: ", isMicRecording, "recordingSource: ", recordingSource);
     console.log("isNativeRecording: ", isNativeRecording);
     console.log("Recording services initialized:", recordingServicesInitialized);
+    
+    // Force read the current state of services for maximum reliability
+    const electronAPI = (window as unknown as ElectronWindow).electronAPI;
+    const systemAvailable = !!(electronAPI?.isElectron && electronAPI.systemAudio);
+    const micAvailable = !!(electronAPI?.isElectron && electronAPI.micRecording);
+    
+    console.log("Direct check - system available:", systemAvailable);
+    console.log("Direct check - mic available:", micAvailable);
     
     // If already recording, stop the active recording
     if (isRecording || isNativeRecording || isMicRecording) {
@@ -421,22 +459,24 @@ const TranscriptDetails = () => {
     
     // Check if services are initialized
     if (!recordingServicesInitialized) {
-      console.log("Recording services not yet initialized, please try again in a moment");
-      toast.error("Recording services initializing, please try again in a moment");
+      console.log("Recording services still initializing, please try again in a moment");
+      toast.error("Recording services initializing, please try again in a moment", {
+        duration: 3000,
+      });
       return;
     }
 
     // Otherwise start a new recording with the selected source
-    if (recordingSource === 'system' && isNativeSystemAudioAvailable === true) {
-      // System audio recording
+    if (recordingSource === 'system' && systemAvailable) {
+      // System audio recording - using direct check for maximum reliability
       console.log("Starting system audio recording");
       const success = await startNativeRecording();
       console.log("System audio recording started: ", success);
       if (!success) {
         toast.error("Failed to start system audio recording");
       }
-    } else if (recordingSource === 'mic' && isMicRecordingAvailable) {
-      // Microphone recording
+    } else if (recordingSource === 'mic' && micAvailable) {
+      // Microphone recording - using direct check for maximum reliability
       console.log("Starting microphone recording");
       const success = await startMicRecording();
       console.log("Microphone recording started: ", success);
