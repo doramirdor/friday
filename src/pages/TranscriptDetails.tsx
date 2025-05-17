@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX, Broadcast } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX, Mic as MicIcon, Broadcast } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -568,37 +568,65 @@ const TranscriptDetails = () => {
               <div className="p-6 border-b">
                 {isNewMeeting || transcriptLines.length === 0 ? (
                   <div className="flex flex-col items-center gap-6 py-8">
-                    <div className="flex items-center justify-center mb-4 space-x-4">
+                    {/* Recording button with status */}
+                    <div className="flex flex-col items-center gap-4 mb-4">
                       <Button
                         variant={isRecording ? "recording_active" : "recording"}
                         size="xl"
                         onClick={handleStartStopRecording}
-                        className={`h-16 w-16 rounded-full flex items-center justify-center shadow-lg`}
+                        className="h-20 w-20 rounded-full flex items-center justify-center shadow-lg"
                       >
-                        {isRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
+                        {isRecording ? (
+                          <Square className="h-10 w-10" />
+                        ) : (
+                          <MicIcon className="h-10 w-10" />
+                        )}
                       </Button>
-                      <div className="text-base font-medium">
-                        {isRecording 
-                          ? `Recording: ${formatTime(recordingDuration)}` 
-                          : "Click to start recording"}
-                      </div>
+                      
+                      {isRecording ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-3 w-3 rounded-full bg-red-500 animate-pulse"></div>
+                          <span className="text-base font-medium text-red-500">
+                            Recording in progress... {formatTime(recordingDuration)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-base font-medium text-muted-foreground">
+                          Click to start recording
+                        </div>
+                      )}
                     </div>
                     
-                    {/* Add toggle for live transcript */}
-                    <div className="flex items-center gap-4 mt-2 p-4 bg-accent/10 rounded-lg shadow-sm border border-accent/20">
-                      <Broadcast className="h-5 w-5 text-primary" />
-                      <div>
-                        <div className="text-sm font-medium mb-1">Live Transcript</div>
-                        <div className="text-xs text-muted-foreground">
-                          {isLiveTranscript ? "Text is transcribed while you speak" : "Text is transcribed after recording"}
+                    {/* Live transcript toggle - Redesigned */}
+                    <div className="flex flex-col w-full max-w-md mx-auto">
+                      <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="font-medium text-base">Live Transcription</h3>
+                          <Switch
+                            checked={isLiveTranscript}
+                            onCheckedChange={handleToggleLiveTranscript}
+                            aria-label="Toggle live transcript"
+                          />
                         </div>
-                      </div>
-                      <div className="ml-auto">
-                        <Switch
-                          checked={isLiveTranscript}
-                          onCheckedChange={handleToggleLiveTranscript}
-                          aria-label="Toggle live transcript"
-                        />
+                        
+                        <div className="flex items-center gap-3 mt-2">
+                          <div className={`h-2.5 w-2.5 rounded-full ${isLiveTranscript ? "bg-green-500" : "bg-amber-500"}`}></div>
+                          <span className="text-sm font-medium">
+                            {isLiveTranscript ? "Active" : "Disabled"}
+                          </span>
+                        </div>
+                        
+                        <p className="text-xs text-muted-foreground mt-3">
+                          {isLiveTranscript 
+                            ? "Text will appear as you speak" 
+                            : "Text will be processed after recording stops"}
+                        </p>
+                        
+                        <div className="mt-4 text-xs text-slate-500 dark:text-slate-400 italic">
+                          {isElectron 
+                            ? "Using Google Speech API for high accuracy" 
+                            : "Using Web Speech API for transcription"}
+                        </div>
                       </div>
                     </div>
                   </div>

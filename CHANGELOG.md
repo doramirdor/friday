@@ -4,11 +4,13 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
-- Improved UI design for recording and live transcript buttons
+- Improved UI design for recording status with pulsing indicator
+- Enhanced visual presentation of live transcript toggle with status indicator
 - Consolidated "New Meeting" button to header only
 - Enhanced visual presentation of recording controls
 - Switched from Toggle to Switch component for better UX
 - Added gradient styling for primary action buttons
+- Improved recording button UI with larger size and clearer status display
 
 ## [0.2.0] - 2023-07-30
 
