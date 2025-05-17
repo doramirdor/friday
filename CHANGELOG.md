@@ -161,6 +161,7 @@ All notable changes to this project will be documented in this file.
 - Enhanced ffmpeg detection with more detailed error messaging
 - Simplified microphone access with improved permission handling
 - Added proper resource cleanup when switching between recording sources
+- Fixed reference errors in TranscriptDetails.tsx related to recording function names
 
 ## [0.2.1] - 2023-07-31
 
