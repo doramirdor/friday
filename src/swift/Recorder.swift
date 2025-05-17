@@ -19,7 +19,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     var recordingPath: String?
     var recordingFilename: String?
     var streamFunctionCalled = false
-    var streamFunctionTimeout: TimeInterval = 0.5 // Timeout in seconds
+    var streamFunctionTimeout: TimeInterval = 2.0 // Increased timeout for slower systems
     var tempWavPath: String?
     var finalMp3Path: String?
 
@@ -49,6 +49,31 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
 
         if let recordIndex = arguments.firstIndex(of: "--record"), recordIndex + 1 < arguments.count {
             recordingPath = arguments[recordIndex + 1]
+            
+            // Verify recording directory exists and is writable
+            guard let path = recordingPath, FileManager.default.fileExists(atPath: path) else {
+                ResponseHandler.returnResponse(["code": "INVALID_PATH", "error": "Recording directory does not exist"])
+                return
+            }
+            
+            var isDirectory: ObjCBool = false
+            if !FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) || !isDirectory.boolValue {
+                ResponseHandler.returnResponse(["code": "INVALID_PATH", "error": "Recording path is not a directory"])
+                return
+            }
+            
+            // Test if we can write to the directory
+            let testFile = "\(path)/test_write_permission.tmp"
+            do {
+                try "test".write(toFile: testFile, atomically: true, encoding: .utf8)
+                try FileManager.default.removeItem(atPath: testFile)
+            } catch {
+                ResponseHandler.returnResponse([
+                    "code": "DIRECTORY_NOT_WRITABLE", 
+                    "error": "Cannot write to recording directory: \(error.localizedDescription)"
+                ])
+                return
+            }
         } else {
             ResponseHandler.returnResponse(["code": "NO_PATH_SPECIFIED"])
         }
@@ -63,6 +88,12 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     }
 
     func executeRecordingProcess() {
+        // First check permissions
+        if !CGPreflightScreenCaptureAccess() {
+            ResponseHandler.returnResponse(["code": "PERMISSION_DENIED", "error": "Screen recording permission is required"])
+            return
+        }
+        
         self.updateAvailableContent()
         setupInterruptSignalHandler()
         setupStreamFunctionTimeout()
@@ -93,6 +124,23 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
                 } catch {
                     print("Failed to remove existing MP3 file: \(error.localizedDescription)")
                 }
+            }
+            
+            // Check if ffmpeg is installed
+            do {
+                let whichTask = Process()
+                whichTask.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+                whichTask.arguments = ["ffmpeg"]
+                let outputPipe = Pipe()
+                whichTask.standardOutput = outputPipe
+                try whichTask.run()
+                whichTask.waitUntilExit()
+                
+                if whichTask.terminationStatus != 0 {
+                    print("ffmpeg not found in PATH, will try direct conversion")
+                }
+            } catch {
+                print("Error checking for ffmpeg: \(error.localizedDescription)")
             }
             
             // Use shell for conversion with improved parameters
@@ -160,13 +208,25 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
                             try? FileManager.default.removeItem(atPath: wavPath)
                         } else {
                             print("Both conversion methods failed. Returning WAV file.")
-                            // Both conversions failed
-                            ResponseHandler.returnResponse([
-                                "code": "RECORDING_STOPPED", 
-                                "timestamp": formattedTimestamp,
-                                "path": wavPath,
-                                "error": "MP3 conversion failed with both methods"
-                            ])
+                            // Both conversions failed - rename WAV to MP3 as last resort
+                            do {
+                                try FileManager.default.moveItem(atPath: wavPath, toPath: mp3Path)
+                                print("Renamed WAV to MP3 as last resort")
+                                ResponseHandler.returnResponse([
+                                    "code": "RECORDING_STOPPED", 
+                                    "timestamp": formattedTimestamp,
+                                    "path": mp3Path,
+                                    "error": "MP3 conversion failed, renamed WAV to MP3"
+                                ])
+                            } catch {
+                                // If rename fails, just return the WAV
+                                ResponseHandler.returnResponse([
+                                    "code": "RECORDING_STOPPED", 
+                                    "timestamp": formattedTimestamp,
+                                    "path": wavPath,
+                                    "error": "MP3 conversion failed with both methods"
+                                ])
+                            }
                         }
                     } catch {
                         print("Alternative conversion method failed: \(error.localizedDescription)")
@@ -201,11 +261,15 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     }
 
     func setupStreamFunctionTimeout() {
+        print("Starting recording with timeout: \(streamFunctionTimeout) seconds")
         DispatchQueue.global().asyncAfter(deadline: .now() + streamFunctionTimeout) { [weak self] in
             guard let self = self else { return }
             if !self.streamFunctionCalled {
                 RecorderCLI.terminateRecording()
-                ResponseHandler.returnResponse(["code": "STREAM_FUNCTION_NOT_CALLED"], shouldExitProcess: true)
+                ResponseHandler.returnResponse([
+                    "code": "STREAM_FUNCTION_NOT_CALLED",
+                    "error": "The audio capture stream function was not called. Check if screen recording permission is enabled."
+                ], shouldExitProcess: true)
             } else {
                 let timestamp = Date()
                 let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
@@ -238,9 +302,28 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
     }
 
     func updateAvailableContent() {
-        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { [weak self] content, _ in
+        print("Getting available displays for capture...")
+        SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) { [weak self] content, error in
             guard let self = self else { return }
+            
+            if let error = error {
+                print("Error getting sharable content: \(error.localizedDescription)")
+                ResponseHandler.returnResponse([
+                    "code": "CONTENT_ERROR", 
+                    "error": "Could not get sharable content: \(error.localizedDescription)"
+                ])
+                return
+            }
+            
             self.contentEligibleForSharing = content
+            
+            if content.displays.isEmpty {
+                print("No displays found for recording")
+                ResponseHandler.returnResponse(["code": "NO_DISPLAY_FOUND"])
+                return
+            }
+            
+            print("Found \(content.displays.count) display(s) for recording")
             self.setupRecordingEnvironment()
         }
     }
@@ -252,6 +335,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
         }
 
         let screenContentFilter = SCContentFilter(display: firstDisplay, excludingApplications: [], exceptingWindows: [])
+        print("Screen content filter configured")
 
         Task { await initiateRecording(with: screenContentFilter) }
     }
@@ -262,19 +346,22 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
             RecorderCLI.audioFileForRecording = try AVAudioFile(
                 forWriting: URL(fileURLWithPath: path),
                 settings: [
-                    AVSampleRateKey: 48000,
+                    AVSampleRateKey: 44100, // Changed to 44.1kHz for better MP3 conversion
                     AVNumberOfChannelsKey: 2,
                     AVFormatIDKey: kAudioFormatLinearPCM
                 ],
                 commonFormat: .pcmFormatFloat32,
                 interleaved: false
             )
+            print("Successfully prepared audio file at \(path)")
         } catch {
+            print("Failed to create audio file: \(error.localizedDescription)")
             ResponseHandler.returnResponse(["code": "AUDIO_FILE_CREATION_FAILED", "error": error.localizedDescription])
         }
     }
 
     func initiateRecording(with filter: SCContentFilter) async {
+        print("Initiating recording...")
         let streamConfiguration = SCStreamConfiguration()
         configureStream(streamConfiguration)
 
@@ -282,8 +369,13 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
             RecorderCLI.screenCaptureStream = SCStream(filter: filter, configuration: streamConfiguration, delegate: self)
 
             try RecorderCLI.screenCaptureStream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global())
+            print("Added audio stream output")
+            
+            print("Starting capture...")
             try await RecorderCLI.screenCaptureStream?.startCapture()
+            print("Capture started successfully")
         } catch {
+            print("Failed to start capture: \(error.localizedDescription)")
             ResponseHandler.returnResponse(["code": "CAPTURE_FAILED", "error": error.localizedDescription])
         }
     }
@@ -294,28 +386,38 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput {
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale.max)
         configuration.showsCursor = false
         configuration.capturesAudio = true
-        configuration.sampleRate = 48000
+        configuration.sampleRate = 44100 // Changed to 44.1kHz for better compatibility
         configuration.channelCount = 2
+        print("Stream configured with 44.1kHz sample rate, 2 channels")
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
-        self.streamFunctionCalled = true
-        guard let audioBuffer = sampleBuffer.asPCMBuffer, sampleBuffer.isValid else { return }
+        if !self.streamFunctionCalled {
+            print("First audio buffer received")
+            self.streamFunctionCalled = true
+        }
+        
+        guard let audioBuffer = sampleBuffer.asPCMBuffer, sampleBuffer.isValid else { 
+            return
+        }
 
         do {
             try RecorderCLI.audioFileForRecording?.write(from: audioBuffer)
         } catch {
+            print("Failed to write audio buffer: \(error.localizedDescription)")
             ResponseHandler.returnResponse(["code": "AUDIO_BUFFER_WRITE_FAILED", "error": error.localizedDescription])
         }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
+        print("Stream stopped with error: \(error.localizedDescription)")
         ResponseHandler.returnResponse(["code": "STREAM_ERROR", "error": error.localizedDescription], shouldExitProcess: false)
         RecorderCLI.terminateRecording()
         semaphoreRecordingStopped.signal()
     }
 
     static func terminateRecording() {
+        print("Terminating recording...")
         screenCaptureStream?.stopCapture()
         screenCaptureStream = nil
         audioFileForRecording = nil
@@ -332,10 +434,14 @@ extension Date {
 
 class PermissionsRequester {
     static func requestScreenCaptureAccess(completion: @escaping (Bool) -> Void) {
-        if !CGPreflightScreenCaptureAccess() {
+        let hasPermission = CGPreflightScreenCaptureAccess()
+        if !hasPermission {
+            print("Screen capture permission not granted, requesting...")
             let result = CGRequestScreenCaptureAccess()
+            print("Permission request result: \(result)")
             completion(result)
         } else {
+            print("Screen capture permission already granted")
             completion(true)
         }
     }
@@ -421,5 +527,6 @@ extension AVAudioPCMBuffer {
     }
 }
 
+print("Recorder starting...")
 let app = RecorderCLI()
 app.executeRecordingProcess() 

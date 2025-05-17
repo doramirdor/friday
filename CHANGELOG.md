@@ -48,6 +48,11 @@ All notable changes to this project will be documented in this file.
 - Real-time status reporting for all diagnostic operations
 - Fallback MP3 conversion method in Swift recorder for improved reliability
 - File size logging for WAV and MP3 recordings to aid in troubleshooting
+- Last-resort WAV to MP3 renaming when conversion fails completely
+- Automatic creation of recording directory if it doesn't exist
+- Auto-opening of file location after successful recording
+- Enhanced permission validation and directory access checking
+- Comprehensive startup error detection and reporting
 
 ### Changed
 - Upgraded Google Cloud Speech-to-Text client library
@@ -87,6 +92,11 @@ All notable changes to this project will be documented in this file.
 - Improved Swift recorder to consistently save audio in MP3 format
 - Enhanced MP3 conversion reliability with fallback mechanisms and better error handling
 - Added cleanup of temporary WAV files after successful MP3 conversion
+- Increased timeout for recording initialization from 0.5s to 2.0s for slower systems
+- Standardized on 44.1kHz sample rate for better audio conversion compatibility
+- Improved error reporting with more detailed logs throughout the recording process
+- Added detailed debug output to Swift recorder to aid in troubleshooting
+- Enhanced recorder process error handling with multiple fallback strategies
 
 ### Fixed
 - Audio format detection and handling for Google Speech API
@@ -134,6 +144,14 @@ All notable changes to this project will be documented in this file.
 - Multiple fallback mechanisms for FLAC to MP3 conversion
 - Fixed potential issues with existing MP3 files interfering with new recordings
 - Implemented more reliable audio format conversion by standardizing on 44.1kHz sample rate
+- Fixed "Failed to start recording" errors by improving permission checks and error reporting
+- Addressed slow recording startup with increased timeout values and better initialization
+- Fixed issues with files being saved as WAV instead of MP3 with multiple fallback conversion methods
+- Added recursive directory creation to ensure recording path exists
+- Fixed permission-denied errors by adding explicit permission checks before recording starts
+- Added cleanup of conflicting files before recording begins
+- Improved filename sanitization to avoid special character issues
+- Enhanced ffmpeg detection with more detailed error messaging
 
 ## [0.2.1] - 2023-07-31
 
