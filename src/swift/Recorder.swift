@@ -11,7 +11,7 @@ func handleInterruptSignal(signal: Int32) {
     }
 }
 
-class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDelegate {
+class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDelegate, AVAudioMixerNode, AVAudioPlayerDelegate {
     static var screenCaptureStream: SCStream?
     static var audioFileForRecording: AVAudioFile?
     var contentEligibleForSharing: SCShareableContent?
@@ -25,6 +25,19 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     var audioSource: String = "system" // Default to system audio
     var microphoneRecorder: AVAudioRecorder?
     var audioSession: AVAudioSession?
+    
+    // For combined recording
+    var audioEngine: AVAudioEngine?
+    var systemAudioFormat: AVAudioFormat?
+    var mixerNode: AVAudioMixerNode?
+    var micInput: AVAudioInputNode?
+    var systemRecordingActive = false
+    var micRecordingActive = false
+    
+    // Temporary files for combined recording
+    var systemTempWavPath: String?
+    var micTempWavPath: String?
+    var combinedTempWavPath: String?
 
     override init() {
         super.init()
@@ -92,7 +105,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         // Check if audio source is specified
         if let sourceIndex = arguments.firstIndex(of: "--source"), sourceIndex + 1 < arguments.count {
             let source = arguments[sourceIndex + 1].lowercased()
-            if source == "mic" || source == "system" {
+            if source == "mic" || source == "system" || source == "both" {
                 audioSource = source
                 print("Using audio source: \(audioSource)")
             } else {
@@ -102,13 +115,40 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     }
 
     func executeRecordingProcess() {
-        if audioSource == "system" {
+        if audioSource == "system" || audioSource == "both" {
             // First check permissions for system audio
             if !CGPreflightScreenCaptureAccess() {
                 ResponseHandler.returnResponse(["code": "PERMISSION_DENIED", "error": "Screen recording permission is required for system audio"])
                 return
             }
+        }
+        
+        // Create timestamp and filename
+        let timestamp = Date()
+        let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
+        
+        // Generate unique timestamp-based filename if none provided
+        let baseFilename: String
+        if let providedFilename = self.recordingFilename, !providedFilename.isEmpty {
+            baseFilename = providedFilename
+        } else {
+            baseFilename = timestamp.toFormattedFileName()
+        }
+        
+        // Set up paths for different recording types
+        self.tempWavPath = "\(self.recordingPath!)/\(baseFilename).wav"
+        self.finalMp3Path = "\(self.recordingPath!)/\(baseFilename).mp3"
+        
+        if audioSource == "both" {
+            // For combined recording, set up additional temp paths
+            self.systemTempWavPath = "\(self.recordingPath!)/\(baseFilename)_system.wav"
+            self.micTempWavPath = "\(self.recordingPath!)/\(baseFilename)_mic.wav"
+            self.combinedTempWavPath = self.tempWavPath
             
+            // Start combined recording
+            setupCombinedRecording(formattedTimestamp: formattedTimestamp)
+        } else if audioSource == "system" {
+            // Start system audio recording
             self.updateAvailableContent()
         } else {
             // Microphone recording
@@ -116,10 +156,141 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         }
         
         setupInterruptSignalHandler()
+        
         if audioSource == "system" {
             setupStreamFunctionTimeout()
         }
+        
         semaphoreRecordingStopped.wait()
+    }
+    
+    func setupCombinedRecording(formattedTimestamp: String) {
+        print("Setting up combined recording (system audio + microphone)...")
+        
+        // Initialize the audio engine
+        audioEngine = AVAudioEngine()
+        mixerNode = AVAudioMixerNode()
+        guard let audioEngine = audioEngine, let mixerNode = mixerNode else {
+            ResponseHandler.returnResponse([
+                "code": "CAPTURE_FAILED", 
+                "error": "Failed to initialize audio engine for combined recording"
+            ])
+            return
+        }
+        
+        // Configure audio session
+        do {
+            audioSession = AVAudioSession.sharedInstance()
+            try audioSession?.setCategory(.playAndRecord, options: [.mixWithOthers, .allowBluetooth])
+            try audioSession?.setActive(true)
+        } catch {
+            print("Error setting up audio session: \(error.localizedDescription)")
+            ResponseHandler.returnResponse([
+                "code": "CAPTURE_FAILED", 
+                "error": "Audio session setup failed: \(error.localizedDescription)"
+            ])
+            return
+        }
+        
+        // Start system audio recording
+        print("Starting system audio component of combined recording...")
+        
+        // Start microphone recording
+        print("Starting microphone component of combined recording...")
+        setupMicrophoneForCombinedRecording()
+        
+        // Set up screen capture for system audio
+        self.updateAvailableContent()
+        
+        // Notify recording started
+        ResponseHandler.returnResponse([
+            "code": "RECORDING_STARTED", 
+            "path": self.finalMp3Path!, 
+            "timestamp": formattedTimestamp,
+            "combined": true
+        ], shouldExitProcess: false)
+    }
+    
+    func setupMicrophoneForCombinedRecording() {
+        print("Setting up microphone for combined recording...")
+        
+        if microphoneRecorder != nil {
+            return  // Already set up
+        }
+        
+        // Log available audio inputs for diagnosis
+        print("Checking available audio inputs:")
+        let audioSession = AVAudioSession.sharedInstance()
+        let inputs = audioSession.availableInputs ?? []
+        for input in inputs {
+            print("- Input: \(input.portName), \(input.portType)")
+            if let channels = input.channels {
+                print("  Channels: \(channels.count)")
+                for (i, channel) in channels.enumerated() {
+                    print("  Channel \(i): \(channel.channelName ?? "Unnamed"), \(channel.channelNumber)")
+                }
+            }
+        }
+        
+        // Print selected input device
+        print("Currently selected input: \(audioSession.currentRoute.inputs.map { $0.portName }.joined(separator: ", "))")
+        
+        // Configure recording settings
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVSampleRateKey: 44100.0,
+            AVNumberOfChannelsKey: 2,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+        
+        do {
+            guard let micPath = micTempWavPath else {
+                print("Mic temp path not set")
+                return
+            }
+            
+            // Create recorder
+            microphoneRecorder = try AVAudioRecorder(url: URL(fileURLWithPath: micPath), settings: settings)
+            microphoneRecorder?.delegate = self
+            
+            // Add meter monitoring for audio levels
+            microphoneRecorder?.isMeteringEnabled = true
+            
+            if microphoneRecorder?.prepareToRecord() == true {
+                // Start recording
+                let success = microphoneRecorder?.record() ?? false
+                
+                if success {
+                    print("Microphone component started successfully")
+                    micRecordingActive = true
+                    
+                    // Start a timer to monitor microphone audio levels
+                    DispatchQueue.global(qos: .background).async {
+                        while self.micRecordingActive && self.microphoneRecorder?.isRecording == true {
+                            self.microphoneRecorder?.updateMeters()
+                            let avgPower = self.microphoneRecorder?.averagePower(forChannel: 0) ?? -160.0
+                            let peakPower = self.microphoneRecorder?.peakPower(forChannel: 0) ?? -160.0
+                            print("Mic levels - Avg: \(avgPower) dB, Peak: \(peakPower) dB")
+                            
+                            // Check if mic is picking up sound (above -50dB)
+                            if avgPower > -50.0 {
+                                print("✅ Microphone is detecting sound")
+                            } else {
+                                print("⚠️ Microphone level is low")
+                            }
+                            
+                            Thread.sleep(forTimeInterval: 1.0) // Check once per second
+                        }
+                    }
+                } else {
+                    print("Failed to start microphone component")
+                }
+            } else {
+                print("Failed to prepare microphone component")
+            }
+        } catch {
+            print("Microphone setup error: \(error.localizedDescription)")
+        }
     }
     
     func setupMicrophoneRecording() {
@@ -149,6 +320,26 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
             try audioSession?.setCategory(.record)
             try audioSession?.setActive(true)
             
+            // Log available audio inputs for diagnosis
+            print("Checking available audio inputs:")
+            let inputs = audioSession?.availableInputs ?? []
+            for input in inputs {
+                print("- Input: \(input.portName), \(input.portType)")
+                if let channels = input.channels {
+                    print("  Channels: \(channels.count)")
+                    for (i, channel) in channels.enumerated() {
+                        print("  Channel \(i): \(channel.channelName ?? "Unnamed"), \(channel.channelNumber)")
+                    }
+                }
+            }
+            
+            // Print selected input device
+            if let currentInputs = audioSession?.currentRoute.inputs {
+                print("Currently selected input: \(currentInputs.map { $0.portName }.joined(separator: ", "))")
+            } else {
+                print("No current input detected")
+            }
+            
             // Configure recording settings
             let settings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatLinearPCM),
@@ -160,6 +351,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
             // Create recorder
             microphoneRecorder = try AVAudioRecorder(url: URL(fileURLWithPath: tempWavPath!), settings: settings)
             microphoneRecorder?.delegate = self
+            microphoneRecorder?.isMeteringEnabled = true
             
             if microphoneRecorder?.prepareToRecord() == true {
                 // Start recording
@@ -167,6 +359,27 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                 
                 if success {
                     print("Microphone recording started successfully")
+                    
+                    // Start a timer to monitor microphone audio levels
+                    DispatchQueue.global(qos: .background).async { [weak self] in
+                        guard let self = self else { return }
+                        
+                        while self.microphoneRecorder?.isRecording == true {
+                            self.microphoneRecorder?.updateMeters()
+                            let avgPower = self.microphoneRecorder?.averagePower(forChannel: 0) ?? -160.0
+                            let peakPower = self.microphoneRecorder?.peakPower(forChannel: 0) ?? -160.0
+                            print("Mic levels - Avg: \(avgPower) dB, Peak: \(peakPower) dB")
+                            
+                            // Check if mic is picking up sound
+                            if avgPower > -50.0 {
+                                print("✅ Microphone is detecting sound")
+                            } else {
+                                print("⚠️ Microphone level is low")
+                            }
+                            
+                            Thread.sleep(forTimeInterval: 1.0)
+                        }
+                    }
                     
                     // Notify recording started
                     ResponseHandler.returnResponse([
@@ -197,10 +410,20 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         }
     }
     
-    // AVAudioRecorderDelegate method
+    // AVAudioRecorderDelegate methods
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         print("Microphone recording finished, success: \(flag)")
-        if flag {
+        
+        if audioSource == "both" {
+            micRecordingActive = false
+            
+            // For combined recording, we need both recordings to finish
+            if !systemRecordingActive {
+                // Both recordings are done, combine them
+                combineAndConvertRecordings()
+            }
+        } else if flag {
+            // Standard mic-only recording
             convertAndFinish()
         } else {
             ResponseHandler.returnResponse([
@@ -223,12 +446,215 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         signal(SIGINT, handleInterruptSignal)
     }
     
+    func combineAndConvertRecordings() {
+        // Combine system audio and microphone recordings
+        print("Combining system audio and microphone recordings...")
+        
+        guard let systemPath = systemTempWavPath,
+              let micPath = micTempWavPath,
+              let combinedPath = combinedTempWavPath else {
+            print("Error: Missing file paths for combined recording")
+            ResponseHandler.returnResponse([
+                "code": "RECORDING_ERROR",
+                "error": "Missing file paths for combined recording"
+            ])
+            return
+        }
+        
+        // Check if both files exist
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: systemPath) else {
+            print("System audio file doesn't exist: \(systemPath)")
+            // If no system audio, just use mic recording
+            try? fileManager.copyItem(atPath: micPath, toPath: combinedPath)
+            print("Using microphone recording only (system audio file missing)")
+            convertAndFinish()
+            return
+        }
+        
+        guard fileManager.fileExists(atPath: micPath) else {
+            print("Microphone file doesn't exist: \(micPath)")
+            // If no mic recording, just use system audio
+            try? fileManager.copyItem(atPath: systemPath, toPath: combinedPath)
+            print("Using system audio recording only (microphone file missing)")
+            convertAndFinish()
+            return
+        }
+        
+        // Get file sizes for diagnosis
+        do {
+            let systemAttrs = try fileManager.attributesOfItem(atPath: systemPath)
+            let micAttrs = try fileManager.attributesOfItem(atPath: micPath)
+            if let systemSize = systemAttrs[.size] as? UInt64,
+               let micSize = micAttrs[.size] as? UInt64 {
+                print("System audio file size: \(systemSize / 1024) KB")
+                print("Microphone file size: \(micSize / 1024) KB")
+                
+                // Check for suspiciously small files that might indicate no recording occurred
+                if systemSize < 1024 {  // Less than 1KB
+                    print("⚠️ Warning: System audio file is suspiciously small: \(systemSize) bytes")
+                }
+                
+                if micSize < 1024 {  // Less than 1KB
+                    print("⚠️ Warning: Microphone audio file is suspiciously small: \(micSize) bytes")
+                }
+            }
+        } catch {
+            print("Error getting file sizes: \(error.localizedDescription)")
+        }
+        
+        // Create a debug/test file with a simple ffmpeg command to validate merging functionality
+        print("Creating test file to validate ffmpeg functionality...")
+        let testPath = "\(self.recordingPath!)/ffmpeg_test_output.wav"
+        
+        do {
+            let testTask = Process()
+            testTask.executableURL = URL(fileURLWithPath: "/bin/sh")
+            testTask.arguments = [
+                "-c",
+                "ffmpeg -version && ffmpeg -f lavfi -i sine=frequency=440:duration=1 \"\(testPath)\" -y"
+            ]
+            
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            testTask.standardOutput = outputPipe
+            testTask.standardError = errorPipe
+            
+            try testTask.run()
+            testTask.waitUntilExit()
+            
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: outputData, encoding: .utf8) ?? ""
+            let error = String(data: errorData, encoding: .utf8) ?? ""
+            
+            print("ffmpeg test output: \(output)")
+            if !error.isEmpty {
+                print("ffmpeg test error: \(error)")
+            }
+            
+            print("ffmpeg test exit status: \(testTask.terminationStatus)")
+        } catch {
+            print("Error running ffmpeg test: \(error.localizedDescription)")
+        }
+        
+        // Mix the two audio files using ffmpeg
+        do {
+            // Run ffmpeg to mix the files with detailed output
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/sh")
+            
+            // Construct a command that keeps both audio streams at their original volume
+            // and ensures both are audible in the output
+            let ffmpegCommand = "ffmpeg -y -i \"\(systemPath)\" -i \"\(micPath)\" -filter_complex \"[0:a]volume=1.0[a];[1:a]volume=1.0[b];[a][b]amix=inputs=2:duration=longest\" \"\(combinedPath)\" -v verbose"
+            print("Running ffmpeg command: \(ffmpegCommand)")
+            
+            task.arguments = ["-c", ffmpegCommand]
+            
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            task.standardOutput = outputPipe
+            task.standardError = errorPipe
+            
+            try task.run()
+            task.waitUntilExit()
+            
+            // Capture and log the command output
+            let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: outputData, encoding: .utf8) ?? ""
+            let error = String(data: errorData, encoding: .utf8) ?? ""
+            
+            if !output.isEmpty {
+                print("ffmpeg output: \(output)")
+            }
+            
+            if !error.isEmpty {
+                print("ffmpeg error output: \(error)")
+            }
+            
+            if task.terminationStatus == 0 {
+                print("Successfully combined audio recordings")
+                
+                // Verify the combined file exists and has reasonable size
+                if fileManager.fileExists(atPath: combinedPath) {
+                    do {
+                        let attrs = try fileManager.attributesOfItem(atPath: combinedPath)
+                        if let size = attrs[.size] as? UInt64 {
+                            print("Combined file size: \(size / 1024) KB")
+                            
+                            // Warn if file size is unexpectedly small
+                            if size < 1024 * 10 { // Less than 10KB
+                                print("⚠️ Warning: Combined file is suspiciously small: \(size) bytes")
+                            }
+                        }
+                    } catch {
+                        print("Error getting combined file size: \(error)")
+                    }
+                } else {
+                    print("⚠️ Warning: Combined file was not created at \(combinedPath)")
+                }
+                
+                // Clean up individual recordings
+                try? fileManager.removeItem(atPath: systemPath)
+                try? fileManager.removeItem(atPath: micPath)
+                
+                // Convert final WAV to MP3
+                convertAndFinish()
+            } else {
+                print("Failed to combine audio recordings, exit code: \(task.terminationStatus)")
+                print("Using simple file concatenation as fallback")
+                
+                // Try alternative approach - concatenating files instead of mixing
+                let alternativeTask = Process()
+                alternativeTask.executableURL = URL(fileURLWithPath: "/bin/sh")
+                alternativeTask.arguments = [
+                    "-c",
+                    "ffmpeg -y -i \"\(systemPath)\" -i \"\(micPath)\" -filter_complex \"[0:a][1:a]concat=n=2:v=0:a=1\" \"\(combinedPath)\" -v verbose"
+                ]
+                
+                try alternativeTask.run()
+                alternativeTask.waitUntilExit()
+                
+                if alternativeTask.terminationStatus == 0 {
+                    print("Alternative combination method successful")
+                    convertAndFinish()
+                } else {
+                    // If alternative fails, just use system audio
+                    print("Both combination methods failed, using system audio only")
+                    try? fileManager.copyItem(atPath: systemPath, toPath: combinedPath)
+                    convertAndFinish()
+                }
+            }
+        } catch {
+            print("Error combining audio recordings: \(error.localizedDescription)")
+            // Fallback to system audio
+            print("Using system audio only due to error")
+            try? fileManager.copyItem(atPath: systemPath, toPath: combinedPath)
+            convertAndFinish()
+        }
+    }
+    
     func convertAndFinish() {
         let timestamp = Date()
         let formattedTimestamp = ISO8601DateFormatter().string(from: timestamp)
         
-        // If this is a microphone recording, stop it first
-        if audioSource == "mic" && microphoneRecorder?.isRecording == true {
+        // Stop all recordings first
+        if audioSource == "both" {
+            // Stop the microphone component if it's still recording
+            if microphoneRecorder?.isRecording == true {
+                microphoneRecorder?.stop()
+                micRecordingActive = false
+            }
+            
+            // Stop the system audio component if it's still active
+            if RecorderCLI.screenCaptureStream != nil {
+                RecorderCLI.terminateRecording()
+                systemRecordingActive = false
+            }
+            
+            try? audioSession?.setActive(false)
+        } else if audioSource == "mic" && microphoneRecorder?.isRecording == true {
             microphoneRecorder?.stop()
             try? audioSession?.setActive(false)
         }
@@ -293,7 +719,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                     ResponseHandler.returnResponse([
                         "code": "RECORDING_STOPPED", 
                         "timestamp": formattedTimestamp,
-                        "path": mp3Path
+                        "path": mp3Path,
+                        "combined": audioSource == "both"
                     ])
                     
                     // Clean up temporary WAV file
@@ -325,7 +752,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                             ResponseHandler.returnResponse([
                                 "code": "RECORDING_STOPPED", 
                                 "timestamp": formattedTimestamp,
-                                "path": mp3Path
+                                "path": mp3Path,
+                                "combined": audioSource == "both"
                             ])
                             
                             // Clean up
@@ -340,7 +768,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                                     "code": "RECORDING_STOPPED", 
                                     "timestamp": formattedTimestamp,
                                     "path": mp3Path,
-                                    "error": "MP3 conversion failed, renamed WAV to MP3"
+                                    "error": "MP3 conversion failed, renamed WAV to MP3",
+                                    "combined": audioSource == "both"
                                 ])
                             } catch {
                                 // If rename fails, just return the WAV
@@ -348,7 +777,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                                     "code": "RECORDING_STOPPED", 
                                     "timestamp": formattedTimestamp,
                                     "path": wavPath,
-                                    "error": "MP3 conversion failed with both methods"
+                                    "error": "MP3 conversion failed with both methods",
+                                    "combined": audioSource == "both"
                                 ])
                             }
                         }
@@ -359,7 +789,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                             "code": "RECORDING_STOPPED", 
                             "timestamp": formattedTimestamp,
                             "path": wavPath,
-                            "error": "MP3 conversion error: \(error.localizedDescription)"
+                            "error": "MP3 conversion error: \(error.localizedDescription)",
+                            "combined": audioSource == "both"
                         ])
                     }
                 }
@@ -370,7 +801,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                     "code": "RECORDING_STOPPED", 
                     "timestamp": formattedTimestamp,
                     "path": wavPath,
-                    "error": "MP3 conversion error: \(error.localizedDescription)"
+                    "error": "MP3 conversion error: \(error.localizedDescription)",
+                    "combined": audioSource == "both"
                 ])
             }
         } else {
@@ -379,7 +811,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                 "code": "RECORDING_STOPPED", 
                 "timestamp": formattedTimestamp,
                 "path": outputPath,
-                "error": "No recording file created"
+                "error": "No recording file created",
+                "combined": audioSource == "both"
             ])
         }
     }
@@ -406,21 +839,36 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                     baseFilename = timestamp.toFormattedFileName()
                 }
                 
-                // First save as WAV (much more reliable format for capturing)
-                self.tempWavPath = "\(self.recordingPath!)/\(baseFilename).wav"
-                print("Saving recording to temporary WAV: \(self.tempWavPath!)")
-                
-                // Set the final MP3 path
-                self.finalMp3Path = "\(self.recordingPath!)/\(baseFilename).mp3"
-                
-                // Prepare the audio file (using WAV for capture)
-                self.prepareAudioFile(at: self.tempWavPath!)
+                // For combined recording, use a different path
+                if self.audioSource == "both" {
+                    if self.systemTempWavPath == nil {
+                        self.systemTempWavPath = "\(self.recordingPath!)/\(baseFilename)_system.wav" 
+                    }
+                    
+                    // Prepare the audio file for system audio
+                    self.prepareAudioFile(at: self.systemTempWavPath!)
+                    self.systemRecordingActive = true
+                } else {
+                    // First save as WAV (much more reliable format for capturing)
+                    self.tempWavPath = "\(self.recordingPath!)/\(baseFilename).wav"
+                    print("Saving recording to temporary WAV: \(self.tempWavPath!)")
+                    
+                    // Set the final MP3 path
+                    self.finalMp3Path = "\(self.recordingPath!)/\(baseFilename).mp3"
+                    
+                    // Prepare the audio file (using WAV for capture)
+                    self.prepareAudioFile(at: self.tempWavPath!)
+                }
 
-                ResponseHandler.returnResponse([
-                    "code": "RECORDING_STARTED", 
-                    "path": self.finalMp3Path!, 
-                    "timestamp": formattedTimestamp
-                ], shouldExitProcess: false)
+                // Only send RECORDING_STARTED for system-only recording
+                // For combined recording, we've already sent this
+                if self.audioSource != "both" {
+                    ResponseHandler.returnResponse([
+                        "code": "RECORDING_STARTED", 
+                        "path": self.finalMp3Path!, 
+                        "timestamp": formattedTimestamp
+                    ], shouldExitProcess: false)
+                }
             }
         }
     }
@@ -498,6 +946,10 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
             print("Starting capture...")
             try await RecorderCLI.screenCaptureStream?.startCapture()
             print("Capture started successfully")
+            
+            if audioSource == "both" {
+                systemRecordingActive = true
+            }
         } catch {
             print("Failed to start capture: \(error.localizedDescription)")
             ResponseHandler.returnResponse(["code": "CAPTURE_FAILED", "error": error.localizedDescription])
@@ -536,8 +988,18 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         print("Stream stopped with error: \(error.localizedDescription)")
         ResponseHandler.returnResponse(["code": "STREAM_ERROR", "error": error.localizedDescription], shouldExitProcess: false)
-        RecorderCLI.terminateRecording()
-        semaphoreRecordingStopped.signal()
+        
+        if audioSource == "both" {
+            systemRecordingActive = false
+            
+            // If microphone is also done, finalize the recording
+            if !micRecordingActive {
+                combineAndConvertRecordings()
+            }
+        } else {
+            RecorderCLI.terminateRecording()
+            semaphoreRecordingStopped.signal()
+        }
     }
 
     static func terminateRecording() {
