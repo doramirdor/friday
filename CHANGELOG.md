@@ -38,6 +38,9 @@ All notable changes to this project will be documented in this file.
 - System audio recording errors in specific hardware configurations
 - UI state management during ongoing recordings
 - Electron main process memory management during long recordings
+- Microphone not being detected in combined recording mode due to iOS-specific AVAudioSession APIs
+- Compiler errors related to incompatible AVAudioSession APIs on macOS
+- "Mic levels" monitoring in combined recording mode
 
 ## [0.2.1] - 2023-07-31
 
