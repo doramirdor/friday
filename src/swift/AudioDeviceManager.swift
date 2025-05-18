@@ -7,7 +7,7 @@ class AudioDeviceManager {
     /**
      * Lists audio input devices detected on the system
      */
-    static func listAudioInputDevices() -> [String] {
+    static func listAudioDevices() -> [String] {
         var deviceNames: [String] = []
         
         // Execute system_profiler command to get audio device information
@@ -51,10 +51,17 @@ class AudioDeviceManager {
     }
     
     /**
+     * Lists audio input devices (alias for listAudioDevices for compatibility)
+     */
+    static func listAudioInputDevices() -> [String] {
+        return listAudioDevices()
+    }
+    
+    /**
      * Gets the default audio input device
      */
     static func getDefaultInputDevice() -> String? {
-        let devices = listAudioInputDevices()
+        let devices = listAudioDevices()
         return devices.first
     }
     
@@ -62,7 +69,7 @@ class AudioDeviceManager {
      * Checks if a microphone is currently available
      */
     static func isMicrophoneAvailable() -> Bool {
-        return !listAudioInputDevices().isEmpty
+        return !listAudioDevices().isEmpty
     }
     
     /**
@@ -101,7 +108,7 @@ class AudioDeviceManager {
         print("-----------------------------")
         
         // Log input devices
-        let inputDevices = listAudioInputDevices()
+        let inputDevices = listAudioDevices()
         print("Input devices detected: \(inputDevices.count)")
         for (index, device) in inputDevices.enumerated() {
             print("[\(index+1)] \(device)")

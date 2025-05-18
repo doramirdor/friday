@@ -11,7 +11,7 @@ func handleInterruptSignal(signal: Int32) {
     }
 }
 
-class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDelegate, AVAudioMixerNode, AVAudioPlayerDelegate {
+class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDelegate, AVAudioPlayerDelegate {
     static var screenCaptureStream: SCStream?
     static var audioFileForRecording: AVAudioFile?
     var contentEligibleForSharing: SCShareableContent?
@@ -24,15 +24,17 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     var finalMp3Path: String?
     var audioSource: String = "system" // Default to system audio
     var microphoneRecorder: AVAudioRecorder?
+    
+    // We'll stop using AVAudioSession on macOS altogether
+    #if os(iOS)
     var audioSession: AVAudioSession?
+    #endif
     
     // For combined recording
     var audioEngine: AVAudioEngine?
     var systemAudioFormat: AVAudioFormat?
-    var mixerNode: AVAudioMixerNode?
-    var micInput: AVAudioInputNode?
-    var systemRecordingActive = false
     var micRecordingActive = false
+    var systemRecordingActive = false
     
     // Temporary files for combined recording
     var systemTempWavPath: String?
@@ -167,39 +169,15 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     func setupCombinedRecording(formattedTimestamp: String) {
         print("Setting up combined recording (system audio + microphone)...")
         
-        // Initialize the audio engine
-        audioEngine = AVAudioEngine()
-        mixerNode = AVAudioMixerNode()
-        guard let audioEngine = audioEngine, let mixerNode = mixerNode else {
-            ResponseHandler.returnResponse([
-                "code": "CAPTURE_FAILED", 
-                "error": "Failed to initialize audio engine for combined recording"
-            ])
-            return
-        }
+        // On macOS, we don't need to use the AVAudioSession
+        // Just set up the separate recordings
         
-        // Configure audio session
-        do {
-            audioSession = AVAudioSession.sharedInstance()
-            try audioSession?.setCategory(.playAndRecord, options: [.mixWithOthers, .allowBluetooth])
-            try audioSession?.setActive(true)
-        } catch {
-            print("Error setting up audio session: \(error.localizedDescription)")
-            ResponseHandler.returnResponse([
-                "code": "CAPTURE_FAILED", 
-                "error": "Audio session setup failed: \(error.localizedDescription)"
-            ])
-            return
-        }
-        
-        // Start system audio recording
-        print("Starting system audio component of combined recording...")
-        
-        // Start microphone recording
+        // Start microphone recording first
         print("Starting microphone component of combined recording...")
         setupMicrophoneForCombinedRecording()
         
-        // Set up screen capture for system audio
+        // Then set up screen capture for system audio
+        print("Starting system audio component of combined recording...")
         self.updateAvailableContent()
         
         // Notify recording started
@@ -218,22 +196,18 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
             return  // Already set up
         }
         
-        // Log available audio inputs for diagnosis
-        print("Checking available audio inputs:")
-        let audioSession = AVAudioSession.sharedInstance()
-        let inputs = audioSession.availableInputs ?? []
-        for input in inputs {
-            print("- Input: \(input.portName), \(input.portType)")
-            if let channels = input.channels {
-                print("  Channels: \(channels.count)")
-                for (i, channel) in channels.enumerated() {
-                    print("  Channel \(i): \(channel.channelName ?? "Unnamed"), \(channel.channelNumber)")
-                }
+        // Log audio device info
+        print("Checking audio input devices on macOS:")
+        AudioDeviceManager.logAudioDiagnostics()
+        
+        // Check microphone volume
+        if let micVolume = AudioDeviceManager.getMicrophoneInputLevel() {
+            print("Microphone input volume: \(micVolume)%")
+            if micVolume == 0 {
+                print("⚠️ Warning: Microphone is muted (volume is 0%)")
+                print("Please increase microphone volume in System Settings > Sound > Input")
             }
         }
-        
-        // Print selected input device
-        print("Currently selected input: \(audioSession.currentRoute.inputs.map { $0.portName }.joined(separator: ", "))")
         
         // Configure recording settings
         let settings: [String: Any] = [
@@ -314,40 +288,19 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         
         print("Will save recording to: \(tempWavPath!)")
         
-        // Set up audio session
+        // Log audio device info
+        print("Checking audio input devices on macOS:")
+        AudioDeviceManager.logAudioDiagnostics()
+            
+        // Configure recording settings
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVSampleRateKey: 44100.0,
+            AVNumberOfChannelsKey: 2,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+        
         do {
-            audioSession = AVAudioSession.sharedInstance()
-            try audioSession?.setCategory(.record)
-            try audioSession?.setActive(true)
-            
-            // Log available audio inputs for diagnosis
-            print("Checking available audio inputs:")
-            let inputs = audioSession?.availableInputs ?? []
-            for input in inputs {
-                print("- Input: \(input.portName), \(input.portType)")
-                if let channels = input.channels {
-                    print("  Channels: \(channels.count)")
-                    for (i, channel) in channels.enumerated() {
-                        print("  Channel \(i): \(channel.channelName ?? "Unnamed"), \(channel.channelNumber)")
-                    }
-                }
-            }
-            
-            // Print selected input device
-            if let currentInputs = audioSession?.currentRoute.inputs {
-                print("Currently selected input: \(currentInputs.map { $0.portName }.joined(separator: ", "))")
-            } else {
-                print("No current input detected")
-            }
-            
-            // Configure recording settings
-            let settings: [String: Any] = [
-                AVFormatIDKey: Int(kAudioFormatLinearPCM),
-                AVSampleRateKey: 44100.0,
-                AVNumberOfChannelsKey: 2,
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-            ]
-            
             // Create recorder
             microphoneRecorder = try AVAudioRecorder(url: URL(fileURLWithPath: tempWavPath!), settings: settings)
             microphoneRecorder?.delegate = self
@@ -652,11 +605,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                 RecorderCLI.terminateRecording()
                 systemRecordingActive = false
             }
-            
-            try? audioSession?.setActive(false)
         } else if audioSource == "mic" && microphoneRecorder?.isRecording == true {
             microphoneRecorder?.stop()
-            try? audioSession?.setActive(false)
         }
         
         // Store the path for response
@@ -889,13 +839,13 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
             
             self.contentEligibleForSharing = content
             
-            if content.displays.isEmpty {
+            if content?.displays.isEmpty ?? true {
                 print("No displays found for recording")
                 ResponseHandler.returnResponse(["code": "NO_DISPLAY_FOUND"])
                 return
             }
             
-            print("Found \(content.displays.count) display(s) for recording")
+            print("Found \(content?.displays.count ?? 0) display(s) for recording")
             self.setupRecordingEnvironment()
         }
     }
@@ -1013,7 +963,6 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         // Stop microphone recording if active
         if let recorder = recorderInstance?.microphoneRecorder, recorder.isRecording {
             recorder.stop()
-            try? recorderInstance?.audioSession?.setActive(false)
         }
     }
 }
@@ -1121,6 +1070,12 @@ extension AVAudioPCMBuffer {
     }
 }
 
-print("Recorder starting...")
-let app = RecorderCLI()
-app.executeRecordingProcess() 
+// Main execution function
+@main
+struct RecorderApp {
+    static func main() {
+        print("Recorder starting...")
+        let app = RecorderCLI()
+        app.executeRecordingProcess()
+    }
+} 
