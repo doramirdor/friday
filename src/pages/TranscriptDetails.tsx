@@ -480,19 +480,40 @@ const TranscriptDetails = () => {
             win.electronAPI.loadAudioFile(recordingPath)
               .then((result: any) => {
                 if (result.success && result.dataUrl) {
-                  console.log("Loaded audio file as data URL");
-                  // Use the data URL instead of file:// URL
-                  setRecordedAudioUrl(result.dataUrl);
-                  // Scroll to the audio player area to make it visible
+                  console.log("Loaded audio file as data URL", result.dataUrl.substring(0, 100) + "...");
+                  
+                  // Force setIsNewMeeting false to ensure audio player shows
+                  setIsNewMeeting(false);
+                  
+                  // Small delay to ensure state updates properly
                   setTimeout(() => {
-                    const audioPlayerElement = document.querySelector('.audio-player-container');
-                    if (audioPlayerElement) {
-                      audioPlayerElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                  }, 300);
+                    // Use the data URL instead of file:// URL
+                    setRecordedAudioUrl(result.dataUrl);
+                    
+                    // Force a re-render to ensure the audio player appears
+                    setTranscriptLines(prev => [...prev]);
+                    
+                    // Scroll to make the audio player visible
+                    setTimeout(() => {
+                      try {
+                        const audioPlayerElement = document.querySelector('.audio-player-container');
+                        if (audioPlayerElement) {
+                          console.log("Scrolling to audio player");
+                          audioPlayerElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        } else {
+                          console.log("Audio player element not found");
+                        }
+                      } catch (e) {
+                        console.error("Error scrolling to audio player:", e);
+                      }
+                    }, 500);
+                  }, 100);
                 } else if (result.error) {
                   console.error("Error loading audio file:", result.error);
                   toast.error("Failed to load audio file: " + result.error);
+                  
+                  // Even if loading fails, we should update UI to not be a new meeting
+                  setIsNewMeeting(false);
                   
                   // Show option to play with native player
                   toast.info(
@@ -510,10 +531,16 @@ const TranscriptDetails = () => {
               .catch((error: any) => {
                 console.error("Error loading audio file:", error);
                 toast.error("Failed to load audio file");
+                
+                // Even if loading fails, we should update UI to not be a new meeting
+                setIsNewMeeting(false);
               });
           } else {
             console.error("loadAudioFile API not available");
             toast.error("Audio loading is not supported in this version");
+            
+            // Even if loading fails, we should update UI to not be a new meeting
+            setIsNewMeeting(false);
           }
         }
       }
@@ -868,11 +895,33 @@ const TranscriptDetails = () => {
     )
   };
 
-  // Replace the existing audio player with the AudioPlayer component
-  const renderAudioPlayer = () => {
+  // Debug logger for tracking state
+  useEffect(() => {
+    console.log("TranscriptDetails state update:", {
+      isNewMeeting,
+      hasRecordedAudio: !!recordedAudioUrl,
+      hasSavedPath: !!savedAudioPath,
+      transcriptLinesCount: transcriptLines.length,
+      isRecording: isRecording || isMicRecording || isNativeRecording || isCombinedRecording
+    });
+  }, [
+    isNewMeeting, 
+    recordedAudioUrl, 
+    savedAudioPath, 
+    transcriptLines.length,
+    isRecording, 
+    isMicRecording, 
+    isNativeRecording, 
+    isCombinedRecording
+  ]);
+
+  // Directly display the AudioPlayer when we have a recording, regardless of other state
+  const DisplayAudioPlayer = () => {
+    if (!recordedAudioUrl && !savedAudioPath) return null;
+    
     return (
-      <div className="mb-4">
-        {recordedAudioUrl && (
+      <div className="mb-6">
+        {recordedAudioUrl ? (
           <div className="audio-player-container p-4 border border-primary/30 rounded-md bg-accent/10 shadow-md transition-all duration-500 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
             <h3 className="text-sm font-medium mb-2 flex items-center">
               <span className="h-2 w-2 rounded-full bg-green-500 mr-2"></span>
@@ -883,6 +932,21 @@ const TranscriptDetails = () => {
               autoPlay={false}
               showWaveform={true}
             />
+          </div>
+        ) : savedAudioPath && (
+          <div className="audio-player-container flex flex-col items-center p-4 border rounded-md bg-muted shadow-sm animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
+            <p className="text-sm text-muted-foreground mb-2">
+              Audio file saved but cannot be played in browser
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePlayWithNativePlayer(savedAudioPath)}
+              className="flex items-center gap-2"
+            >
+              <Play className="h-4 w-4" />
+              Play with Native Player
+            </Button>
           </div>
         )}
       </div>
@@ -947,7 +1011,11 @@ const TranscriptDetails = () => {
               
               {/* Recording controls for new meeting or Waveform player for existing */}
               <div className="p-6 border-b">
-                {isNewMeeting || transcriptLines.length === 0 ? (
+                {/* Always show audio player first if available, regardless of other state */}
+                {recordedAudioUrl || savedAudioPath ? <DisplayAudioPlayer /> : null}
+                
+                {/* Check if it's a new meeting or if there's no audio - display recording controls */}
+                {(isNewMeeting || (!recordedAudioUrl && !savedAudioPath)) ? (
                   <div className="flex flex-col items-center gap-4 py-8">
                     <div className="flex items-center justify-center mb-4 space-x-2">
                       <Button
@@ -993,42 +1061,11 @@ const TranscriptDetails = () => {
                         </span>
                       </div>
                     </div>
-                    
-                    {/* Test existing audio files */}
-                    <div className="mt-4">
-                      <AudioTestButton />
-                    </div>
                   </div>
                 ) : (
+                  /* Audio player area - show when it's not a new meeting */
                   <div className="flex flex-col gap-4 mb-4">
-                    {recordedAudioUrl ? (
-                      <div className="audio-player-container p-4 border border-primary/30 rounded-md bg-accent/10 shadow-md transition-all duration-500 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
-                        <h3 className="text-sm font-medium mb-2 flex items-center">
-                          <span className="h-2 w-2 rounded-full bg-green-500 mr-2"></span>
-                          Recording Ready
-                        </h3>
-                        <AudioPlayer
-                          audioUrl={recordedAudioUrl}
-                          autoPlay={false}
-                          showWaveform={true}
-                        />
-                      </div>
-                    ) : savedAudioPath && (
-                      <div className="audio-player-container flex flex-col items-center p-4 border rounded-md bg-muted shadow-sm animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
-                        <p className="text-sm text-muted-foreground mb-2">
-                          Audio file saved but cannot be played in browser
-                        </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePlayWithNativePlayer(savedAudioPath)}
-                          className="flex items-center gap-2"
-                        >
-                          <Play className="h-4 w-4" />
-                          Play with Native Player
-                        </Button>
-                      </div>
-                    )}
+                    {/* Audio Player - already shown above */}
                     
                     {/* Button to start a new recording */}
                     <div className="flex gap-2 mt-2">
@@ -1041,6 +1078,20 @@ const TranscriptDetails = () => {
                       </Button>
                       
                       <AudioTestButton />
+                      
+                      {/* Add button for toggling back to new recording view if needed */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          // Clean up current recording and go back to the recording controls
+                          setRecordedAudioUrl(null);
+                          setSavedAudioPath(null);
+                          setIsNewMeeting(true);
+                        }}
+                      >
+                        New Recording
+                      </Button>
                     </div>
                     
                     <RecordingSourceSelector />

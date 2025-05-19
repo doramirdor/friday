@@ -56,8 +56,36 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
   // Update audio source when audioUrl changes and play automatically if autoPlay is true
   useEffect(() => {
     if (audioRef.current && audioUrl) {
+      // Debug log to check audio URL
+      console.log(`AudioPlayer: Setting audio source, URL starts with: ${audioUrl.substring(0, 50)}...`);
+      
+      // Make sure the URL is valid
+      if (audioUrl.startsWith('data:audio/')) {
+        console.log("AudioPlayer: Using data URL");
+      } else if (audioUrl.startsWith('file://')) {
+        console.log("AudioPlayer: Using file URL - this may not work in browser");
+      } else {
+        console.log("AudioPlayer: Using other URL type:", audioUrl.split(':')[0]);
+      }
+      
+      // Set the source and load the audio
       audioRef.current.src = audioUrl;
       audioRef.current.load();
+      
+      // Log when audio metadata is loaded
+      const metadataHandler = () => {
+        console.log(`AudioPlayer: Audio metadata loaded, duration: ${audioRef.current?.duration}s`);
+      };
+      
+      // Log errors
+      const errorHandler = (e: ErrorEvent) => {
+        console.error("AudioPlayer: Error loading audio:", e);
+        console.error("AudioPlayer: Error details:", audioRef.current?.error);
+      };
+      
+      // Add listeners
+      audioRef.current.addEventListener('loadedmetadata', metadataHandler);
+      audioRef.current.addEventListener('error', errorHandler);
       
       // Add a small delay before playing to ensure audio is properly loaded
       if (autoPlay) {
@@ -75,8 +103,21 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
           }
         }, 500);
         
-        return () => clearTimeout(playTimeout);
+        return () => {
+          clearTimeout(playTimeout);
+          if (audioRef.current) {
+            audioRef.current.removeEventListener('loadedmetadata', metadataHandler);
+            audioRef.current.removeEventListener('error', errorHandler);
+          }
+        };
       }
+      
+      return () => {
+        if (audioRef.current) {
+          audioRef.current.removeEventListener('loadedmetadata', metadataHandler);
+          audioRef.current.removeEventListener('error', errorHandler);
+        }
+      };
     }
     
     // Add highlight effect that slowly fades out

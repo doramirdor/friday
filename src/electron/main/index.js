@@ -640,6 +640,22 @@ ipcMain.handle("load-audio-file", async (event, filepath) => {
       return { error: "File not found" };
     }
     
+    // Get file stats to check size
+    const stats = fs.statSync(filepath);
+    const fileSizeMB = stats.size / (1024 * 1024);
+    console.log(`📊 main.js: Audio file size: ${fileSizeMB.toFixed(2)} MB`);
+    
+    // If file is large (>10MB), suggest native player instead
+    if (fileSizeMB > 10) {
+      console.log(`⚠️ main.js: File is large (${fileSizeMB.toFixed(2)} MB), suggesting native player`);
+      return { 
+        success: false, 
+        error: "File too large for browser playback", 
+        originalPath: filepath,
+        fileSizeMB: fileSizeMB
+      };
+    }
+    
     // Read the file as buffer
     const buffer = fs.readFileSync(filepath);
     console.log(`✅ main.js: Read audio file: ${filepath}, size: ${buffer.length} bytes`);
@@ -651,15 +667,18 @@ ipcMain.handle("load-audio-file", async (event, filepath) => {
     else if (ext === ".ogg") mimeType = "audio/ogg";
     else if (ext === ".flac") mimeType = "audio/flac";
     
+    console.log(`🎵 main.js: Determined MIME type: ${mimeType} for file extension ${ext}`);
+    
     // Create a data URL
     const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
-    console.log(`✅ main.js: Created data URL for ${filepath}, length: ${dataUrl.length}`);
+    console.log(`✅ main.js: Created data URL for ${filepath}, length: ${dataUrl.length} characters`);
     
     return { 
       success: true, 
       dataUrl,
       originalPath: filepath,
-      mimeType
+      mimeType,
+      fileSizeMB
     };
   } catch (error) {
     console.error("❌ main.js: Error loading audio file:", error);
