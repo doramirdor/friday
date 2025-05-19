@@ -109,6 +109,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveAudioFile: async (buffer, filename, formats = ['wav', 'mp3']) => {
     return await ipcRenderer.invoke("save-audio-file", { buffer, filename, formats });
   },
+
+  // Load audio file as data URL to avoid security restrictions
+  loadAudioFile: async (filepath) => {
+    return await ipcRenderer.invoke("load-audio-file", filepath);
+  },
+  
+  // Play audio file using native player
+  playAudioFile: async (filepath) => {
+    return await ipcRenderer.invoke("play-audio-file", filepath);
+  },
   
   // Test functions for diagnostics
   testAudio: async (apiKey) => {

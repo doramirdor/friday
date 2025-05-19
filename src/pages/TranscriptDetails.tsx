@@ -98,6 +98,8 @@ interface ElectronWindow extends Window {
       error?: string; 
       timestamp: string;
     }) => void) => void;
+    loadAudioFile: (filepath: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
+    playAudioFile: (filepath: string) => Promise<{ error?: string }>;
   }
 }
 
@@ -463,18 +465,49 @@ const TranscriptDetails = () => {
       console.log("Recording completed, path:", recordingPath);
       
       if (recordingPath) {
-        // For Electron, we need to handle file:// paths
+        // For Electron, we need to use a safe way to access local files
         const win = window as unknown as ElectronWindow;
         if (win?.electronAPI?.isElectron) {
-          // Convert to a file URL that can be used by the audio element
-          const fileUrl = `file://${recordingPath}`;
-          console.log("Setting audio URL:", fileUrl);
-          setRecordedAudioUrl(fileUrl);
+          // Store the path
           setSavedAudioPath(recordingPath);
           toast.success(`Recording saved to: ${recordingPath}`);
           
           // Set the state to not be a new meeting anymore, since we have a recording
           setIsNewMeeting(false);
+          
+          // Use the new IPC method to load the audio file as a data URL
+          if (win.electronAPI.loadAudioFile) {
+            win.electronAPI.loadAudioFile(recordingPath)
+              .then((result: any) => {
+                if (result.success && result.dataUrl) {
+                  console.log("Loaded audio file as data URL");
+                  // Use the data URL instead of file:// URL
+                  setRecordedAudioUrl(result.dataUrl);
+                } else if (result.error) {
+                  console.error("Error loading audio file:", result.error);
+                  toast.error("Failed to load audio file: " + result.error);
+                  
+                  // Show option to play with native player
+                  toast.info(
+                    "The recording is saved. Click to play with native player.",
+                    {
+                      duration: 8000,
+                      action: {
+                        label: "Play",
+                        onClick: () => handlePlayWithNativePlayer(recordingPath)
+                      }
+                    }
+                  );
+                }
+              })
+              .catch((error: any) => {
+                console.error("Error loading audio file:", error);
+                toast.error("Failed to load audio file");
+              });
+          } else {
+            console.error("loadAudioFile API not available");
+            toast.error("Audio loading is not supported in this version");
+          }
         }
       }
     }
@@ -483,6 +516,24 @@ const TranscriptDetails = () => {
     isMicRecording, micRecordingPath, 
     isCombinedRecording, combinedRecordingPath
   ]);
+
+  // Add a function to play audio with native player
+  const handlePlayWithNativePlayer = useCallback((filepath: string) => {
+    const win = window as unknown as ElectronWindow;
+    if (win?.electronAPI?.isElectron && win.electronAPI.playAudioFile) {
+      win.electronAPI.playAudioFile(filepath)
+        .then((result: any) => {
+          if (result.error) {
+            console.error("Error playing audio file:", result.error);
+            toast.error("Failed to play audio file: " + result.error);
+          }
+        })
+        .catch((error: any) => {
+          console.error("Error playing audio file:", error);
+          toast.error("Failed to play audio file");
+        });
+    }
+  }, []);
 
   const handlePlayPause = () => {
     if (!recordedAudioUrl || !audioRef.current) {
@@ -936,11 +987,26 @@ const TranscriptDetails = () => {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-4 mb-4">
-                    {recordedAudioUrl && (
+                    {recordedAudioUrl ? (
                       <AudioPlayer
                         audioUrl={recordedAudioUrl}
                         autoPlay={false}
                       />
+                    ) : savedAudioPath && (
+                      <div className="flex flex-col items-center p-4 border rounded-md bg-muted">
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Audio file saved but cannot be played in browser
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePlayWithNativePlayer(savedAudioPath)}
+                          className="flex items-center gap-2"
+                        >
+                          <Play className="h-4 w-4" />
+                          Play with Native Player
+                        </Button>
+                      </div>
                     )}
                     
                     {/* Button to start a new recording */}

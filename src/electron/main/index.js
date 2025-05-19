@@ -630,6 +630,69 @@ ipcMain.handle("stop-combined-recording", async () => {
   }
 });
 
+// Handle loading audio file as data URL to avoid security restrictions
+ipcMain.handle("load-audio-file", async (event, filepath) => {
+  try {
+    console.log(`🔄 main.js: Loading audio file: ${filepath}`);
+    
+    if (!fs.existsSync(filepath)) {
+      console.error(`❌ main.js: Audio file not found: ${filepath}`);
+      return { error: "File not found" };
+    }
+    
+    // Read the file as buffer
+    const buffer = fs.readFileSync(filepath);
+    console.log(`✅ main.js: Read audio file: ${filepath}, size: ${buffer.length} bytes`);
+    
+    // Determine MIME type based on file extension
+    const ext = path.extname(filepath).toLowerCase();
+    let mimeType = "audio/wav"; // Default
+    if (ext === ".mp3") mimeType = "audio/mpeg";
+    else if (ext === ".ogg") mimeType = "audio/ogg";
+    else if (ext === ".flac") mimeType = "audio/flac";
+    
+    // Create a data URL
+    const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+    console.log(`✅ main.js: Created data URL for ${filepath}, length: ${dataUrl.length}`);
+    
+    return { 
+      success: true, 
+      dataUrl,
+      originalPath: filepath,
+      mimeType
+    };
+  } catch (error) {
+    console.error("❌ main.js: Error loading audio file:", error);
+    return { error: error.message };
+  }
+});
+
+// Handle playing audio file with native player
+ipcMain.handle("play-audio-file", async (event, filepath) => {
+  try {
+    console.log(`🔄 main.js: Playing audio file with native player: ${filepath}`);
+    
+    if (!fs.existsSync(filepath)) {
+      console.error(`❌ main.js: Audio file not found: ${filepath}`);
+      return { error: "File not found" };
+    }
+    
+    // Use shell.openPath to open the file with the default system application
+    const result = await shell.openPath(filepath);
+    
+    if (result) {
+      console.error(`❌ main.js: Error playing audio file: ${result}`);
+      return { error: result };
+    }
+    
+    console.log(`✅ main.js: Playing audio file with native player: ${filepath}`);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ main.js: Error playing audio file:", error);
+    return { error: error.message };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 
