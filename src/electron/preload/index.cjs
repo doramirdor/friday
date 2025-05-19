@@ -78,6 +78,33 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }
   },
   
+  // Combined Recording methods (both system audio and microphone)
+  combinedRecording: {
+    // Start recording both system audio and microphone
+    startRecording: async (options = {}) => {
+      return await ipcRenderer.invoke("start-combined-recording", options);
+    },
+    
+    // Stop recording both sources
+    stopRecording: async () => {
+      return await ipcRenderer.invoke("stop-combined-recording");
+    },
+    
+    // Listen for recording status updates (uses same channels as system audio)
+    onStatusUpdate: (callback) => {
+      ipcRenderer.on("recording-status", (_, status, timestamp, filepath, isCombined) => {
+        callback(status, timestamp, filepath, isCombined);
+      });
+    },
+    
+    // Listen for recording errors
+    onError: (callback) => {
+      ipcRenderer.on("recording-error", (_, errorCode) => {
+        callback(errorCode);
+      });
+    }
+  },
+  
   // Audio File methods
   saveAudioFile: async (buffer, filename, formats = ['wav', 'mp3']) => {
     return await ipcRenderer.invoke("save-audio-file", { buffer, filename, formats });
@@ -90,5 +117,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   
   testSpeechWithFile: async (filePath, apiKey) => {
     return await ipcRenderer.invoke("test-speech-with-file", { filePath, apiKey });
+  },
+  
+  // Add a listener for transcription events from audio recordings
+  onRecordingTranscription: (callback) => {
+    ipcRenderer.on("recording-transcription", (_, data) => {
+      callback(data);
+    });
   }
 }); 

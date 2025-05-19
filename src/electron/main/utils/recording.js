@@ -8,55 +8,6 @@ import { checkPermissions } from "./permission.js";
 const execAsync = promisify(exec);
 let recordingProcess = null;
 
-// Convert FLAC to MP3
-const convertFlacToMp3 = async (flacPath) => {
-  try {
-    // Create the MP3 path by replacing the extension
-    const mp3Path = flacPath.replace(".flac", ".mp3");
-    
-    console.log(`Converting ${flacPath} to ${mp3Path}`);
-    
-    // Verify FLAC file exists
-    if (!fs.existsSync(flacPath)) {
-      console.error(`FLAC file doesn't exist: ${flacPath}`);
-      // Check if the directory exists and what files it contains
-      const dir = path.dirname(flacPath);
-      if (fs.existsSync(dir)) {
-        const files = fs.readdirSync(dir);
-        console.log(`Directory ${dir} contains: ${files.join(", ")}`);
-      }
-      return { success: false, error: 'Source file not found' };
-    }
-    
-    // Run ffmpeg to convert
-    await execAsync(`ffmpeg -i "${flacPath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
-    
-    // Verify MP3 file was created
-    if (!fs.existsSync(mp3Path)) {
-      console.error(`MP3 file wasn't created: ${mp3Path}`);
-      return { success: false, error: 'MP3 conversion failed - output file not created' };
-    }
-
-    // Get file sizes for logging
-    const flacStats = fs.statSync(flacPath);
-    const mp3Stats = fs.statSync(mp3Path);
-    console.log(`Conversion complete: 
-      FLAC: ${flacPath} (${(flacStats.size / 1024 / 1024).toFixed(2)} MB)
-      MP3: ${mp3Path} (${(mp3Stats.size / 1024 / 1024).toFixed(2)} MB)`);
-    
-    // Delete the original FLAC file since conversion was successful
-    fs.unlinkSync(flacPath);
-    console.log(`Deleted original FLAC file: ${flacPath}`);
-    
-    return { 
-      success: true, 
-      mp3Path 
-    };
-  } catch (error) {
-    console.error(`Error converting FLAC to MP3: ${error.message}`);
-    return { success: false, error: error.message };
-  }
-};
 
 const initRecording = (filepath, filename, source = 'system') => {
   return new Promise((resolve) => {
@@ -204,7 +155,8 @@ const initRecording = (filepath, filename, source = 'system') => {
 
 export async function startRecording({ filepath, filename, source = 'system' }) {
   // For microphone recording, we don't need screen capture permission
-  const isPermissionNeeded = source === 'system';
+  // For combined recording, we do need screen capture permission
+  const isPermissionNeeded = source === 'system' || source === 'both';
   let isPermissionGranted = true;
   
   if (isPermissionNeeded) {
@@ -218,6 +170,15 @@ export async function startRecording({ filepath, filename, source = 'system' }) 
 
   // Process the filename to ensure it has the right extension
   let filenameWithoutExt = (filename || "recording").replace(/\.\w+$/, '');
+  
+  // Add suffix based on source for clearer identification
+  if (source === 'both') {
+    filenameWithoutExt = `${filenameWithoutExt}_combined`;
+  } else if (source === 'mic') {
+    filenameWithoutExt = `${filenameWithoutExt}_mic`;
+  } else {
+    filenameWithoutExt = `${filenameWithoutExt}_system`;
+  }
   
   // Validate filename to avoid characters that might cause issues
   filenameWithoutExt = filenameWithoutExt.replace(/[^a-zA-Z0-9_\-\.]/g, '_');

@@ -179,55 +179,55 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
             
             // Only attempt transcription if this is the final chunk (when recording is stopped)
             if (isFinalChunk) {
-              if (saveResult.success) {
-                // Check if we have the files array (newer format) or filePath (older format)
-                if (saveResult.files && saveResult.files.length > 0) {
-                  console.log(`📄 Saved files: ${saveResult.files.map(f => `${f.format}:${f.path}`).join(', ')}`);
+            if (saveResult.success) {
+              // Check if we have the files array (newer format) or filePath (older format)
+              if (saveResult.files && saveResult.files.length > 0) {
+                console.log(`📄 Saved files: ${saveResult.files.map(f => `${f.format}:${f.path}`).join(', ')}`);
+                
+                // Find MP3 file
+                const mp3File = saveResult.files.find(f => f.format === 'mp3');
+                
+                if (mp3File) {
+                  console.log('🎵 Using saved MP3 file for transcription:', mp3File.path);
                   
-                  // Find MP3 file
-                  const mp3File = saveResult.files.find(f => f.format === 'mp3');
-                  
-                  if (mp3File) {
-                    console.log('🎵 Using saved MP3 file for transcription:', mp3File.path);
+                  // Now use testSpeechWithFile to transcribe the MP3 file
+                  if ((window as unknown as ElectronWindow).electronAPI?.testSpeechWithFile) {
+                    console.log('🔄 Calling testSpeechWithFile with path:', mp3File.path);
+                    const testResult = await (window as unknown as ElectronWindow).electronAPI.testSpeechWithFile(mp3File.path);
                     
-                    // Now use testSpeechWithFile to transcribe the MP3 file
-                    if ((window as unknown as ElectronWindow).electronAPI?.testSpeechWithFile) {
-                      console.log('🔄 Calling testSpeechWithFile with path:', mp3File.path);
-                      const testResult = await (window as unknown as ElectronWindow).electronAPI.testSpeechWithFile(mp3File.path);
-                      
-                      console.log('🔄 testSpeechWithFile result:', JSON.stringify(testResult, null, 2));
-                      
+                    console.log('🔄 testSpeechWithFile result:', JSON.stringify(testResult, null, 2));
+                    
                       if (testResult.transcription) {
                         console.log('✅ Received transcription from file');
-                        transcriptionResult = testResult.transcription;
+                      transcriptionResult = testResult.transcription;
                       } else if (testResult.error) {
                         console.error('❌ Error from testSpeechWithFile:', testResult.error);
                         setLastErrorMessage(`File transcription error: ${testResult.error}`);
                       }
                     }
-                  }
-                } else if (saveResult.filePath) {
-                  // Handle legacy format where we just get a filePath
-                  const filePath = saveResult.filePath;
-                  // Check if the filePath has an extension, and if not, assume it's an MP3
-                  const hasExtension = /\.\w+$/.test(filePath);
-                  const mp3Path = hasExtension ? filePath : `${filePath}.mp3`;
+                }
+              } else if (saveResult.filePath) {
+                // Handle legacy format where we just get a filePath
+                const filePath = saveResult.filePath;
+                // Check if the filePath has an extension, and if not, assume it's an MP3
+                const hasExtension = /\.\w+$/.test(filePath);
+                const mp3Path = hasExtension ? filePath : `${filePath}.mp3`;
+                
+                console.log('🎵 Using saved file for transcription:', mp3Path);
+                
+                // Now use testSpeechWithFile to transcribe the file
+                if ((window as unknown as ElectronWindow).electronAPI?.testSpeechWithFile) {
+                  console.log('🔄 Calling testSpeechWithFile with path:', mp3Path);
+                  const testResult = await (window as unknown as ElectronWindow).electronAPI.testSpeechWithFile(mp3Path);
                   
-                  console.log('🎵 Using saved file for transcription:', mp3Path);
+                  console.log('🔄 testSpeechWithFile result:', JSON.stringify(testResult, null, 2));
                   
-                  // Now use testSpeechWithFile to transcribe the file
-                  if ((window as unknown as ElectronWindow).electronAPI?.testSpeechWithFile) {
-                    console.log('🔄 Calling testSpeechWithFile with path:', mp3Path);
-                    const testResult = await (window as unknown as ElectronWindow).electronAPI.testSpeechWithFile(mp3Path);
-                    
-                    console.log('🔄 testSpeechWithFile result:', JSON.stringify(testResult, null, 2));
-                    
                     if (testResult.transcription) {
                       console.log('✅ Received transcription from file');
-                      transcriptionResult = testResult.transcription;
+                    transcriptionResult = testResult.transcription;
                     } else if (testResult.error) {
                       console.error('❌ Error from testSpeechWithFile:', testResult.error);
-                      console.warn('⚠️ Transcription failed, falling back to direct method');
+                    console.warn('⚠️ Transcription failed, falling back to direct method');
                       setLastErrorMessage(`File transcription error: ${testResult.error}`);
                     }
                   }
@@ -291,11 +291,11 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       
       // Process transcription result, but only for final chunk
       if (transcriptionResult && isFinalChunk) {
-        console.log('📥 Received result from Google Speech API:', { 
-          resultLength: transcriptionResult?.length,
-          result: transcriptionResult?.substring(0, 100) + (transcriptionResult?.length > 100 ? '...' : '')
-        });
-        
+      console.log('📥 Received result from Google Speech API:', { 
+        resultLength: transcriptionResult?.length,
+        result: transcriptionResult?.substring(0, 100) + (transcriptionResult?.length > 100 ? '...' : '')
+      });
+      
         // Check if the result starts with "Error:"
         if (transcriptionResult.startsWith('Error:')) {
           console.error('❌ Error from Google Speech API:', transcriptionResult);
@@ -437,11 +437,11 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
           // Fall back to regular microphone capture
           stream = await navigator.mediaDevices.getUserMedia({ 
             audio: { 
-              echoCancellation: true,
-              noiseSuppression: true,
+        echoCancellation: true,
+        noiseSuppression: true,
               autoGainControl: true
             } 
-          });
+      });
         }
       } else {
         // Standard microphone capture
@@ -456,7 +456,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       
       // Store the stream reference
       streamRef.current = stream;
-      
+
       // Get available MIME types and codecs
       const supportedMimeTypes = [
         'audio/webm;codecs=opus',
@@ -498,7 +498,7 @@ const useGoogleSpeech = (defaultOptions: RecordingOptions = {}): UseGoogleSpeech
       });
       
       mediaRecorderRef.current = mediaRecorder;
-      
+
       // Event handler for when data becomes available
       mediaRecorder.ondataavailable = async (event) => {
         if (event.data.size > 0) {

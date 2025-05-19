@@ -259,6 +259,13 @@ ipcMain.handle("start-system-recording", async (_, options = {}) => {
 ipcMain.handle("stop-system-recording", async () => {
   try {
     const result = await stopRecording();
+    
+    // Auto-transcribe the recording if it was successful
+    if (result.success && result.path) {
+      // Do transcription in the background
+      transcribeRecordingFile(result.path);
+    }
+    
     return { success: true, ...result };
   } catch (error) {
     console.error("Error stopping recording:", error);
@@ -494,6 +501,59 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
 
 // Add these new IPC handlers for microphone recording
 
+// Automatically transcribe a recording file and send the transcript to the renderer
+async function transcribeRecordingFile(filePath) {
+  try {
+    console.log('🔄 main.js: Auto-transcribing recording file:', filePath);
+    
+    if (!filePath || !fs.existsSync(filePath)) {
+      console.error(`❌ main.js: Recording file doesn't exist: ${filePath}`);
+      return { success: false, error: 'Recording file not found' };
+    }
+    
+    // Read the audio file
+    const audioBuffer = fs.readFileSync(filePath);
+    
+    // Determine encoding based on file extension
+    const fileExt = path.extname(filePath).toLowerCase();
+    let encoding = 'LINEAR16'; // Default for WAV
+    
+    if (fileExt === '.mp3') {
+      encoding = 'MP3';
+    } else if (fileExt === '.ogg') {
+      encoding = 'OGG_OPUS';
+    } else if (fileExt === '.wav') {
+      encoding = 'LINEAR16';
+    }
+    
+    // Call the existing function to process the audio
+    const transcription = await handleGoogleSpeechAPI(audioBuffer, {
+      encoding,
+      sampleRateHertz: 44100,
+      languageCode: 'en-US'
+    });
+    
+    console.log('📝 main.js: Auto-transcription result:', transcription.substring(0, 100) + '...');
+    
+    // Send the transcript to the renderer
+    global.mainWindow.webContents.send('recording-transcription', {
+      filePath,
+      transcription,
+      timestamp: new Date().toISOString()
+    });
+    
+    return { success: true, transcription };
+  } catch (error) {
+    console.error('❌ main.js: Error auto-transcribing recording:', error);
+    global.mainWindow.webContents.send('recording-transcription', {
+      filePath,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+    return { success: false, error: error.message };
+  }
+}
+
 // Start mic recording
 ipcMain.handle("start-mic-recording", async (_, options = {}) => {
   try {
@@ -517,9 +577,55 @@ ipcMain.handle("start-mic-recording", async (_, options = {}) => {
 ipcMain.handle("stop-mic-recording", async () => {
   try {
     const result = await stopRecording();
+    
+    // Auto-transcribe the recording if it was successful
+    if (result.success && result.path) {
+      // Do transcription in the background
+      transcribeRecordingFile(result.path);
+    }
+    
     return { success: true, ...result };
   } catch (error) {
     console.error("Error stopping microphone recording:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Add the combined recording IPC handlers
+
+// Start combined recording (both system audio and microphone)
+ipcMain.handle("start-combined-recording", async (_, options = {}) => {
+  try {
+    const filepath = options.filepath || ensureRecordingsDirectory();
+    const filename = options.filename || `combined-recording-${Date.now()}`;
+
+    await startRecording({
+      filepath,
+      filename,
+      source: "both"  // Use the new "both" option
+    });
+
+    return { success: true, filepath, filename };
+  } catch (error) {
+    console.error("Error starting combined recording:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop combined recording (reuses the same stop function)
+ipcMain.handle("stop-combined-recording", async () => {
+  try {
+    const result = await stopRecording();
+    
+    // Auto-transcribe the recording if it was successful
+    if (result.success && result.path) {
+      // Do transcription in the background
+      transcribeRecordingFile(result.path);
+    }
+    
+    return { success: true, ...result };
+  } catch (error) {
+    console.error("Error stopping combined recording:", error);
     return { success: false, error: error.message };
   }
 });

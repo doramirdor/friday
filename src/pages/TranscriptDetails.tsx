@@ -20,6 +20,7 @@ import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
 import { AudioTestButton } from "@/components/audio-test-button";
 import { Switch } from "@/components/ui/switch";
 import useMicrophoneRecording from '@/hooks/useMicrophoneRecording';
+import AudioPlayer from '@/components/AudioPlayer';
 
 interface TranscriptLine {
   id: string;
@@ -85,6 +86,18 @@ interface ElectronWindow extends Window {
       onStatusUpdate: (callback: (status: string, timestamp: number, filepath: string) => void) => void;
       onError: (callback: (errorCode: string) => void) => void;
     };
+    combinedRecording?: {
+      startRecording: () => Promise<{ success: boolean }>;
+      stopRecording: () => Promise<{ success: boolean }>;
+      onStatusUpdate: (callback: (status: string, timestamp: number, filepath: string) => void) => void;
+      onError: (callback: (errorCode: string) => void) => void;
+    };
+    onRecordingTranscription?: (callback: (data: { 
+      filePath: string; 
+      transcription?: string; 
+      error?: string; 
+      timestamp: string;
+    }) => void) => void;
   }
 }
 
@@ -190,12 +203,35 @@ const TranscriptDetails = () => {
     stopRecording: stopMicRecording
   } = useMicrophoneRecording();
 
-  // Add state for tracking which recording source is active
-  const [recordingSource, setRecordingSource] = useState('system'); // 'system' or 'mic'
+  // Disable useCombinedRecording hook temporarily
+  const combinedRecordingHook = {
+    isAvailable: false,
+    isRecording: false,
+    recordingPath: null,
+    recordingDuration: 0,
+    startRecording: async () => false,
+    stopRecording: async () => false
+  };
+  
+  // Rename to avoid conflicts
+  const {
+    isAvailable: isCombinedRecordingAvailable,
+    isRecording: isCombinedRecording,
+    recordingPath: combinedRecordingPath,
+    recordingDuration: combinedRecordingDuration,
+    startRecording: startCombinedRecording,
+    stopRecording: stopCombinedRecording
+  } = combinedRecordingHook;
+
+  // Update the recording source state to include 'both'
+  const [recordingSource, setRecordingSource] = useState<'system' | 'mic' | 'both'>('system');
 
   // Replace the initialization approach with a more reliable one
   const initStatusRef = useRef({ checked: false });
   const [recordingServicesInitialized, setRecordingServicesInitialized] = useState(false);
+
+  // Update state for transcription received from audio recording
+  const [transcriptionFromRecording, setTranscriptionFromRecording] = useState<string | null>(null);
 
   // Format time in mm:ss format
   const formatTime = (seconds: number) => {
@@ -382,6 +418,72 @@ const TranscriptDetails = () => {
     checkRecordingServices();
   }, []); // Empty dependency array - we only want to check once on mount
 
+  // Add effect to listen for recording transcription events
+  useEffect(() => {
+    const win = window as unknown as ElectronWindow;
+    
+    if (win?.electronAPI?.isElectron && win.electronAPI.onRecordingTranscription) {
+      win.electronAPI.onRecordingTranscription((data) => {
+        console.log("Received transcription from recording:", data);
+        
+        if (data.transcription && !data.error) {
+          setTranscriptionFromRecording(data.transcription);
+          toast.success("Transcription received");
+          
+          // Add the transcription to transcript lines with current speaker
+          if (data.transcription.trim()) {
+            const newLine: TranscriptLine = {
+              id: `l${Date.now()}`,
+              text: data.transcription.trim(),
+              speakerId: currentSpeakerId,
+            };
+            
+            setTranscriptLines(prev => [...prev, newLine]);
+            setIsNewMeeting(false); // No longer a new meeting once we have transcript
+          }
+        } else if (data.error) {
+          toast.error(`Transcription error: ${data.error}`);
+        }
+      });
+    }
+  }, [currentSpeakerId]);
+
+  // Effect to handle recording path updates from native recordings
+  useEffect(() => {
+    const isNativeSystemAudioAvailable = !!(window as unknown as ElectronWindow)?.electronAPI?.systemAudio;
+    
+    // When a recording is completed, set the audio URL from the recording path
+    const recordingCompleted = 
+      (isNativeSystemAudioAvailable && !isNativeRecording && nativeRecordingPath) ||
+      (isMicRecordingAvailable && !isMicRecording && micRecordingPath) ||
+      (isCombinedRecordingAvailable && !isCombinedRecording && combinedRecordingPath);
+    
+    if (recordingCompleted) {
+      const recordingPath = nativeRecordingPath || micRecordingPath || combinedRecordingPath;
+      console.log("Recording completed, path:", recordingPath);
+      
+      if (recordingPath) {
+        // For Electron, we need to handle file:// paths
+        const win = window as unknown as ElectronWindow;
+        if (win?.electronAPI?.isElectron) {
+          // Convert to a file URL that can be used by the audio element
+          const fileUrl = `file://${recordingPath}`;
+          console.log("Setting audio URL:", fileUrl);
+          setRecordedAudioUrl(fileUrl);
+          setSavedAudioPath(recordingPath);
+          toast.success(`Recording saved to: ${recordingPath}`);
+          
+          // Set the state to not be a new meeting anymore, since we have a recording
+          setIsNewMeeting(false);
+        }
+      }
+    }
+  }, [
+    isNativeRecording, nativeRecordingPath, 
+    isMicRecording, micRecordingPath, 
+    isCombinedRecording, combinedRecordingPath
+  ]);
+
   const handlePlayPause = () => {
     if (!recordedAudioUrl || !audioRef.current) {
       toast.error("No recorded audio available");
@@ -415,10 +517,10 @@ const TranscriptDetails = () => {
     }
   };
   
-  // Update the handleStartStopRecording function to account for any remaining sync issues
+  // Update the handleStartStopRecording function
   const handleStartStopRecording = useCallback(async () => {
     // Read current state
-    console.log("handleStartStopRecording isRecording: ", isRecording, "isMicRecording: ", isMicRecording, "recordingSource: ", recordingSource);
+    console.log("handleStartStopRecording isRecording: ", isRecording, "isMicRecording: ", isMicRecording, "isCombinedRecording: ", isCombinedRecording, "recordingSource: ", recordingSource);
     console.log("isNativeRecording: ", isNativeRecording);
     console.log("Recording services initialized:", recordingServicesInitialized);
     
@@ -426,12 +528,14 @@ const TranscriptDetails = () => {
     const electronAPI = (window as unknown as ElectronWindow).electronAPI;
     const systemAvailable = !!(electronAPI?.isElectron && electronAPI.systemAudio);
     const micAvailable = !!(electronAPI?.isElectron && electronAPI.micRecording);
+    const combinedAvailable = !!(electronAPI?.isElectron && electronAPI.combinedRecording);
     
     console.log("Direct check - system available:", systemAvailable);
     console.log("Direct check - mic available:", micAvailable);
+    console.log("Direct check - combined available:", combinedAvailable);
     
     // If already recording, stop the active recording
-    if (isRecording || isNativeRecording || isMicRecording) {
+    if (isRecording || isNativeRecording || isMicRecording || isCombinedRecording) {
       console.log("Stopping recording...");
       
       if (isNativeRecording) {
@@ -442,6 +546,10 @@ const TranscriptDetails = () => {
         console.log("Stopping microphone recording");
         const result = await stopMicRecording();
         console.log("Microphone recording stopped:", result);
+      } else if (isCombinedRecording) {
+        console.log("Stopping combined recording");
+        const result = await stopCombinedRecording();
+        console.log("Combined recording stopped:", result);
       } else {
         // Stop the fallback MediaRecorder if it's active
         console.log("Stopping fallback MediaRecorder");
@@ -482,6 +590,14 @@ const TranscriptDetails = () => {
       console.log("Microphone recording started: ", success);
       if (!success) {
         toast.error("Failed to start microphone recording");
+      }
+    } else if (recordingSource === 'both' && combinedAvailable) {
+      // Combined recording - both system audio and microphone
+      console.log("Starting combined recording (system + mic)");
+      const success = await startCombinedRecording();
+      console.log("Combined recording started: ", success);
+      if (!success) {
+        toast.error("Failed to start combined recording");
       }
     } else {
       console.log("Fallback to MediaRecorder");
@@ -530,7 +646,7 @@ const TranscriptDetails = () => {
         toast.error("Failed to access microphone");
       }
     }
-  }, [isRecording, isNativeRecording, isMicRecording, recordingSource, recordingServicesInitialized, startNativeRecording, stopNativeRecording, startMicRecording, stopMicRecording]);
+  }, [isRecording, isNativeRecording, isMicRecording, isCombinedRecording, recordingSource, recordingServicesInitialized, startNativeRecording, stopNativeRecording, startMicRecording, stopMicRecording, startCombinedRecording, stopCombinedRecording]);
   
   // Handle audio time change (seeking)
   const handleAudioTimeChange = (value: number[]) => {
@@ -652,6 +768,62 @@ const TranscriptDetails = () => {
     );
   };
   
+  // Add UI for selecting recording source
+  const RecordingSourceSelector = () => {
+    return (
+      <div className="flex items-center gap-2 mt-4">
+        <label className="text-sm font-medium">Recording source:</label>
+        <div className="flex space-x-1">
+          <Button
+            variant={recordingSource === 'system' ? "default" : "outline"}
+            size="sm"
+            onClick={() => setRecordingSource('system')}
+            disabled={isRecording || isNativeRecording || isMicRecording || isCombinedRecording}
+            className="flex items-center gap-1"
+          >
+            <Volume2 className="h-3 w-3" />
+            <span>System</span>
+          </Button>
+          <Button
+            variant={recordingSource === 'mic' ? "default" : "outline"}
+            size="sm"
+            onClick={() => setRecordingSource('mic')}
+            disabled={isRecording || isNativeRecording || isMicRecording || isCombinedRecording}
+            className="flex items-center gap-1"
+          >
+            <Mic className="h-3 w-3" />
+            <span>Mic</span>
+          </Button>
+          <Button
+            variant={recordingSource === 'both' ? "default" : "outline"}
+            size="sm"
+            onClick={() => setRecordingSource('both')}
+            disabled={isRecording || isNativeRecording || isMicRecording || isCombinedRecording}
+            className="flex items-center gap-1"
+          >
+            <Volume2 className="h-3 w-3" />
+            <Mic className="h-3 w-3 ml-1" />
+            <span>Both</span>
+          </Button>
+        </div>
+      </div>
+    )
+  };
+
+  // Replace the existing audio player with the AudioPlayer component
+  const renderAudioPlayer = () => {
+    return (
+      <div className="mb-4">
+        {recordedAudioUrl && (
+          <AudioPlayer 
+            audioUrl={recordedAudioUrl}
+            autoPlay={false}
+          />
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-background border-b border-border px-6 py-4 flex items-center gap-4">
@@ -713,20 +885,31 @@ const TranscriptDetails = () => {
                 {isNewMeeting || transcriptLines.length === 0 ? (
                   <div className="flex flex-col items-center gap-4 py-8">
                     <div className="flex items-center justify-center mb-4 space-x-2">
-                    <Button
-                      variant={isRecording || isMicRecording ? "destructive" : "default"}
-                      size="lg"
-                      onClick={handleStartStopRecording}
-                      className={`h-16 w-16 rounded-full flex items-center justify-center ${
-                        isRecording || isMicRecording ? "animate-pulse" : ""
-                      }`}
-                    >
-                      {isRecording || isMicRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
-                    </Button>
-                    <div className="text-sm font-medium">
-                        {isRecording || isMicRecording ? `Recording: ${formatTime(isRecording ? recordingDuration : micRecordingDuration)}` : "Click to start recording"}
+                      <Button
+                        variant={isRecording || isMicRecording || isNativeRecording || isCombinedRecording ? "destructive" : "default"}
+                        size="lg"
+                        onClick={handleStartStopRecording}
+                        className={`h-16 w-16 rounded-full flex items-center justify-center ${
+                          isRecording || isMicRecording || isNativeRecording || isCombinedRecording ? "animate-pulse" : ""
+                        }`}
+                      >
+                        {isRecording || isMicRecording || isNativeRecording || isCombinedRecording ? <Square className="h-8 w-8" /> : <Mic className="h-8 w-8" />}
+                      </Button>
+                      <div className="text-sm font-medium">
+                        {isRecording || isMicRecording || isNativeRecording || isCombinedRecording ? 
+                          `Recording: ${formatTime(
+                            isRecording ? recordingDuration : 
+                            isMicRecording ? micRecordingDuration : 
+                            isNativeRecording ? nativeRecordingDuration : 
+                            combinedRecordingDuration
+                          )}` : 
+                          "Click to start recording"
+                        }
                       </div>
                     </div>
+                    
+                    {/* Add recording source selector */}
+                    <RecordingSourceSelector />
                     
                     {/* Add toggle for live transcript */}
                     <div className="flex items-center gap-2 mt-2">
@@ -752,93 +935,13 @@ const TranscriptDetails = () => {
                     </div>
                   </div>
                 ) : (
-                  // Audio player controls
                   <div className="flex flex-col gap-4 mb-4">
-                    <div className="flex items-center gap-4">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={handlePlayPause}
-                      className="h-10 w-10 rounded-full"
-                        disabled={!recordedAudioUrl}
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-5 w-5" />
-                      ) : (
-                        <Play className="h-5 w-5" />
-                      )}
-                      <span className="sr-only">
-                        {isPlaying ? "Pause" : "Play"}
-                      </span>
-                    </Button>
-                    
-                    <div className="text-sm font-medium">
-                        {formatTime(currentAudioTime)} / {formatTime(audioDuration)}
-                    </div>
-                      
-                      <div className="flex items-center gap-2 ml-auto">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={handleToggleMute}
-                          className="h-8 w-8 p-0"
-                        >
-                          {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                        </Button>
-                        <div className="w-20">
-                          <Slider
-                            value={[volume]}
-                            min={0}
-                            max={100}
-                            step={1}
-                            onValueChange={handleVolumeChange}
-                          />
-                  </div>
-                      </div>
-                    </div>
-                    
-                    {/* Audio scrubber */}
-                    <div className="w-full">
-                      <Slider
-                        value={[currentAudioTime]}
-                        min={0}
-                        max={audioDuration || 100}
-                        step={0.1}
-                        onValueChange={handleAudioTimeChange}
-                        disabled={!recordedAudioUrl}
-                      />
-                    </div>
-                    
-                    {/* Audio waveform visualization */}
                     {recordedAudioUrl && (
-                      <div className="h-20 bg-muted rounded-md waveform-bg relative">
-                        {/* Simulated waveform for now */}
-                    <div className="absolute inset-0 flex items-center px-4">
-                      <div className="w-full h-16 flex items-center">
-                        {Array.from({ length: 100 }).map((_, i) => {
-                          const height = Math.sin(i * 0.2) * 20 + 30;
-                          return (
-                            <div
-                              key={i}
-                              className="w-1 mx-0.5 bg-primary-dark opacity-70"
-                              style={{
-                                height: `${height}%`,
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                    
-                    {/* Playhead */}
-                    <div 
-                      className="absolute top-0 bottom-0 w-0.5 bg-primary"
-                          style={{ 
-                            left: `${(currentAudioTime / (audioDuration || 1)) * 100}%` 
-                          }}
-                    />
-                  </div>
-                )}
+                      <AudioPlayer
+                        audioUrl={recordedAudioUrl}
+                        autoPlay={false}
+                      />
+                    )}
                     
                     {/* Button to start a new recording */}
                     <div className="flex gap-2 mt-2">
@@ -847,17 +950,18 @@ const TranscriptDetails = () => {
                         size="sm"
                         onClick={handleStartStopRecording}
                       >
-                        {isRecording || isMicRecording ? "Stop Recording" : "Start Recording"}
+                        {isRecording || isMicRecording || isNativeRecording || isCombinedRecording ? "Stop Recording" : "Start Recording"}
                       </Button>
                       
-                      {/* Add test button for existing recordings */}
                       <AudioTestButton />
                     </div>
+                    
+                    <RecordingSourceSelector />
                   </div>
                 )}
 
                 {/* Show live transcription status when recording */}
-                {isRecording || isMicRecording && (
+                {isRecording || isMicRecording || isNativeRecording || isCombinedRecording && (
                   <div className="mt-4 p-3 bg-accent/20 rounded-md">
                     <div className="text-sm font-medium flex items-center">
                       <div className="mr-2 h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
@@ -870,7 +974,7 @@ const TranscriptDetails = () => {
                     </div>
                     
                     {/* Show toggle for live transcript during recording */}
-                    {isRecording || isMicRecording && (
+                    {isRecording || isMicRecording || isNativeRecording || isCombinedRecording && (
                       <div className="flex items-center gap-2 mt-2">
                         <Toggle
                           pressed={isLiveTranscript}

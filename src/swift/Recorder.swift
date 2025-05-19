@@ -151,7 +151,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
             setupCombinedRecording(formattedTimestamp: formattedTimestamp)
         } else if audioSource == "system" {
             // Start system audio recording
-            self.updateAvailableContent()
+        self.updateAvailableContent()
         } else {
             // Microphone recording
             setupMicrophoneRecording()
@@ -160,7 +160,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         setupInterruptSignalHandler()
         
         if audioSource == "system" {
-            setupStreamFunctionTimeout()
+        setupStreamFunctionTimeout()
         }
         
         semaphoreRecordingStopped.wait()
@@ -920,7 +920,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
         if !self.streamFunctionCalled {
             print("First audio buffer received")
-            self.streamFunctionCalled = true
+        self.streamFunctionCalled = true
         }
         
         guard let audioBuffer = sampleBuffer.asPCMBuffer, sampleBuffer.isValid else { 
@@ -947,8 +947,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                 combineAndConvertRecordings()
             }
         } else {
-            RecorderCLI.terminateRecording()
-            semaphoreRecordingStopped.signal()
+        RecorderCLI.terminateRecording()
+        semaphoreRecordingStopped.signal()
         }
     }
 
@@ -1075,7 +1075,7 @@ extension AVAudioPCMBuffer {
 struct RecorderApp {
     static func main() {
         print("Recorder starting...")
-        let app = RecorderCLI()
-        app.executeRecordingProcess()
+let app = RecorderCLI()
+app.executeRecordingProcess() 
     }
 } 

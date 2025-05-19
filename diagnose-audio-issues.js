@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 
-const { spawn, exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const util = require('util');
-const execAsync = util.promisify(exec);
-const readline = require('readline');
+import { spawn, exec } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { promisify } from 'util';
+import readline from 'readline';
+
+const execAsync = promisify(exec);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Audio Recording Diagnostic Tool for Friday App
