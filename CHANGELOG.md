@@ -60,6 +60,11 @@ All notable changes to this project will be documented in this file.
 - Fixed compatibility issue with Google Speech API's getUniverseDomain method
 - Added fallback to direct REST API call when Google Cloud Speech client fails
 - Prevented error messages from being added to transcripts
+- Combined recording (system audio + microphone) initialization issues
+- Improved error handling when starting combined recordings
+- Better user feedback when recording components fail to initialize
+- Fixed status code handling between Swift recorder and Electron
+- Better cleanup of temporary files when recording fails
 
 ## [0.2.1] - 2023-07-31
 
