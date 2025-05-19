@@ -505,6 +505,127 @@ ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['
   }
 });
 
+// Add these utility functions for audio processing
+function splitAudioBuffer(buffer, format, chunkDurationMs = 58000) { // 58 seconds to be safe
+  // For MP3 and other compressed formats, we need to use time-based approach
+  if (format === 'MP3' || format === 'OGG_OPUS') {
+    // We'll use file size as a proxy for duration
+    const totalSize = buffer.length;
+    // Google API limit is about 60s for sync API, use 58s to be safe
+    // Let's estimate bytes per second based on typical compression ratios
+    // MP3 at 128kbps = 16KB/s, so 58s would be roughly 928KB
+    const bytesPerChunk = 900 * 1024; // 900KB per chunk is a conservative estimate
+    
+    const numChunks = Math.ceil(totalSize / bytesPerChunk);
+    console.log(`🔪 Splitting ${format} audio (${totalSize} bytes) into ${numChunks} chunks of ~${bytesPerChunk} bytes`);
+    
+    const chunks = [];
+    for (let i = 0; i < numChunks; i++) {
+      const start = i * bytesPerChunk;
+      const end = Math.min(start + bytesPerChunk, totalSize);
+      chunks.push(buffer.slice(start, end));
+    }
+    
+    return chunks;
+  } 
+  // For LINEAR16 (WAV), we can do more precise splitting
+  else if (format === 'LINEAR16') {
+    // WAV format has 16 bits per sample, 2 channels typically
+    const bytesPerSample = 2; // 16-bit = 2 bytes
+    const typicalChannels = 2;
+    const typicalSampleRate = 16000; // 16kHz
+    
+    // Calculate bytes per second (sample rate * bytes per sample * channels)
+    const bytesPerSecond = typicalSampleRate * bytesPerSample * typicalChannels;
+    const bytesPerChunk = (chunkDurationMs / 1000) * bytesPerSecond;
+    
+    // Find the header size (typically 44 bytes for WAV)
+    // Skip this for now and just use the raw data
+    // const headerSize = 44;
+    const headerSize = 0; // For simplicity, we'll include headers in each chunk
+    
+    const audioData = buffer.slice(headerSize);
+    const totalAudioSize = audioData.length;
+    const numChunks = Math.ceil(totalAudioSize / bytesPerChunk);
+    
+    console.log(`🔪 Splitting ${format} audio (${totalAudioSize} bytes) into ${numChunks} chunks of ~${bytesPerChunk} bytes`);
+    
+    const chunks = [];
+    for (let i = 0; i < numChunks; i++) {
+      const start = i * bytesPerChunk;
+      const end = Math.min(start + bytesPerChunk, totalAudioSize);
+      
+      // For the first chunk, include the header, otherwise just the data
+      if (i === 0 && headerSize > 0) {
+        const chunkWithHeader = Buffer.alloc(end - start + headerSize);
+        buffer.copy(chunkWithHeader, 0, 0, headerSize);
+        audioData.copy(chunkWithHeader, headerSize, start, end);
+        chunks.push(chunkWithHeader);
+      } else {
+        chunks.push(audioData.slice(start, end));
+      }
+    }
+    
+    return chunks;
+  }
+  
+  // Fallback: just return the whole buffer as one chunk
+  console.log(`⚠️ Unknown format ${format}, returning single chunk`);
+  return [buffer];
+}
+
+// Handle long audio transcription by splitting into chunks
+async function handleLongAudioTranscription(audioBuffer, encoding, options = {}) {
+  console.log(`🔄 Processing long audio file (${audioBuffer.length} bytes) with ${encoding} encoding`);
+  
+  // Split the audio into manageable chunks
+  const chunks = splitAudioBuffer(audioBuffer, encoding);
+  console.log(`🧩 Split audio into ${chunks.length} chunks`);
+  
+  // Process each chunk and collect the results
+  let combinedTranscription = '';
+  let chunkErrors = [];
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    console.log(`🔄 Processing chunk ${i+1}/${chunks.length} (${chunk.length} bytes)`);
+    
+    try {
+      // Process this chunk using the regular speech API handler
+      const transcription = await handleGoogleSpeechAPI(chunk, {
+        ...options,
+        encoding
+      });
+      
+      if (transcription && !transcription.startsWith('Error:') && transcription !== 'No speech detected') {
+        if (combinedTranscription) combinedTranscription += ' ';
+        combinedTranscription += transcription;
+        console.log(`✅ Chunk ${i+1}: Got transcription of length ${transcription.length}`);
+      } else if (transcription === 'No speech detected') {
+        console.log(`⚠️ Chunk ${i+1}: No speech detected`);
+      } else {
+        console.error(`❌ Chunk ${i+1}: Error: ${transcription}`);
+        chunkErrors.push(`Chunk ${i+1}: ${transcription}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error processing chunk ${i+1}:`, error);
+      chunkErrors.push(`Chunk ${i+1}: ${error.message}`);
+    }
+  }
+  
+  // Return the combined results
+  if (combinedTranscription) {
+    if (chunkErrors.length > 0) {
+      console.warn(`⚠️ Transcription completed with ${chunkErrors.length} chunk errors`);
+    }
+    return combinedTranscription;
+  } else if (chunkErrors.length > 0) {
+    return `Error: Failed to transcribe audio. ${chunkErrors.join('; ')}`;
+  } else {
+    return 'No speech detected in any chunk';
+  }
+}
+
 // Handle existing audio file transcription test
 ipcMain.handle('test-speech-with-file', async (event, options) => {
   try {
@@ -622,23 +743,34 @@ ipcMain.handle('test-speech-with-file', async (event, options) => {
       }
     }
 
-    // Call the existing function to process the audio
-    const transcription = await handleGoogleSpeechAPI(audioBuffer, {
-      encoding,
-      sampleRateHertz: 16000,
-      languageCode: 'en-US',
-      apiKey: apiKey // Pass the API key to the handler function
-    });
+    // Check file size to determine if we need to use the long audio handler
+    const isLongAudio = audioBuffer.length > 900 * 1024; // Approx. 900KB is around 1 minute
+    
+    let transcription;
+    if (isLongAudio) {
+      console.log(`📊 main.js: Large audio file detected (${audioBuffer.length} bytes), using chunked processing`);
+      transcription = await handleLongAudioTranscription(audioBuffer, encoding, {
+        sampleRateHertz: 16000,
+        languageCode: 'en-US',
+        apiKey: apiKey
+      });
+    } else {
+      // Call the existing function to process the audio
+      transcription = await handleGoogleSpeechAPI(audioBuffer, {
+        encoding,
+        sampleRateHertz: 16000,
+        languageCode: 'en-US',
+        apiKey: apiKey // Pass the API key to the handler function
+      });
+    }
 
-    console.log('📝 main.js: Transcription result:', transcription);
+    console.log('📝 main.js: Transcription result:', transcription.substring(0, 100) + (transcription.length > 100 ? '...' : ''));
     return { transcription };
   } catch (error) {
     console.error('❌ main.js: Error testing speech with file:', error);
     return { error: error.message || 'Unknown error' };
   }
 });
-
-// Add these new IPC handlers for microphone recording
 
 // Automatically transcribe a recording file and send the transcript to the renderer
 async function transcribeRecordingFile(filePath) {
@@ -652,6 +784,7 @@ async function transcribeRecordingFile(filePath) {
     
     // Read the audio file
     const audioBuffer = fs.readFileSync(filePath);
+    console.log(`✅ main.js: Read audio file of size ${audioBuffer.length} bytes`);
     
     // Determine encoding based on file extension
     const fileExt = path.extname(filePath).toLowerCase();
@@ -665,12 +798,25 @@ async function transcribeRecordingFile(filePath) {
       encoding = 'LINEAR16';
     }
     
-    // Call the existing function to process the audio
-    const transcription = await handleGoogleSpeechAPI(audioBuffer, {
-      encoding,
-      sampleRateHertz: 44100,
-      languageCode: 'en-US'
-    });
+    // Check if this is a long audio file (> 900KB or ~1 minute)
+    const isLongAudio = audioBuffer.length > 900 * 1024;
+    let transcription;
+    
+    // Process the audio based on its size
+    if (isLongAudio) {
+      console.log(`📊 main.js: Large recording detected (${audioBuffer.length} bytes), using chunked processing`);
+      transcription = await handleLongAudioTranscription(audioBuffer, encoding, {
+        sampleRateHertz: 44100,
+        languageCode: 'en-US'
+      });
+    } else {
+      // Call the existing function to process the audio
+      transcription = await handleGoogleSpeechAPI(audioBuffer, {
+        encoding,
+        sampleRateHertz: 44100,
+        languageCode: 'en-US'
+      });
+    }
     
     console.log('📝 main.js: Auto-transcription result:', transcription.substring(0, 100) + '...');
     
