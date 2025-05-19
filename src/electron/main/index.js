@@ -76,13 +76,15 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
       }
     }
     
-    // Check for API key in environment variable
-    const apiKey = process.env.GOOGLE_SPEECH_API_KEY;
+    // Check for API key in options, then environment variable, then global constant
+    const apiKey = options.apiKey || process.env.GOOGLE_SPEECH_API_KEY || API_KEY;
     
     if (!apiKey) {
       console.error('❌ main.js: No Google Speech API key found');
-      throw new Error('No Google Speech API key found. Please set GOOGLE_SPEECH_API_KEY environment variable.');
+      throw new Error('No Google Speech API key found. Please set GOOGLE_SPEECH_API_KEY environment variable or provide an API key.');
     }
+    
+    console.log('🔑 main.js: API key available:', apiKey ? 'Yes (length: ' + apiKey.length + ')' : 'No');
     
     const client = new speech.SpeechClient({
       credentials: {
@@ -373,9 +375,14 @@ ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['
 });
 
 // Handle existing audio file transcription test
-ipcMain.handle('test-speech-with-file', async (event, filePath) => {
+ipcMain.handle('test-speech-with-file', async (event, options) => {
   try {
+    // Handle both old and new format (string vs object)
+    const filePath = typeof options === 'string' ? options : options.filePath;
+    const apiKey = typeof options === 'object' ? options.apiKey : undefined;
+    
     console.log('🧪 main.js: Testing speech recognition with audio file:', filePath);
+    console.log('🔑 main.js: API key provided:', apiKey ? 'Yes' : 'No');
 
     // Handle relative paths - convert them to absolute
     let resolvedPath = filePath;
@@ -488,14 +495,15 @@ ipcMain.handle('test-speech-with-file', async (event, filePath) => {
     const transcription = await handleGoogleSpeechAPI(audioBuffer, {
       encoding,
       sampleRateHertz: 16000,
-      languageCode: 'en-US'
+      languageCode: 'en-US',
+      apiKey: apiKey // Pass the API key to the handler function
     });
 
     console.log('📝 main.js: Transcription result:', transcription);
-    return transcription;
+    return { transcription };
   } catch (error) {
     console.error('❌ main.js: Error testing speech with file:', error);
-    return `Error: ${error.message || 'Unknown error'}`;
+    return { error: error.message || 'Unknown error' };
   }
 });
 

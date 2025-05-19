@@ -126,7 +126,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   
   testSpeechWithFile: async (filePath, apiKey) => {
-    return await ipcRenderer.invoke("test-speech-with-file", { filePath, apiKey });
+    console.log('🔄 preload.cjs: Invoking test-speech-with-file', {
+      filePath,
+      apiKeyProvided: apiKey ? 'Yes' : 'No'
+    });
+    const result = await ipcRenderer.invoke("test-speech-with-file", { filePath, apiKey });
+    console.log('📥 preload.cjs: Result from test-speech-with-file:', result);
+    return result;
   },
   
   // Add a listener for transcription events from audio recordings

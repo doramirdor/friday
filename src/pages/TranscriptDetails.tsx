@@ -17,7 +17,6 @@ import { Toggle } from "@/components/ui/toggle";
 import { Slider } from "@/components/ui/slider";
 import useSystemAudio from "@/hooks/useSystemAudio";
 import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
-import { AudioTestButton } from "@/components/audio-test-button";
 import { Switch } from "@/components/ui/switch";
 import useMicrophoneRecording from '@/hooks/useMicrophoneRecording';
 import AudioPlayer from '@/components/AudioPlayer';
@@ -100,6 +99,7 @@ interface ElectronWindow extends Window {
     }) => void) => void;
     loadAudioFile: (filepath: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
     playAudioFile: (filepath: string) => Promise<{ error?: string }>;
+    testSpeechWithFile: (filepath: string) => Promise<{ transcription?: string; error?: string }>;
   }
 }
 
@@ -450,6 +450,79 @@ const TranscriptDetails = () => {
     }
   }, [currentSpeakerId]);
 
+  // Add a function to play audio with native player
+  const handlePlayWithNativePlayer = useCallback((filepath: string) => {
+    const win = window as unknown as ElectronWindow;
+    if (win?.electronAPI?.isElectron && win.electronAPI.playAudioFile) {
+      win.electronAPI.playAudioFile(filepath)
+        .then((result: any) => {
+          if (result.error) {
+            console.error("Error playing audio file:", result.error);
+            toast.error("Failed to play audio file: " + result.error);
+          }
+        })
+        .catch((error: any) => {
+          console.error("Error playing audio file:", error);
+          toast.error("Failed to play audio file");
+        });
+    }
+  }, []);
+
+  // Add a function to transcribe the audio file after it's loaded
+  const handleTranscribeAudio = useCallback(async (audioPath: string) => {
+    const win = window as unknown as ElectronWindow;
+    
+    if (!win?.electronAPI?.isElectron) {
+      toast.error("Transcription is only available in the desktop app");
+      return;
+    }
+    
+    if (!audioPath) {
+      toast.error("No audio file available for transcription");
+      return;
+    }
+    
+    toast.info("Transcribing audio...", { duration: 5000 });
+    
+    try {
+      // Use testSpeechWithFile to send the audio file to Google Speech API
+      if (win.electronAPI.testSpeechWithFile) {
+        console.log("Sending audio file to Google Speech API:", audioPath);
+        
+        const result = await win.electronAPI.testSpeechWithFile(audioPath);
+        console.log("Transcription result:", result);
+        
+        if (result && result.transcription) {
+          console.log("Received transcription:", result.transcription);
+          
+          // Add the transcription to transcript lines with current speaker
+          const newLine: TranscriptLine = {
+            id: `l${Date.now()}`,
+            text: result.transcription.trim(),
+            speakerId: currentSpeakerId,
+          };
+          
+          setTranscriptLines(prev => [...prev, newLine]);
+          toast.success("Transcription added to transcript");
+          
+          // Make sure we're not in "new meeting" mode
+          setIsNewMeeting(false);
+        } else if (result && result.error) {
+          console.error("Transcription error:", result.error);
+          toast.error(`Transcription error: ${result.error}`);
+        } else {
+          console.warn("No transcription received");
+          toast.error("No transcription received");
+        }
+      } else {
+        toast.error("Speech transcription API not available");
+      }
+    } catch (error) {
+      console.error("Error transcribing audio:", error);
+      toast.error(`Error transcribing audio: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [currentSpeakerId]);
+
   // Effect to handle recording path updates from native recordings
   useEffect(() => {
     const isNativeSystemAudioAvailable = !!(window as unknown as ElectronWindow)?.electronAPI?.systemAudio;
@@ -507,6 +580,17 @@ const TranscriptDetails = () => {
                         console.error("Error scrolling to audio player:", e);
                       }
                     }, 500);
+                    
+                    // Automatically transcribe the recording if we have auto-transcribe enabled
+                    if (isLiveTranscript && win.electronAPI.testSpeechWithFile) {
+                      // Wait a bit longer before transcribing to ensure UI is updated
+                      setTimeout(() => {
+                        console.log("Auto-transcribing recording:", recordingPath);
+                        
+                        // Try to transcribe the recording
+                        handleTranscribeAudio(recordingPath);
+                      }, 1000);
+                    }
                   }, 100);
                 } else if (result.error) {
                   console.error("Error loading audio file:", result.error);
@@ -548,26 +632,9 @@ const TranscriptDetails = () => {
   }, [
     isNativeRecording, nativeRecordingPath, 
     isMicRecording, micRecordingPath, 
-    isCombinedRecording, combinedRecordingPath
+    isCombinedRecording, combinedRecordingPath,
+    handlePlayWithNativePlayer, handleTranscribeAudio, isLiveTranscript
   ]);
-
-  // Add a function to play audio with native player
-  const handlePlayWithNativePlayer = useCallback((filepath: string) => {
-    const win = window as unknown as ElectronWindow;
-    if (win?.electronAPI?.isElectron && win.electronAPI.playAudioFile) {
-      win.electronAPI.playAudioFile(filepath)
-        .then((result: any) => {
-          if (result.error) {
-            console.error("Error playing audio file:", result.error);
-            toast.error("Failed to play audio file: " + result.error);
-          }
-        })
-        .catch((error: any) => {
-          console.error("Error playing audio file:", error);
-          toast.error("Failed to play audio file");
-        });
-    }
-  }, []);
 
   const handlePlayPause = () => {
     if (!recordedAudioUrl || !audioRef.current) {
@@ -915,7 +982,7 @@ const TranscriptDetails = () => {
     isCombinedRecording
   ]);
 
-  // Directly display the AudioPlayer when we have a recording, regardless of other state
+  // Update DisplayAudioPlayer component to include transcription button
   const DisplayAudioPlayer = () => {
     if (!recordedAudioUrl && !savedAudioPath) return null;
     
@@ -923,10 +990,21 @@ const TranscriptDetails = () => {
       <div className="mb-6">
         {recordedAudioUrl ? (
           <div className="audio-player-container p-4 border border-primary/30 rounded-md bg-accent/10 shadow-md transition-all duration-500 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
-            <h3 className="text-sm font-medium mb-2 flex items-center">
-              <span className="h-2 w-2 rounded-full bg-green-500 mr-2"></span>
-              Recording Ready
-            </h3>
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-sm font-medium flex items-center">
+                <span className="h-2 w-2 rounded-full bg-green-500 mr-2"></span>
+                Recording Ready
+              </h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => savedAudioPath && handleTranscribeAudio(savedAudioPath)}
+                disabled={!savedAudioPath}
+                className="text-xs h-8"
+              >
+                Transcribe with Google
+              </Button>
+            </div>
             <AudioPlayer
               audioUrl={recordedAudioUrl}
               autoPlay={false}
@@ -935,9 +1013,19 @@ const TranscriptDetails = () => {
           </div>
         ) : savedAudioPath && (
           <div className="audio-player-container flex flex-col items-center p-4 border rounded-md bg-muted shadow-sm animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
-            <p className="text-sm text-muted-foreground mb-2">
-              Audio file saved but cannot be played in browser
-            </p>
+            <div className="w-full flex justify-between items-center mb-2">
+              <p className="text-sm text-muted-foreground">
+                Audio file saved but cannot be played in browser
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleTranscribeAudio(savedAudioPath)}
+                className="text-xs h-8 ml-2"
+              >
+                Transcribe
+              </Button>
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -1076,9 +1164,7 @@ const TranscriptDetails = () => {
                       >
                         {isRecording || isMicRecording || isNativeRecording || isCombinedRecording ? "Stop Recording" : "Start Recording"}
                       </Button>
-                      
-                      <AudioTestButton />
-                      
+                                            
                       {/* Add button for toggling back to new recording view if needed */}
                       <Button
                         variant="ghost"
