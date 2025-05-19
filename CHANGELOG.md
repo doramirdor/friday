@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - macOS-compatible AudioDeviceManager for system audio device detection
 - Native player integration for audio playback when browser playback is restricted
 - Enhanced AudioPlayer UI with animations, highlighting and download option
+- Debug logging for audio playback and conversion issues
 
 ### Changed
 - Redesigned recording interface with visual feedback indicators 
@@ -34,6 +35,7 @@ All notable changes to this project will be documented in this file.
 - Unified recording API for consistent access to different audio sources
 - Improved ffmpeg implementation for audio format conversion
 - Improved visibility and user experience for audio playback after recording stops
+- Enhanced AudioPlayer display logic to ensure it's always visible after recording
 
 ### Fixed
 - Bug in permission handling on macOS Ventura and later
@@ -50,6 +52,8 @@ All notable changes to this project will be documented in this file.
 - Security restrictions when loading local audio files in browser environment
 - Added fallback to native system player when browser audio playback is restricted
 - Enhanced visibility of AudioPlayer component after recording stops
+- Fixed audio playback issues with data URLs and large files
+- Improved error handling for data URL conversion in Electron
 
 ## [0.2.1] - 2023-07-31
 
