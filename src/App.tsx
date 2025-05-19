@@ -8,6 +8,7 @@ import IndexPage from "@/pages/Index";
 import LibraryPage from "@/pages/Library";
 import TranscriptDetailsPage from "@/pages/TranscriptDetails";
 import NotFoundPage from "@/pages/NotFound";
+import MockTranscriptPage from "@/pages/MockTranscript";
 import "./App.css";
 
 interface AppProps {
@@ -37,6 +38,7 @@ function App({ isElectron = false }: AppProps) {
             <Route path="*" element={<NotFoundPage />} />
           </Route>
           <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />
+          <Route path="/transcript/123" element={<MockTranscriptPage />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-center" />

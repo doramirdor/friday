@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import RecordingsTable, { Recording } from "@/components/recordings-table";
@@ -12,7 +11,7 @@ import { Card } from "@/components/ui/card";
 // Sample data
 const sampleRecordings: Recording[] = [
   {
-    id: "1",
+    id: "123", // Changed ID to "123" for our mock transcript
     title: "Weekly Team Standup",
     createdAt: new Date("2025-05-12T09:30:00"),
     duration: 1845, // 30:45
@@ -84,7 +83,12 @@ const Library = () => {
   
   // Open existing recording with transcript
   const handleOpenRecording = (id: string) => {
-    navigate(`/transcript/${id}`);
+    // Special handling for mock transcript
+    if (id === "123") {
+      navigate(`/transcript/123`);
+    } else {
+      navigate(`/transcript/${id}`);
+    }
   };
   
   // Select a recording to preview

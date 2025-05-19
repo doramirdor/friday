@@ -4,6 +4,7 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+- Added mock transcript page at /transcript/123 with pre-recorded audio and transcript
 - Improved UI design for recording status with pulsing indicator
 - Enhanced visual presentation of live transcript toggle with status indicator
 - Consolidated "New Meeting" button to header only
