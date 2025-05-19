@@ -493,6 +493,13 @@ const TranscriptDetails = () => {
         console.log("Transcription result:", result);
         
         if (result && result.transcription) {
+          // Check if the transcription contains an error message (starts with "Error:")
+          if (typeof result.transcription === 'string' && result.transcription.startsWith('Error:')) {
+            console.error("Transcription error:", result.transcription);
+            toast.error(`Transcription error: ${result.transcription}`);
+            return;
+          }
+          
           console.log("Received transcription:", result.transcription);
           
           // Add the transcription to transcript lines with current speaker

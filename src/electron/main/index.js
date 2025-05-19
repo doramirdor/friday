@@ -6,6 +6,7 @@ import fs from "fs";
 import speech from "@google-cloud/speech";
 import { promisify } from "util";
 import { exec as execCallback } from "child_process";
+import https from 'https';
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -28,6 +29,85 @@ const ensureRecordingsDirectory = () => {
 
 // API Key - Get from env variable
 const API_KEY = process.env.GOOGLE_SPEECH_API_KEY || '';
+
+// Add direct API call function using HTTPS
+async function callGoogleSpeechAPIDirectly(audioBase64, options = {}) {
+  return new Promise((resolve, reject) => {
+    const apiKey = options.apiKey || process.env.GOOGLE_SPEECH_API_KEY || API_KEY;
+    
+    if (!apiKey) {
+      return reject(new Error('No API key available for Google Speech API'));
+    }
+    
+    console.log('🌐 main.js: Making direct API call to Google Speech API');
+    
+    const requestData = JSON.stringify({
+      config: {
+        encoding: options.encoding || 'LINEAR16',
+        sampleRateHertz: options.sampleRateHertz || 16000,
+        languageCode: options.languageCode || 'en-US',
+        model: options.model || 'command_and_search',
+        enableAutomaticPunctuation: true,
+        useEnhanced: true
+      },
+      audio: {
+        content: audioBase64
+      }
+    });
+    
+    const apiUrl = `https://speech.googleapis.com/v1/speech:recognize?key=${apiKey}`;
+    
+    const requestOptions = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(requestData)
+      }
+    };
+    
+    const req = https.request(apiUrl, requestOptions, (res) => {
+      const chunks = [];
+      
+      res.on('data', (chunk) => {
+        chunks.push(chunk);
+      });
+      
+      res.on('end', () => {
+        try {
+          const responseBody = Buffer.concat(chunks).toString();
+          console.log('🌐 main.js: Direct API response:', responseBody.substring(0, 500) + '...');
+          
+          if (res.statusCode !== 200) {
+            return reject(new Error(`API request failed with status ${res.statusCode}: ${responseBody}`));
+          }
+          
+          const jsonResponse = JSON.parse(responseBody);
+          
+          if (!jsonResponse.results || jsonResponse.results.length === 0) {
+            console.log('⚠️ main.js: No transcription results from direct API call');
+            return resolve('No speech detected');
+          }
+          
+          const transcription = jsonResponse.results
+            .map(result => result.alternatives[0].transcript)
+            .join('\n');
+            
+          console.log('🎯 main.js: Direct API transcription received:', transcription.substring(0, 50) + '...');
+          return resolve(transcription);
+        } catch (error) {
+          return reject(new Error(`Error processing API response: ${error.message}`));
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      return reject(new Error(`API request error: ${error.message}`));
+    });
+    
+    req.write(requestData);
+    req.end();
+  });
+}
 
 // Handle the Google Speech-to-Text API calls
 async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
@@ -86,17 +166,46 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
     
     console.log('🔑 main.js: API key available:', apiKey ? 'Yes (length: ' + apiKey.length + ')' : 'No');
     
-    const client = new speech.SpeechClient({
-      credentials: {
-        client_email: undefined,
-        private_key: undefined
-      },
-      projectId: process.env.GOOGLE_PROJECT_ID || '',
-      apiEndpoint: 'speech.googleapis.com',
-      auth: {
-        apiKey: apiKey
+    // Create Speech client with compatibility fix for older Google Cloud Speech library versions
+    let client;
+    try {
+      client = new speech.SpeechClient({
+        credentials: {
+          client_email: undefined,
+          private_key: undefined
+        },
+        projectId: process.env.GOOGLE_PROJECT_ID || '',
+        apiEndpoint: 'speech.googleapis.com',
+        auth: {
+          apiKey: apiKey
+        }
+      });
+    } catch (error) {
+      // Fallback initialization if the primary method fails
+      console.error('❌ main.js: Error initializing SpeechClient with standard method:', error.message);
+      console.log('🔄 main.js: Trying alternative initialization method...');
+      
+      try {
+        // Alternative initialization to work around getUniverseDomain issue
+        client = new speech.SpeechClient({
+          apiEndpoint: 'speech.googleapis.com'
+        });
+        
+        // Manually set API key on client for auth
+        if (!client.auth) {
+          client.auth = {};
+        }
+        client.auth.key = apiKey;
+        client.auth.getRequestHeaders = async () => {
+          return { 'Authorization': `Bearer ${apiKey}` };
+        };
+        
+        console.log('✅ main.js: Alternative initialization successful');
+      } catch (altError) {
+        console.error('❌ main.js: Alternative initialization also failed:', altError.message);
+        throw new Error(`Could not initialize Speech client: ${error.message}, alternative method: ${altError.message}`);
       }
-    });
+    }
     console.log('🔑 main.js: Using API key authentication for Google Speech');
     
     // Boost audio levels for better speech detection (simple gain)
@@ -146,23 +255,45 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
     };
     
     console.log('🚀 main.js: Sending audio to Google Speech API with encoding:', finalEncoding);
-    const [response] = await client.recognize(request);
     
-    console.log('📥 main.js: Received response from Google Speech API:', {
-      responseExists: !!response,
-      resultsLength: response?.results?.length || 0
-    });
-    
-    if (!response || !response.results || response.results.length === 0) {
-      console.log('⚠️ main.js: No transcription results returned');
-      return 'No speech detected';
+    let transcription;
+    try {
+      const [response] = await client.recognize(request);
+      
+      console.log('📥 main.js: Received response from Google Speech API:', {
+        responseExists: !!response,
+        resultsLength: response?.results?.length || 0
+      });
+      
+      if (!response || !response.results || response.results.length === 0) {
+        console.log('⚠️ main.js: No transcription results returned');
+        transcription = 'No speech detected';
+      } else {
+        transcription = response.results
+          .map(result => result.alternatives[0].transcript)
+          .join('\n');
+          
+        console.log('🎯 main.js: Transcription received:', transcription.substring(0, 50) + '...');
+      }
+    } catch (clientError) {
+      console.error('❌ main.js: Error using client library for speech recognition:', clientError);
+      console.log('🔄 main.js: Falling back to direct API call');
+      
+      // If the client library fails, try the direct API call
+      try {
+        transcription = await callGoogleSpeechAPIDirectly(audioContent, {
+          encoding: finalEncoding,
+          sampleRateHertz,
+          languageCode,
+          model: options.model || 'command_and_search',
+          apiKey: apiKey
+        });
+      } catch (directApiError) {
+        console.error('❌ main.js: Direct API call also failed:', directApiError);
+        throw directApiError; // Re-throw to be caught by the outer catch block
+      }
     }
     
-    const transcription = response.results
-      .map(result => result.alternatives[0].transcript)
-      .join('\n');
-      
-    console.log('🎯 main.js: Transcription received:', transcription.substring(0, 50) + '...');
     return transcription;
   } catch (error) {
     console.error('❌ main.js: Error with speech recognition:', error);
