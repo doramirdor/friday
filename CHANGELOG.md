@@ -54,6 +54,8 @@ All notable changes to this project will be documented in this file.
 - Enhanced visibility of AudioPlayer component after recording stops
 - Fixed audio playback issues with data URLs and large files
 - Improved error handling for data URL conversion in Electron
+- Fixed Google Speech API transcription failures in testSpeechWithFile by properly passing API key parameters
+- Enhanced error handling and debugging in Google Speech API integration
 
 ## [0.2.1] - 2023-07-31
 
