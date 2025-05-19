@@ -483,6 +483,13 @@ const TranscriptDetails = () => {
                   console.log("Loaded audio file as data URL");
                   // Use the data URL instead of file:// URL
                   setRecordedAudioUrl(result.dataUrl);
+                  // Scroll to the audio player area to make it visible
+                  setTimeout(() => {
+                    const audioPlayerElement = document.querySelector('.audio-player-container');
+                    if (audioPlayerElement) {
+                      audioPlayerElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }, 300);
                 } else if (result.error) {
                   console.error("Error loading audio file:", result.error);
                   toast.error("Failed to load audio file: " + result.error);
@@ -866,10 +873,17 @@ const TranscriptDetails = () => {
     return (
       <div className="mb-4">
         {recordedAudioUrl && (
-          <AudioPlayer 
-            audioUrl={recordedAudioUrl}
-            autoPlay={false}
-          />
+          <div className="audio-player-container p-4 border border-primary/30 rounded-md bg-accent/10 shadow-md transition-all duration-500 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
+            <h3 className="text-sm font-medium mb-2 flex items-center">
+              <span className="h-2 w-2 rounded-full bg-green-500 mr-2"></span>
+              Recording Ready
+            </h3>
+            <AudioPlayer
+              audioUrl={recordedAudioUrl}
+              autoPlay={false}
+              showWaveform={true}
+            />
+          </div>
         )}
       </div>
     );
@@ -988,12 +1002,19 @@ const TranscriptDetails = () => {
                 ) : (
                   <div className="flex flex-col gap-4 mb-4">
                     {recordedAudioUrl ? (
-                      <AudioPlayer
-                        audioUrl={recordedAudioUrl}
-                        autoPlay={false}
-                      />
+                      <div className="audio-player-container p-4 border border-primary/30 rounded-md bg-accent/10 shadow-md transition-all duration-500 animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
+                        <h3 className="text-sm font-medium mb-2 flex items-center">
+                          <span className="h-2 w-2 rounded-full bg-green-500 mr-2"></span>
+                          Recording Ready
+                        </h3>
+                        <AudioPlayer
+                          audioUrl={recordedAudioUrl}
+                          autoPlay={false}
+                          showWaveform={true}
+                        />
+                      </div>
                     ) : savedAudioPath && (
-                      <div className="flex flex-col items-center p-4 border rounded-md bg-muted">
+                      <div className="audio-player-container flex flex-col items-center p-4 border rounded-md bg-muted shadow-sm animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-5">
                         <p className="text-sm text-muted-foreground mb-2">
                           Audio file saved but cannot be played in browser
                         </p>

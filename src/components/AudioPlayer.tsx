@@ -1,21 +1,22 @@
-
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Play, Pause, Volume2, VolumeX } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, Download } from "lucide-react";
 import { toast } from "sonner";
 
 interface AudioPlayerProps {
   audioUrl: string | null;
   autoPlay?: boolean;
+  showWaveform?: boolean;
 }
 
-const AudioPlayer = ({ audioUrl, autoPlay = true }: AudioPlayerProps) => {
+const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPlayerProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const [currentAudioTime, setCurrentAudioTime] = useState<number>(0);
   const [volume, setVolume] = useState<number>(80);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isHighlighted, setIsHighlighted] = useState<boolean>(true);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -77,6 +78,14 @@ const AudioPlayer = ({ audioUrl, autoPlay = true }: AudioPlayerProps) => {
         return () => clearTimeout(playTimeout);
       }
     }
+    
+    // Add highlight effect that slowly fades out
+    setIsHighlighted(true);
+    const highlightTimeout = setTimeout(() => {
+      setIsHighlighted(false);
+    }, 3000);
+    
+    return () => clearTimeout(highlightTimeout);
   }, [audioUrl, autoPlay]);
   
   // Update volume when changed
@@ -126,15 +135,29 @@ const AudioPlayer = ({ audioUrl, autoPlay = true }: AudioPlayerProps) => {
   const handleToggleMute = () => {
     setIsMuted(!isMuted);
   };
+  
+  // Download the audio file
+  const handleDownload = () => {
+    if (audioUrl) {
+      // Create an anchor element
+      const a = document.createElement('a');
+      a.href = audioUrl;
+      a.download = `recording-${new Date().toISOString().replace(/:/g, '-')}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success("Downloading recording");
+    }
+  };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={`flex flex-col gap-4 ${isHighlighted ? 'animate-pulse' : ''}`}>
       <div className="flex items-center gap-4">
         <Button
           variant="outline"
           size="icon"
           onClick={handlePlayPause}
-          className="h-10 w-10 rounded-full"
+          className={`h-10 w-10 rounded-full ${isHighlighted ? 'border-primary' : ''}`}
           disabled={!audioUrl}
         >
           {isPlaying ? (
@@ -169,6 +192,16 @@ const AudioPlayer = ({ audioUrl, autoPlay = true }: AudioPlayerProps) => {
               onValueChange={handleVolumeChange}
             />
           </div>
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleDownload}
+            className="h-8 w-8 p-0 ml-2"
+            title="Download recording"
+          >
+            <Download className="h-4 w-4" />
+          </Button>
         </div>
       </div>
       
@@ -181,21 +214,23 @@ const AudioPlayer = ({ audioUrl, autoPlay = true }: AudioPlayerProps) => {
           step={0.1}
           onValueChange={handleAudioTimeChange}
           disabled={!audioUrl}
+          className={isHighlighted ? 'slider-highlighted' : ''}
         />
       </div>
       
       {/* Audio waveform visualization */}
-      {audioUrl && (
-        <div className="h-20 bg-muted rounded-md waveform-bg relative">
+      {audioUrl && showWaveform && (
+        <div className={`h-20 bg-muted rounded-md waveform-bg relative ${isHighlighted ? 'border border-primary/50' : ''}`}>
           {/* Simulated waveform for now */}
           <div className="absolute inset-0 flex items-center px-4">
             <div className="w-full h-16 flex items-center">
               {Array.from({ length: 100 }).map((_, i) => {
                 const height = Math.sin(i * 0.2) * 20 + 30;
+                const isActive = (i / 100) < (currentAudioTime / (audioDuration || 1));
                 return (
                   <div
                     key={i}
-                    className="w-1 mx-0.5 bg-primary-dark opacity-70"
+                    className={`w-1 mx-0.5 ${isActive ? 'bg-primary' : 'bg-primary-dark opacity-70'}`}
                     style={{
                       height: `${height}%`,
                     }}
