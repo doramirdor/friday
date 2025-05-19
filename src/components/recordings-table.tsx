@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { format } from "date-fns";
 import { PlayCircle, Trash2, Tag, File } from "lucide-react";
@@ -27,9 +26,10 @@ export interface Recording {
 interface RecordingsTableProps {
   recordings: Recording[];
   onDelete: (id: string) => void;
+  onSelect?: (recording: Recording) => void; // New prop for selecting recordings
 }
 
-const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
+const RecordingsTable = ({ recordings, onDelete, onSelect }: RecordingsTableProps) => {
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
   const [contextDialogOpen, setContextDialogOpen] = useState(false);
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
@@ -44,6 +44,10 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
   };
   
   const handlePlay = (recording: Recording) => {
+    // Call onSelect if provided
+    if (onSelect) {
+      onSelect(recording);
+    }
     toast(`Playing: ${recording.title}`);
   };
   
@@ -52,8 +56,13 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
     setSelectedRecording(null);
   };
   
-  const handleRowClick = (id: string) => {
-    navigate(`/transcript/${id}`);
+  const handleRowClick = (recording: Recording) => {
+    // Call onSelect if provided
+    if (onSelect) {
+      onSelect(recording);
+    } else {
+      navigate(`/transcript/${recording.id}`);
+    }
   };
   
   const handleContextClick = (recording: Recording, e: React.MouseEvent) => {
@@ -87,7 +96,7 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
           {recordings.map((recording) => (
             <tr
               key={recording.id}
-              onClick={() => handleRowClick(recording.id)}
+              onClick={() => handleRowClick(recording)}
               className="border-b hover:bg-accent/50 cursor-pointer transition-colors"
             >
               <td className="px-6 py-4 font-medium">{recording.title}</td>

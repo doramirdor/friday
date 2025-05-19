@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - Changed recording button to green color scheme
 - Reordered settings tabs to place Context tab before Meeting tab
 - Added AudioPlayer component to better handle recorded audio playback
+- Added demo recording preview in Library view to showcase AudioPlayer
 
 ## [0.2.0] - 2023-07-30
 

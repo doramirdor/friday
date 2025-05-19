@@ -6,6 +6,8 @@ import EmptyState from "@/components/empty-state";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
+import AudioPlayer from "@/components/AudioPlayer";
+import { Card } from "@/components/ui/card";
 
 // Sample data
 const sampleRecordings: Recording[] = [
@@ -36,10 +38,16 @@ const Library = () => {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [showEmpty, setShowEmpty] = useState(false); // Changed to false to show recordings by default
   const navigate = useNavigate();
+  const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
+  
+  // Create a sample audio URL for demo purposes
+  const demoAudioUrl = "https://assets.mixkit.co/active_storage/sfx/212/212-preview.mp3";
   
   useEffect(() => {
     // Load sample data immediately instead of empty state
     setRecordings(sampleRecordings);
+    // Auto-select the first recording for demo purposes
+    setSelectedRecording(sampleRecordings[0]);
   }, []);
   
   const handleStartRecording = () => {
@@ -62,6 +70,11 @@ const Library = () => {
     if (recordings.length === 1) {
       setShowEmpty(true);
     }
+    
+    // Clear selection if the deleted recording was selected
+    if (selectedRecording && selectedRecording.id === id) {
+      setSelectedRecording(null);
+    }
   };
   
   // We're toggling between normal and empty state for demo purposes
@@ -72,6 +85,11 @@ const Library = () => {
   // Open existing recording with transcript
   const handleOpenRecording = (id: string) => {
     navigate(`/transcript/${id}`);
+  };
+  
+  // Select a recording to preview
+  const handleSelectRecording = (recording: Recording) => {
+    setSelectedRecording(recording);
   };
 
   return (
@@ -102,10 +120,26 @@ const Library = () => {
       {showEmpty ? (
         <EmptyState onStartRecording={handleStartRecording} />
       ) : (
-        <RecordingsTable 
-          recordings={recordings}
-          onDelete={handleDeleteRecording}
-        />
+        <>
+          {/* Add demo audio player */}
+          <Card className="mb-6 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-medium mb-2">
+                {selectedRecording ? selectedRecording.title : "Demo Recording"}
+              </h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Listen to the selected recording or try the controls below.
+              </p>
+              <AudioPlayer audioUrl={demoAudioUrl} autoPlay={false} />
+            </div>
+          </Card>
+          
+          <RecordingsTable 
+            recordings={recordings}
+            onDelete={handleDeleteRecording}
+            onSelect={handleSelectRecording}
+          />
+        </>
       )}
     </main>
   );
