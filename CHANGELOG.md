@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - Enhanced AudioPlayer UI with animations, highlighting and download option
 - Debug logging for audio playback and conversion issues
 - Direct API fallback for Google Speech-to-Text when client library fails
+- Support for transcribing long audio files by automatically splitting them into chunks
 
 ### Changed
 - Redesigned recording interface with visual feedback indicators 
@@ -65,6 +66,7 @@ All notable changes to this project will be documented in this file.
 - Better user feedback when recording components fail to initialize
 - Fixed status code handling between Swift recorder and Electron
 - Better cleanup of temporary files when recording fails
+- Fixed "Sync input too long" error when transcribing audio files longer than 1 minute
 
 ## [0.2.1] - 2023-07-31
 
