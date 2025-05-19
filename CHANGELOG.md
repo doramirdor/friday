@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Moved Live Transcription setting to Meeting tab in settings
 - Changed recording button to green color scheme
 - Reordered settings tabs to place Context tab before Meeting tab
+- Added AudioPlayer component to better handle recorded audio playback
 
 ## [0.2.0] - 2023-07-30
 

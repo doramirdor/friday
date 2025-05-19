@@ -14,8 +14,8 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useGoogleSpeech from "@/hooks/useGoogleSpeech";
 import { Toggle } from "@/components/ui/toggle";
-import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import AudioPlayer from "@/components/AudioPlayer";
 
 interface TranscriptLine {
   id: string;
@@ -78,7 +78,6 @@ const TranscriptDetails = () => {
   ]);
   const [newActionItem, setNewActionItem] = useState("");
   
-  const [isPlaying, setIsPlaying] = useState(false);
   const [currentLineId, setCurrentLineId] = useState("l2");
   
   const [context, setContext] = useState<Context>({
@@ -123,18 +122,13 @@ const TranscriptDetails = () => {
   // Add state for live transcript toggle
   const [isLiveTranscript, setIsLiveTranscript] = useState(meetingState?.liveTranscript || false);
   
-  // Audio recording and playback references and states
+  // Audio recording references and states
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   
-  // State for recorded audio, duration and playback position
+  // State for recorded audio
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
-  const [audioDuration, setAudioDuration] = useState<number>(0);
-  const [currentAudioTime, setCurrentAudioTime] = useState<number>(0);
-  const [volume, setVolume] = useState<number>(80);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
 
   // Timer for recording duration
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
@@ -163,57 +157,6 @@ const TranscriptDetails = () => {
     }
   };
 
-  // Set up the audio element for playback
-  useEffect(() => {
-    if (!audioRef.current) {
-      audioRef.current = new Audio();
-      audioRef.current.addEventListener('timeupdate', () => {
-        setCurrentAudioTime(audioRef.current?.currentTime || 0);
-      });
-      
-      audioRef.current.addEventListener('loadedmetadata', () => {
-        setAudioDuration(audioRef.current?.duration || 0);
-      });
-      
-      audioRef.current.addEventListener('ended', () => {
-        setIsPlaying(false);
-      });
-    }
-    
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        URL.revokeObjectURL(audioRef.current.src);
-        audioRef.current = null;
-      }
-    };
-  }, []);
-  
-  // Update audio source when recorded audio URL changes and play automatically
-  useEffect(() => {
-    if (audioRef.current && recordedAudioUrl) {
-      audioRef.current.src = recordedAudioUrl;
-      audioRef.current.load();
-      
-      // Add a small delay before playing to ensure audio is properly loaded
-      const playTimeout = setTimeout(() => {
-        if (audioRef.current) {
-          audioRef.current.play()
-            .then(() => {
-              setIsPlaying(true);
-              toast.success("Playing recorded audio");
-            })
-            .catch(error => {
-              console.error("Error playing audio:", error);
-              toast.error("Failed to play audio automatically");
-            });
-        }
-      }, 500);
-      
-      return () => clearTimeout(playTimeout);
-    }
-  }, [recordedAudioUrl]);
-  
   // Process transcript updates when speech recognition produces new text
   useEffect(() => {
     if (speech.transcript && isRecording && isLiveTranscript) {
@@ -267,29 +210,6 @@ const TranscriptDetails = () => {
     }
   }, [speech.error]);
 
-  // Update volume when changed
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume / 100;
-      audioRef.current.muted = isMuted;
-    }
-  }, [volume, isMuted]);
-
-  const handlePlayPause = () => {
-    if (!recordedAudioUrl || !audioRef.current) {
-      toast.error("No recorded audio available");
-      return;
-    }
-    
-    if (isPlaying) {
-      audioRef.current.pause();
-    } else {
-      audioRef.current.play();
-    }
-    
-    setIsPlaying(!isPlaying);
-  };
-  
   const handleStartStopRecording = useCallback(async () => {
     if (!isRecording) {
       // Start recording
@@ -404,24 +324,6 @@ const TranscriptDetails = () => {
       toast.info("Recording stopped - Audio will play automatically");
     }
   }, [isRecording, speech, isNewMeeting, isElectron, isLiveTranscript, currentSpeakerId]);
-  
-  // Handle audio time change (seeking)
-  const handleAudioTimeChange = (value: number[]) => {
-    if (audioRef.current && recordedAudioUrl) {
-      audioRef.current.currentTime = value[0];
-      setCurrentAudioTime(value[0]);
-    }
-  };
-  
-  // Handle volume change
-  const handleVolumeChange = (value: number[]) => {
-    setVolume(value[0]);
-  };
-  
-  // Toggle mute
-  const handleToggleMute = () => {
-    setIsMuted(!isMuted);
-  };
   
   const handleLineClick = (line: TranscriptLine) => {
     setTranscriptLines(
@@ -648,93 +550,10 @@ const TranscriptDetails = () => {
                     </div>
                   </div>
                 ) : (
-                  // Audio player controls
+                  // Audio player controls - replaced with our new component
                   <div className="flex flex-col gap-4 mb-4">
-                    <div className="flex items-center gap-4">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={handlePlayPause}
-                        className="h-10 w-10 rounded-full"
-                        disabled={!recordedAudioUrl}
-                      >
-                        {isPlaying ? (
-                          <Pause className="h-5 w-5" />
-                        ) : (
-                          <Play className="h-5 w-5" />
-                        )}
-                        <span className="sr-only">
-                          {isPlaying ? "Pause" : "Play"}
-                        </span>
-                      </Button>
-                      
-                      <div className="text-sm font-medium">
-                        {formatTime(currentAudioTime)} / {formatTime(audioDuration)}
-                      </div>
-                      
-                      <div className="flex items-center gap-2 ml-auto">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={handleToggleMute}
-                          className="h-8 w-8 p-0"
-                        >
-                          {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                        </Button>
-                        <div className="w-20">
-                          <Slider
-                            value={[volume]}
-                            min={0}
-                            max={100}
-                            step={1}
-                            onValueChange={handleVolumeChange}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Audio scrubber */}
-                    <div className="w-full">
-                      <Slider
-                        value={[currentAudioTime]}
-                        min={0}
-                        max={audioDuration || 100}
-                        step={0.1}
-                        onValueChange={handleAudioTimeChange}
-                        disabled={!recordedAudioUrl}
-                      />
-                    </div>
-                    
-                    {/* Audio waveform visualization */}
-                    {recordedAudioUrl && (
-                      <div className="h-20 bg-muted rounded-md waveform-bg relative">
-                        {/* Simulated waveform for now */}
-                        <div className="absolute inset-0 flex items-center px-4">
-                          <div className="w-full h-16 flex items-center">
-                            {Array.from({ length: 100 }).map((_, i) => {
-                              const height = Math.sin(i * 0.2) * 20 + 30;
-                              return (
-                                <div
-                                  key={i}
-                                  className="w-1 mx-0.5 bg-primary-dark opacity-70"
-                                  style={{
-                                    height: `${height}%`,
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
-                        </div>
-                        
-                        {/* Playhead */}
-                        <div 
-                          className="absolute top-0 bottom-0 w-0.5 bg-primary"
-                          style={{ 
-                            left: `${(currentAudioTime / (audioDuration || 1)) * 100}%` 
-                          }}
-                        />
-                      </div>
-                    )}
+                    {/* Audio Player Component */}
+                    <AudioPlayer audioUrl={recordedAudioUrl} autoPlay={true} />
                     
                     {/* Button to start a new recording */}
                     <Button 
