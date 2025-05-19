@@ -23,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - Audio diagnostic tools for troubleshooting microphone and recording issues
 - macOS-compatible AudioDeviceManager for system audio device detection
 - Native player integration for audio playback when browser playback is restricted
+- Enhanced AudioPlayer UI with animations, highlighting and download option
 
 ### Changed
 - Redesigned recording interface with visual feedback indicators 
@@ -32,6 +33,7 @@ All notable changes to this project will be documented in this file.
 - Enhanced permission checks for different recording types
 - Unified recording API for consistent access to different audio sources
 - Improved ffmpeg implementation for audio format conversion
+- Improved visibility and user experience for audio playback after recording stops
 
 ### Fixed
 - Bug in permission handling on macOS Ventura and later
@@ -47,6 +49,7 @@ All notable changes to this project will be documented in this file.
 - Fixed combined recording not properly connecting to Google Speech API for transcription
 - Security restrictions when loading local audio files in browser environment
 - Added fallback to native system player when browser audio playback is restricted
+- Enhanced visibility of AudioPlayer component after recording stops
 
 ## [0.2.1] - 2023-07-31
 
