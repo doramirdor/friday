@@ -74,43 +74,49 @@ const initRecording = (filepath, filename, source = 'system') => {
           
           // Process each JSON response
           for (const response of jsonResponses) {
-            // Clear the startup timeout on first response
-            clearTimeout(startupTimeout);
+            console.log(`Processing recorder response: ${JSON.stringify(response)}`);
             
-            console.log(`Processing response with code: ${response.code}`);
+            // Check if this is a response we should handle
+            if (!response.code) {
+              console.log("Response missing code field");
+              continue;
+            }
+
+            // Track combined flag for specialized handling
+            const isCombined = response.combined === true;
             
-            if (response.code === "INVALID_PATH" || 
-                response.code === "DIRECTORY_NOT_WRITABLE" || 
-                response.code === "PERMISSION_DENIED" || 
-                response.code === "AUDIO_FILE_CREATION_FAILED" ||
-                response.code === "CAPTURE_FAILED" ||
-                response.code === "CONTENT_ERROR") {
-              // Handle fatal errors
-              console.error(`Recording error: ${response.code} - ${response.error || "Unknown error"}`);
-              global.mainWindow.webContents.send("recording-error", response.code);
+            // Handle all possible response codes
+            if (response.code === "PERMISSION_DENIED") {
+              // Permission was denied for screen recording
+              console.log("Permission denied for screen recording");
+              global.mainWindow.webContents.send("recording-error", "PERMISSION_DENIED");
+              resolve(false);
+            } else if (response.code === "CAPTURE_FAILED") {
+              // Capture setup failed
+              console.error(`Capture failed: ${response.error || "Unknown capture error"}`);
+              global.mainWindow.webContents.send("recording-error", "CAPTURE_FAILED");
               resolve(false);
             } else if (response.code === "RECORDING_STARTED") {
               // Recording started successfully
-              const timestamp = new Date(response.timestamp).getTime();
+              const timestamp = response.timestamp ? new Date(response.timestamp).getTime() : Date.now();
               console.log(`Recording started at ${response.timestamp}, path: ${response.path}`);
-              global.mainWindow.webContents.send("recording-status", "START_RECORDING", timestamp, response.path);
+              console.log(`Recording is combined: ${isCombined}`);
+              global.mainWindow.webContents.send("recording-status", "START_RECORDING", timestamp, response.path, isCombined);
+              clearTimeout(startupTimeout);
               resolve(true);
             } else if (response.code === "RECORDING_STOPPED") {
               // Recording stopped
-              const timestamp = new Date(response.timestamp).getTime();
+              const timestamp = response.timestamp ? new Date(response.timestamp).getTime() : Date.now();
               const outputPath = response.path;
               
-              // If MP3 conversion had an error but we still have a file
-              if (response.error && response.error.includes("conversion")) {
-                console.warn(`MP3 conversion issue: ${response.error}`);
-              }
+              console.log(`Recording stopped at ${response.timestamp}, path: ${outputPath}`);
               
               // Check if file exists
               if (fs.existsSync(outputPath)) {
                 console.log(`Recording saved to ${outputPath}`);
-                global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath);
+                global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, isCombined);
                 
-                // Try to open the directory with the recording
+                // Try to show the file in folder
                 try {
                   shell.showItemInFolder(outputPath);
                 } catch (e) {
@@ -120,13 +126,6 @@ const initRecording = (filepath, filename, source = 'system') => {
                 console.error(`Output file not found at: ${outputPath}`);
                 global.mainWindow.webContents.send("recording-error", "FILE_NOT_FOUND");
               }
-              
-              resolve(true);
-            } else if (response.code === "STREAM_FUNCTION_NOT_CALLED") {
-              // Stream function never called (permission or other issue)
-              console.error(`Recording error: ${response.code} - ${response.error || "The audio capture stream function was not called"}`);
-              global.mainWindow.webContents.send("recording-error", "START_FAILED");
-              resolve(false);
             } else {
               // Other response codes
               console.log(`Unhandled response code: ${response.code}`);

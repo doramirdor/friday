@@ -70,6 +70,11 @@ export default function useCombinedRecording(): UseCombinedRecordingReturn {
           // Update the recording path and show a success message
           setRecordingPath(filepath);
           toast.success('Combined recording saved to: ' + filepath);
+        } else if (status === 'CAPTURE_FAILED') {
+          console.log("Combined recording capture failed");
+          setIsRecording(false);
+          setRecordingStartTime(null);
+          toast.error('Failed to initialize combined recording. Please check permissions and try again.');
         }
       });
 
@@ -82,9 +87,11 @@ export default function useCombinedRecording(): UseCombinedRecordingReturn {
         if (errorCode === 'FILE_EXISTS') {
           toast.error('Recording failed: File already exists');
         } else if (errorCode === 'START_FAILED') {
-          toast.error('Failed to start recording');
+          toast.error('Failed to start recording. Please check permissions and try again.');
         } else if (errorCode === 'PERMISSION_DENIED') {
           toast.error('Screen recording permission is required for system audio');
+        } else if (errorCode === 'CAPTURE_FAILED') {
+          toast.error('Failed to initialize recording components. Please check permissions and try again.');
         } else {
           toast.error(`Recording error: ${errorCode}`);
         }
@@ -116,9 +123,13 @@ export default function useCombinedRecording(): UseCombinedRecordingReturn {
     const electronAPI = (window as unknown as ElectronWindow).electronAPI;
     if (!electronAPI?.combinedRecording) {
       console.error("Combined recording API not available");
-      toast.error('Combined recording is not available');
+      toast.error('Combined recording is not available on this platform');
       return false;
     }
+    
+    // Reset state 
+    setRecordingDuration(0);
+    setRecordingPath(null);
     
     try {
       console.log("Calling Electron API to start combined recording");
@@ -126,14 +137,18 @@ export default function useCombinedRecording(): UseCombinedRecordingReturn {
       console.log("Start combined recording result:", result);
       
       if (!result.success) {
-        toast.error(`Failed to start combined recording: ${result.error || 'Unknown error'}`);
+        const errorMessage = result.error || 'Unknown error';
+        console.error(`Failed to start combined recording: ${errorMessage}`);
+        toast.error(`Failed to start combined recording: ${errorMessage}`);
         return false;
       }
       
+      // Note: we don't set isRecording=true here because we wait for the status update event
+      console.log("Combined recording request sent successfully");
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error starting combined recording:', error);
-      toast.error('Failed to start combined recording');
+      toast.error(`Combined recording error: ${error?.message || 'Unknown error'}`);
       return false;
     }
   }, []);

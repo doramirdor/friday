@@ -169,24 +169,84 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     func setupCombinedRecording(formattedTimestamp: String) {
         print("Setting up combined recording (system audio + microphone)...")
         
-        // On macOS, we don't need to use the AVAudioSession
-        // Just set up the separate recordings
+        // Track initialization status
+        var micSetupSuccess = false
+        var systemSetupSuccess = false
+        var micError: Error? = nil
+        var systemError: Error? = nil
         
-        // Start microphone recording first
+        // Step 1: Setup microphone component
         print("Starting microphone component of combined recording...")
-        setupMicrophoneForCombinedRecording()
+        do {
+            try setupMicrophoneForCombinedRecording()
+            micSetupSuccess = true
+            print("✅ Microphone recording initialized successfully")
+        } catch {
+            micError = error
+            print("❌ Failed to setup microphone recording: \(error.localizedDescription)")
+        }
         
-        // Then set up screen capture for system audio
+        // Step 2: Setup system audio component
         print("Starting system audio component of combined recording...")
-        self.updateAvailableContent()
+        do {
+            // Check screen recording permission first
+            if !CGPreflightScreenCaptureAccess() {
+                systemError = NSError(domain: "RecorderCLI", code: 201, 
+                    userInfo: [NSLocalizedDescriptionKey: "Screen recording permission is required for system audio"])
+                throw systemError!
+            }
+            
+            // Initialize system audio recording
+            self.updateAvailableContent()
+            systemSetupSuccess = true
+            print("✅ System audio recording initialized successfully")
+        } catch {
+            systemError = error
+            print("❌ Failed to setup system audio recording: \(error.localizedDescription)")
+            
+            // Clean up microphone recording if system audio fails
+            if micSetupSuccess {
+                print("Stopping microphone recording since system audio failed")
+                microphoneRecorder?.stop()
+                micRecordingActive = false
+            }
+        }
         
-        // Notify recording started
-        ResponseHandler.returnResponse([
-            "code": "RECORDING_STARTED", 
-            "path": self.finalMp3Path!, 
-            "timestamp": formattedTimestamp,
-            "combined": true
-        ], shouldExitProcess: false)
+        // Step 3: Report results based on initialization success
+        if micSetupSuccess && systemSetupSuccess {
+            print("✅ Combined recording initialized successfully")
+            // Send success response
+            ResponseHandler.returnResponse([
+                "code": "RECORDING_STARTED", 
+                "path": self.finalMp3Path!, 
+                "timestamp": formattedTimestamp,
+                "combined": true
+            ], shouldExitProcess: false)
+        } 
+        else if !micSetupSuccess && !systemSetupSuccess {
+            // Both components failed
+            print("❌ Both recording components failed to initialize")
+            ResponseHandler.returnResponse([
+                "code": "CAPTURE_FAILED",
+                "error": "Failed to initialize both recording components: Mic: \(micError?.localizedDescription ?? "Unknown error"), System: \(systemError?.localizedDescription ?? "Unknown error")"
+            ])
+        }
+        else if !micSetupSuccess {
+            // Only microphone failed
+            print("❌ Microphone component failed to initialize")
+            ResponseHandler.returnResponse([
+                "code": "CAPTURE_FAILED",
+                "error": "Failed to initialize microphone component: \(micError?.localizedDescription ?? "Unknown error")"
+            ])
+        }
+        else {
+            // Only system audio failed
+            print("❌ System audio component failed to initialize")
+            ResponseHandler.returnResponse([
+                "code": "CAPTURE_FAILED",
+                "error": "Failed to initialize system audio component: \(systemError?.localizedDescription ?? "Unknown error")"
+            ])
+        }
     }
     
     func setupMicrophoneForCombinedRecording() {
@@ -220,26 +280,38 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         do {
             guard let micPath = micTempWavPath else {
                 print("Mic temp path not set")
-                return
+                throw NSError(domain: "RecorderCLI", code: 101, userInfo: [NSLocalizedDescriptionKey: "Mic temp path not set"])
+            }
+            
+            // First check if the file already exists and remove it if it does
+            if FileManager.default.fileExists(atPath: micPath) {
+                try FileManager.default.removeItem(atPath: micPath)
+                print("Removed existing microphone recording file at \(micPath)")
             }
             
             // Create recorder
             microphoneRecorder = try AVAudioRecorder(url: URL(fileURLWithPath: micPath), settings: settings)
-            microphoneRecorder?.delegate = self
+            guard let micRecorder = microphoneRecorder else {
+                throw NSError(domain: "RecorderCLI", code: 102, userInfo: [NSLocalizedDescriptionKey: "Could not initialize microphone recorder"])
+            }
+            
+            micRecorder.delegate = self
             
             // Add meter monitoring for audio levels
-            microphoneRecorder?.isMeteringEnabled = true
+            micRecorder.isMeteringEnabled = true
             
-            if microphoneRecorder?.prepareToRecord() == true {
+            if micRecorder.prepareToRecord() {
                 // Start recording
-                let success = microphoneRecorder?.record() ?? false
+                let success = micRecorder.record()
                 
                 if success {
                     print("Microphone component started successfully")
                     micRecordingActive = true
                     
                     // Start a timer to monitor microphone audio levels
-                    DispatchQueue.global(qos: .background).async {
+                    DispatchQueue.global(qos: .background).async { [weak self] in
+                        guard let self = self else { return }
+                        
                         while self.micRecordingActive && self.microphoneRecorder?.isRecording == true {
                             self.microphoneRecorder?.updateMeters()
                             let avgPower = self.microphoneRecorder?.averagePower(forChannel: 0) ?? -160.0
@@ -258,12 +330,15 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                     }
                 } else {
                     print("Failed to start microphone component")
+                    throw NSError(domain: "RecorderCLI", code: 103, userInfo: [NSLocalizedDescriptionKey: "Failed to start microphone recording"])
                 }
             } else {
                 print("Failed to prepare microphone component")
+                throw NSError(domain: "RecorderCLI", code: 104, userInfo: [NSLocalizedDescriptionKey: "Failed to prepare microphone recording"])
             }
         } catch {
             print("Microphone setup error: \(error.localizedDescription)")
+            throw error
         }
     }
     
