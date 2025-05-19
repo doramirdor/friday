@@ -41,6 +41,9 @@ All notable changes to this project will be documented in this file.
 - Microphone not being detected in combined recording mode due to iOS-specific AVAudioSession APIs
 - Compiler errors related to incompatible AVAudioSession APIs on macOS
 - "Mic levels" monitoring in combined recording mode
+- Audio player not displaying after recording stops and file is saved
+- Transcription not being displayed in the transcript area after recording completes
+- Fixed combined recording not properly connecting to Google Speech API for transcription
 
 ## [0.2.1] - 2023-07-31
 
