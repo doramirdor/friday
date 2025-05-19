@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - New useCombinedRecording hook for combined audio recording
 - Audio diagnostic tools for troubleshooting microphone and recording issues
 - macOS-compatible AudioDeviceManager for system audio device detection
+- Native player integration for audio playback when browser playback is restricted
 
 ### Changed
 - Redesigned recording interface with visual feedback indicators 
@@ -44,6 +45,8 @@ All notable changes to this project will be documented in this file.
 - Audio player not displaying after recording stops and file is saved
 - Transcription not being displayed in the transcript area after recording completes
 - Fixed combined recording not properly connecting to Google Speech API for transcription
+- Security restrictions when loading local audio files in browser environment
+- Added fallback to native system player when browser audio playback is restricted
 
 ## [0.2.1] - 2023-07-31
 
