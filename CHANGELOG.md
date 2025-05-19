@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
 - Native player integration for audio playback when browser playback is restricted
 - Enhanced AudioPlayer UI with animations, highlighting and download option
 - Debug logging for audio playback and conversion issues
+- Direct API fallback for Google Speech-to-Text when client library fails
 
 ### Changed
 - Redesigned recording interface with visual feedback indicators 
@@ -56,6 +57,9 @@ All notable changes to this project will be documented in this file.
 - Improved error handling for data URL conversion in Electron
 - Fixed Google Speech API transcription failures in testSpeechWithFile by properly passing API key parameters
 - Enhanced error handling and debugging in Google Speech API integration
+- Fixed compatibility issue with Google Speech API's getUniverseDomain method
+- Added fallback to direct REST API call when Google Cloud Speech client fails
+- Prevented error messages from being added to transcripts
 
 ## [0.2.1] - 2023-07-31
 
