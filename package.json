@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "electron:dev": "concurrently \"cross-env BROWSER=none npm run dev\" \"npm run compile:swift\" \"wait-on http://localhost:8082 && cross-env NODE_ENV=development electron src/electron/main/index.js\"",
     "electron:build": "npm run build && npm run compile:swift && electron-builder",
-    "compile:swift": "swiftc -o src/swift/Recorder src/swift/Recorder.swift"
+    "compile:swift": "swiftc -suppress-warnings -parse-as-library -o src/swift/Recorder src/swift/Recorder.swift src/swift/AudioDeviceManager.swift"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",

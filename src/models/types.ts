@@ -1,7 +1,12 @@
+// Base interface for PouchDB documents
+export interface PouchDocument {
+  _id?: string;
+  _rev?: string;
+  type: string;
+}
+
 // Interface for Meeting data
-export interface Meeting {
-  _id?: string; // PouchDB document ID
-  _rev?: string; // PouchDB revision
+export interface Meeting extends PouchDocument {
   title: string;
   description: string;
   createdAt: string; // ISO date string
@@ -14,23 +19,27 @@ export interface Meeting {
 }
 
 // Interface for Transcript lines
-export interface TranscriptLine {
+export interface TranscriptLine extends PouchDocument {
   id: string;
   speakerId: string;
   text: string;
   timestamp?: number; // Optional timestamp in seconds
+  meetingId?: string; // Reference to meeting
   isEditing?: boolean; // UI state, not stored in DB
+  type: 'transcript'; // Document type for querying
 }
 
 // Interface for Speaker data
-export interface Speaker {
+export interface Speaker extends PouchDocument {
   id: string;
   name: string;
   color: string;
+  meetingId?: string; // Reference to meeting
+  type: 'speaker'; // Document type for querying
 }
 
 // Interface for Action Item
-export interface ActionItem {
+export interface ActionItem extends PouchDocument {
   id: string;
   text: string;
   completed: boolean;
@@ -41,9 +50,7 @@ export interface ActionItem {
 }
 
 // Interface for Notes related to a meeting
-export interface Notes {
-  _id?: string; // PouchDB document ID
-  _rev?: string; // PouchDB revision
+export interface Notes extends PouchDocument {
   meetingId: string; // Reference to meeting
   content: string;
   updatedAt: string; // ISO date string
@@ -51,9 +58,7 @@ export interface Notes {
 }
 
 // Interface for Context data
-export interface Context {
-  _id?: string; // PouchDB document ID
-  _rev?: string; // PouchDB revision
+export interface Context extends PouchDocument {
   name: string;
   files: string[];
   overrideGlobal: boolean;
@@ -67,8 +72,8 @@ export interface MeetingDetails {
   transcript: TranscriptLine[];
   speakers: Speaker[];
   actionItems: ActionItem[];
-  notes: Notes;
-  context: Context;
+  notes: Notes | null;
+  context: Context | null;
 }
 
 // For the recording list view

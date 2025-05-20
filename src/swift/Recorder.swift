@@ -148,10 +148,19 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
             self.combinedTempWavPath = self.tempWavPath
             
             // Start combined recording
-            setupCombinedRecording(formattedTimestamp: formattedTimestamp)
+            let success = setupCombinedRecording()
+            if success {
+                print("✅ Combined recording setup successful")
+            } else {
+                print("❌ Combined recording setup failed")
+                ResponseHandler.returnResponse([
+                    "code": "CAPTURE_FAILED",
+                    "error": "Failed to initialize combined recording"
+                ])
+            }
         } else if audioSource == "system" {
             // Start system audio recording
-        self.updateAvailableContent()
+            self.updateAvailableContent()
         } else {
             // Microphone recording
             setupMicrophoneRecording()
@@ -160,22 +169,16 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
         setupInterruptSignalHandler()
         
         if audioSource == "system" {
-        setupStreamFunctionTimeout()
+            setupStreamFunctionTimeout()
         }
         
         semaphoreRecordingStopped.wait()
     }
     
-    func setupCombinedRecording(formattedTimestamp: String) {
-        print("Setting up combined recording (system audio + microphone)...")
-        
-        // Track initialization status
+    func setupCombinedRecording() -> Bool {
         var micSetupSuccess = false
-        var systemSetupSuccess = false
-        var micError: Error? = nil
-        var systemError: Error? = nil
+        var micError: Error?
         
-        // Step 1: Setup microphone component
         print("Starting microphone component of combined recording...")
         do {
             try setupMicrophoneForCombinedRecording()
@@ -186,70 +189,10 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
             print("❌ Failed to setup microphone recording: \(error.localizedDescription)")
         }
         
-        // Step 2: Setup system audio component
-        print("Starting system audio component of combined recording...")
-        do {
-            // Check screen recording permission first
-            if !CGPreflightScreenCaptureAccess() {
-                systemError = NSError(domain: "RecorderCLI", code: 201, 
-                    userInfo: [NSLocalizedDescriptionKey: "Screen recording permission is required for system audio"])
-                throw systemError!
-            }
-            
-            // Initialize system audio recording
-            self.updateAvailableContent()
-            systemSetupSuccess = true
-            print("✅ System audio recording initialized successfully")
-        } catch {
-            systemError = error
-            print("❌ Failed to setup system audio recording: \(error.localizedDescription)")
-            
-            // Clean up microphone recording if system audio fails
-            if micSetupSuccess {
-                print("Stopping microphone recording since system audio failed")
-                microphoneRecorder?.stop()
-                micRecordingActive = false
-            }
-        }
-        
-        // Step 3: Report results based on initialization success
-        if micSetupSuccess && systemSetupSuccess {
-            print("✅ Combined recording initialized successfully")
-            // Send success response
-            ResponseHandler.returnResponse([
-                "code": "RECORDING_STARTED", 
-                "path": self.finalMp3Path!, 
-                "timestamp": formattedTimestamp,
-                "combined": true
-            ], shouldExitProcess: false)
-        } 
-        else if !micSetupSuccess && !systemSetupSuccess {
-            // Both components failed
-            print("❌ Both recording components failed to initialize")
-            ResponseHandler.returnResponse([
-                "code": "CAPTURE_FAILED",
-                "error": "Failed to initialize both recording components: Mic: \(micError?.localizedDescription ?? "Unknown error"), System: \(systemError?.localizedDescription ?? "Unknown error")"
-            ])
-        }
-        else if !micSetupSuccess {
-            // Only microphone failed
-            print("❌ Microphone component failed to initialize")
-            ResponseHandler.returnResponse([
-                "code": "CAPTURE_FAILED",
-                "error": "Failed to initialize microphone component: \(micError?.localizedDescription ?? "Unknown error")"
-            ])
-        }
-        else {
-            // Only system audio failed
-            print("❌ System audio component failed to initialize")
-            ResponseHandler.returnResponse([
-                "code": "CAPTURE_FAILED",
-                "error": "Failed to initialize system audio component: \(systemError?.localizedDescription ?? "Unknown error")"
-            ])
-        }
+        return micSetupSuccess
     }
     
-    func setupMicrophoneForCombinedRecording() {
+    func setupMicrophoneForCombinedRecording() throws {
         print("Setting up microphone for combined recording...")
         
         if microphoneRecorder != nil {
@@ -995,7 +938,7 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
         if !self.streamFunctionCalled {
             print("First audio buffer received")
-        self.streamFunctionCalled = true
+            self.streamFunctionCalled = true
         }
         
         guard let audioBuffer = sampleBuffer.asPCMBuffer, sampleBuffer.isValid else { 
@@ -1022,8 +965,8 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
                 combineAndConvertRecordings()
             }
         } else {
-        RecorderCLI.terminateRecording()
-        semaphoreRecordingStopped.signal()
+            RecorderCLI.terminateRecording()
+            semaphoreRecordingStopped.signal()
         }
     }
 
@@ -1146,11 +1089,10 @@ extension AVAudioPCMBuffer {
 }
 
 // Main execution function
-@main
 struct RecorderApp {
     static func main() {
         print("Recorder starting...")
-let app = RecorderCLI()
-app.executeRecordingProcess() 
+        let app = RecorderCLI()
+        app.executeRecordingProcess()
     }
 } 

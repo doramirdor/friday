@@ -1,5 +1,4 @@
-import PouchDB from 'pouchdb';
-import PouchDBFind from 'pouchdb-find';
+import { createDatabase } from './pouchdb-setup';
 import { 
   Meeting, 
   TranscriptLine, 
@@ -10,20 +9,15 @@ import {
   MeetingDetails,
   RecordingListItem
 } from '../models/types';
-
-// Register the PouchDB find plugin
-PouchDB.plugin(PouchDBFind);
-
-// Create DB namespace
-const DB_NAME = 'friday-app';
+import checkAndUpgradePouchDB from './pouchdb-upgrade';
 
 // Create database instances for different data types
-const meetingsDb = new PouchDB<Meeting>(`${DB_NAME}-meetings`);
-const transcriptsDb = new PouchDB(`${DB_NAME}-transcripts`);
-const speakersDb = new PouchDB<Speaker>(`${DB_NAME}-speakers`);
-const actionItemsDb = new PouchDB<ActionItem>(`${DB_NAME}-action-items`);
-const notesDb = new PouchDB<Notes>(`${DB_NAME}-notes`);
-const contextsDb = new PouchDB<Context>(`${DB_NAME}-contexts`);
+const meetingsDb = createDatabase<Meeting>('meetings');
+const transcriptsDb = createDatabase('transcripts');
+const speakersDb = createDatabase<Speaker>('speakers');
+const actionItemsDb = createDatabase<ActionItem>('action-items');
+const notesDb = createDatabase<Notes>('notes');
+const contextsDb = createDatabase<Context>('contexts');
 
 // Create indexes for efficient querying
 const setupIndexes = async () => {
@@ -57,10 +51,17 @@ const setupIndexes = async () => {
 // Initialize the database
 export const initDatabase = async () => {
   try {
+    // First, check for and fix any PouchDB version compatibility issues
+    await checkAndUpgradePouchDB();
+    
+    // Then set up database indexes
     await setupIndexes();
     console.log('Database initialized successfully');
+    return true;
   } catch (error) {
     console.error('Error initializing database:', error);
+    // Re-throw to allow the error to be handled by the caller
+    throw error;
   }
 };
 
@@ -188,12 +189,16 @@ export const getTranscript = async (meetingId: string): Promise<TranscriptLine[]
       }
     });
     
-    // Convert back to TranscriptLine format (remove PouchDB specific fields)
+    // Convert back to TranscriptLine format with required properties
     return result.docs.map(doc => ({
       id: doc.id,
       speakerId: doc.speakerId,
       text: doc.text,
-      timestamp: doc.timestamp
+      timestamp: doc.timestamp,
+      type: 'transcript',
+      meetingId: doc.meetingId,
+      _id: doc._id,
+      _rev: doc._rev
     }));
   } catch (error) {
     console.error('Error getting transcript:', error);
@@ -254,11 +259,15 @@ export const getSpeakers = async (meetingId: string): Promise<Speaker[]> => {
       }
     });
     
-    // Convert back to Speaker format (remove PouchDB specific fields)
+    // Convert back to Speaker format with required properties
     return result.docs.map(doc => ({
       id: doc.id,
       name: doc.name,
-      color: doc.color
+      color: doc.color,
+      type: 'speaker',
+      meetingId: doc.meetingId,
+      _id: doc._id,
+      _rev: doc._rev
     }));
   } catch (error) {
     console.error('Error getting speakers:', error);

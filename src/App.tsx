@@ -8,6 +8,7 @@ import LibraryPage from "@/pages/Library";
 import TranscriptDetailsPage from "@/pages/TranscriptDetails";
 import NotFoundPage from "@/pages/NotFound";
 import DatabaseProvider from "@/context/DatabaseContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import "./App.css";
 
 interface AppProps {
@@ -31,21 +32,23 @@ function App({ isElectron = false }: AppProps) {
   console.log(`Running in ${isElectron ? 'Electron' : 'Web'} environment`);
 
   return (
-    <ThemeProvider defaultTheme="light" storageKey="friday-ui-theme">
-      <DatabaseProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Navigate to="/library" />} />
-              <Route path="/library" element={<LibraryPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Route>
-            <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />
-          </Routes>
-        </BrowserRouter>
-        <Toaster position="top-center" />
-      </DatabaseProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="light" storageKey="friday-ui-theme">
+        <DatabaseProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route element={<Layout />}>
+                <Route path="/" element={<Navigate to="/library" />} />
+                <Route path="/library" element={<LibraryPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Route>
+              <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />
+            </Routes>
+          </BrowserRouter>
+          <Toaster position="top-center" />
+        </DatabaseProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

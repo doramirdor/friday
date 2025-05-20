@@ -1,4 +1,5 @@
 import Foundation
+import CoreAudio
 
 /**
  * A utility class for managing and identifying audio devices on macOS
@@ -8,12 +9,11 @@ class AudioDeviceManager {
      * Lists audio input devices detected on the system
      */
     static func listAudioDevices() -> [String] {
-        var deviceNames: [String] = []
+        var deviceList = [String]()
         
-        // Execute system_profiler command to get audio device information
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        task.arguments = ["system_profiler", "SPAudioDataType"]
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/system_profiler")
+        task.arguments = ["SPAudioDataType"]
         
         let outputPipe = Pipe()
         task.standardOutput = outputPipe
@@ -24,16 +24,23 @@ class AudioDeviceManager {
             
             let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: outputData, encoding: .utf8) {
-                // Split on Input Devices section
-                if let inputSection = output.components(separatedBy: "Input Devices:").dropFirst().first,
-                   let pureInputSection = inputSection.components(separatedBy: "Output Devices:").first {
-                    
-                    // Parse the devices section
-                    let lines = pureInputSection.components(separatedBy: "\n")
-                    for line in lines {
-                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if trimmed.contains(":") && !trimmed.isEmpty {
-                            deviceNames.append(trimmed)
+                // Parse the output to extract audio devices
+                let lines = output.components(separatedBy: .newlines)
+                var isInput = false
+                
+                for line in lines {
+                    if line.contains("Input:") {
+                        isInput = true
+                    } else if line.contains("Output:") {
+                        isInput = false
+                    } else if isInput && line.contains(":") && !line.contains("Input:") {
+                        let device = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .components(separatedBy: ":")
+                            .first?
+                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                        
+                        if !device.isEmpty {
+                            deviceList.append(device)
                         }
                     }
                 }
@@ -42,12 +49,7 @@ class AudioDeviceManager {
             print("Error listing audio devices: \(error.localizedDescription)")
         }
         
-        // If we couldn't get devices, add a default entry
-        if deviceNames.isEmpty {
-            deviceNames.append("Default system microphone")
-        }
-        
-        return deviceNames
+        return deviceList
     }
     
     /**
@@ -76,7 +78,8 @@ class AudioDeviceManager {
      * Gets the current microphone input level (volume)
      * Returns a value between 0-100 or nil if not available
      */
-    static func getMicrophoneInputLevel() -> Int? {
+    static func getMicrophoneInputLevel() -> Float? {
+        // Use AppleScript to get the input volume (macOS specific)
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         task.arguments = ["-e", "input volume of (get volume settings)"]
@@ -90,7 +93,7 @@ class AudioDeviceManager {
             
             let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: outputData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               let level = Int(output) {
+               let level = Float(output) {
                 return level
             }
         } catch {
@@ -125,5 +128,17 @@ class AudioDeviceManager {
         }
         
         print("-----------------------------")
+    }
+    
+    static func checkMicrophonePermission() -> Bool {
+        // macOS doesn't have the same permission model as iOS
+        // Instead, when the app tries to use the microphone, the system will prompt for permission
+        return true
+    }
+    
+    static func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
+        // On macOS, we can't explicitly request permission ahead of time
+        // The system will prompt when the app first tries to access the microphone
+        completion(true)
     }
 } 
