@@ -67,6 +67,7 @@ All notable changes to this project will be documented in this file.
 - Fixed status code handling between Swift recorder and Electron
 - Better cleanup of temporary files when recording fails
 - Fixed "Sync input too long" error when transcribing audio files longer than 1 minute
+- Fixed combined recording not starting due to disabled hook implementation
 
 ## [0.2.1] - 2023-07-31
 
