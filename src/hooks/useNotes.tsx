@@ -1,22 +1,60 @@
-
 import { useState, useEffect } from 'react';
+import { DatabaseService } from '@/services/database';
 
 export function useNotes(transcriptId: string) {
-  const storageKey = `friday-notes-${transcriptId}`;
   const [notes, setNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
-  // Load notes from localStorage on initial render
+  // Load notes from database on initial render
   useEffect(() => {
-    const savedNotes = localStorage.getItem(storageKey);
-    if (savedNotes) {
-      setNotes(savedNotes);
+    const fetchNotes = async () => {
+      if (!transcriptId || transcriptId === 'new') {
+        // Don't try to load notes for new meetings
+        return;
+      }
+      
+      try {
+        const noteData = await DatabaseService.getNotes(transcriptId);
+        if (noteData) {
+          setNotes(noteData.content);
+        }
+        setError(null);
+      } catch (err) {
+        console.error('Error loading notes:', err);
+        setError('Failed to load notes');
+      }
+    };
+    
+    fetchNotes();
+  }, [transcriptId]);
+  
+  // Save notes to database (debounced)
+  useEffect(() => {
+    if (!transcriptId || transcriptId === 'new' || !notes) {
+      return;
     }
-  }, [storageKey]);
-  
-  // Save notes to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem(storageKey, notes);
-  }, [notes, storageKey]);
+    
+    const saveTimer = setTimeout(async () => {
+      try {
+        setIsSaving(true);
+        await DatabaseService.saveNotes({
+          meetingId: transcriptId,
+          content: notes,
+          type: 'notes',
+          updatedAt: new Date().toISOString(),
+        });
+        setError(null);
+      } catch (err) {
+        console.error('Error saving notes:', err);
+        setError('Failed to save notes');
+      } finally {
+        setIsSaving(false);
+      }
+    }, 1000); // 1 second debounce
+    
+    return () => clearTimeout(saveTimer);
+  }, [notes, transcriptId]);
   
   // Function to handle text formatting
   const formatText = (type: 'bold' | 'italic' | 'link' | 'list-ordered' | 'list-unordered' | 'heading') => {
@@ -34,41 +72,22 @@ export function useNotes(transcriptId: string) {
     
     switch (type) {
       case 'bold':
-        formattedText = `<strong>${selectedText}</strong>`;
+        formattedText = `**${selectedText}**`;
         break;
       case 'italic':
-        formattedText = `<em>${selectedText}</em>`;
+        formattedText = `*${selectedText}*`;
         break;
       case 'link':
-        const url = prompt('Enter URL:', 'https://');
-        if (url) {
-          formattedText = `<a href="${url}" target="_blank">${selectedText || url}</a>`;
-        } else {
-          return; // User canceled prompt
-        }
+        formattedText = `[${selectedText}](url)`;
         break;
       case 'list-ordered':
-        // Split the selected text by new line and add numbers
-        if (selectedText) {
-          const lines = selectedText.split('\n');
-          const numberedLines = lines.map((line, i) => `${i + 1}. ${line}`);
-          formattedText = numberedLines.join('\n');
-        } else {
-          formattedText = '1. ';
-        }
+        formattedText = `1. ${selectedText}`;
         break;
       case 'list-unordered':
-        // Split the selected text by new line and add bullets
-        if (selectedText) {
-          const lines = selectedText.split('\n');
-          const bulletedLines = lines.map(line => `• ${line}`);
-          formattedText = bulletedLines.join('\n');
-        } else {
-          formattedText = '• ';
-        }
+        formattedText = `- ${selectedText}`;
         break;
       case 'heading':
-        formattedText = `<h3>${selectedText}</h3>`;
+        formattedText = `# ${selectedText}`;
         break;
       default:
         formattedText = selectedText;
@@ -76,39 +95,19 @@ export function useNotes(transcriptId: string) {
     
     setNotes(beforeText + formattedText + afterText);
     
-    // Focus back on textarea after formatting
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(
-        beforeText.length + formattedText.length,
-        beforeText.length + formattedText.length
-      );
-    }, 0);
-  };
-  
-  // Function to clear formatting
-  const clearFormatting = () => {
-    const textarea = document.querySelector('textarea#notes') as HTMLTextAreaElement;
-    
-    if (!textarea) return;
-    
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = notes.substring(start, end);
-    
-    // Remove HTML tags
-    const plainText = selectedText.replace(/<[^>]*>/g, '');
-    
-    setNotes(
-      notes.substring(0, start) + plainText + notes.substring(end)
+    // Set focus back to textarea and restore selection
+    textarea.focus();
+    textarea.setSelectionRange(
+      start + formattedText.length,
+      start + formattedText.length
     );
-    
-    // Focus back on textarea
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start, start + plainText.length);
-    }, 0);
   };
   
-  return { notes, setNotes, formatText, clearFormatting };
+  return { 
+    notes, 
+    setNotes, 
+    formatText,
+    isSaving,
+    error
+  };
 }

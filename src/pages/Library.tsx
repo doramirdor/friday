@@ -5,109 +5,108 @@ import EmptyState from "@/components/empty-state";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-
-// Sample data
-const sampleRecordings: Recording[] = [
-  {
-    id: "1",
-    title: "Weekly Team Standup",
-    createdAt: new Date("2025-05-12T09:30:00"),
-    duration: 1845, // 30:45
-    tags: ["meeting", "team"]
-  },
-  {
-    id: "2",
-    title: "Interview with Product Manager",
-    createdAt: new Date("2025-05-10T14:15:00"),
-    duration: 3615, // 1:00:15
-    tags: ["interview", "research"]
-  },
-  {
-    id: "3",
-    title: "Marketing Strategy Brainstorm",
-    createdAt: new Date("2025-05-08T13:00:00"),
-    duration: 2730, // 45:30
-    tags: ["marketing", "planning"]
-  }
-];
+import { DatabaseService } from "@/services/database";
+import { RecordingListItem } from "@/models/types";
 
 const Library = () => {
-  const [recordings, setRecordings] = useState<Recording[]>([]);
-  const [showEmpty, setShowEmpty] = useState(true);
   const navigate = useNavigate();
-  
+  const [recordings, setRecordings] = useState<RecordingListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load recordings from database
   useEffect(() => {
-    // Simulate loading data
-    const timer = setTimeout(() => {
-      setRecordings(sampleRecordings);
-      setShowEmpty(false);
-    }, 1000);
-    
-    return () => clearTimeout(timer);
+    const loadRecordings = async () => {
+      try {
+        setLoading(true);
+        const data = await DatabaseService.getMeetingsList();
+        setRecordings(data);
+        setError(null);
+      } catch (err) {
+        console.error("Error loading recordings:", err);
+        setError("Failed to load recordings");
+        toast.error("Failed to load recordings");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Initialize database and load recordings
+    const init = async () => {
+      try {
+        await DatabaseService.initDatabase();
+        await loadRecordings();
+      } catch (err) {
+        console.error("Error initializing database:", err);
+        setError("Failed to initialize database");
+        toast.error("Failed to initialize database");
+        setLoading(false);
+      }
+    };
+
+    init();
   }, []);
-  
-  const handleStartRecording = () => {
-    // Navigate directly to transcript page with "new" state
-    navigate('/transcript/new', {
-      state: {
+
+  const handleCreateNew = () => {
+    navigate("/transcript/new", { 
+      state: { 
+        isNew: true,
         title: "New Meeting",
         description: "",
         tags: [],
         createdAt: new Date(),
-        isNew: true
-      }
+        liveTranscript: true
+      } 
     });
   };
-  
-  const handleDeleteRecording = (id: string) => {
-    setRecordings((prev) => prev.filter((recording) => recording.id !== id));
-    toast.success("Recording moved to trash");
-    
-    if (recordings.length === 1) {
-      setShowEmpty(true);
-    }
-  };
-  
-  // We're toggling between normal and empty state for demo purposes
-  const toggleEmptyState = () => {
-    setShowEmpty(!showEmpty);
+
+  const handleRowClick = (id: string) => {
+    navigate(`/transcript/${id}`);
   };
 
   return (
-    <main className="flex-1 px-6 py-4">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-medium">Recordings</h2>
-        
-        <div className="flex gap-3">
-          {/* Updated button to go directly to transcript page */}
-          <Button 
-            onClick={handleStartRecording}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            New Meeting
-          </Button>
-          
-          {/* This button is just for demo toggling between states */}
-          <Button 
-            variant="outline" 
-            onClick={toggleEmptyState} 
-            className="text-xs"
-          >
-            Toggle Empty State Demo
-          </Button>
-        </div>
+    <div className="container mx-auto py-8 px-4">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold tracking-tight">Recordings Library</h1>
+        <Button 
+          onClick={handleCreateNew}
+          className="flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4" />
+          New Recording
+        </Button>
       </div>
       
-      {showEmpty ? (
-        <EmptyState onStartRecording={handleStartRecording} />
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      ) : error ? (
+        <div className="text-center py-16">
+          <h2 className="text-xl font-semibold text-destructive mb-2">Error</h2>
+          <p className="text-muted-foreground">{error}</p>
+          <Button 
+            variant="outline" 
+            className="mt-4"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : recordings.length > 0 ? (
+        <RecordingsTable recordings={recordings} onRowClick={handleRowClick} />
       ) : (
-        <RecordingsTable 
-          recordings={recordings}
-          onDelete={handleDeleteRecording}
+        <EmptyState
+          title="No recordings yet"
+          description="Start by creating a new recording or importing one from your device."
+          action={
+            <Button onClick={handleCreateNew}>
+              Create New Recording
+            </Button>
+          }
         />
       )}
-    </main>
+    </div>
   );
 };
 

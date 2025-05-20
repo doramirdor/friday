@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { format } from "date-fns";
 import { PlayCircle, Trash2, Tag, File } from "lucide-react";
@@ -11,31 +10,19 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-
-export interface Recording {
-  id: string;
-  title: string;
-  createdAt: Date;
-  duration: number; // in seconds
-  tags: string[];
-  context?: {
-    name: string;
-    overrideGlobal: boolean;
-  };
-}
+import { RecordingListItem } from "@/models/types";
 
 interface RecordingsTableProps {
-  recordings: Recording[];
-  onDelete: (id: string) => void;
+  recordings: RecordingListItem[];
+  onRowClick: (id: string) => void;
 }
 
-const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
-  const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
+const RecordingsTable = ({ recordings, onRowClick }: RecordingsTableProps) => {
+  const [selectedRecording, setSelectedRecording] = useState<RecordingListItem | null>(null);
   const [contextDialogOpen, setContextDialogOpen] = useState(false);
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
   const [contextName, setContextName] = useState("");
   const [overrideGlobal, setOverrideGlobal] = useState(false);
-  const navigate = useNavigate();
   
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -43,29 +30,27 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
   
-  const handlePlay = (recording: Recording) => {
+  const handlePlay = (recording: RecordingListItem, e: React.MouseEvent) => {
+    e.stopPropagation();
     toast(`Playing: ${recording.title}`);
   };
   
   const handleDelete = (id: string) => {
-    onDelete(id);
+    // Future implementation: Wire this up to the database service
+    toast.error("Delete functionality will be implemented later");
     setSelectedRecording(null);
   };
   
-  const handleRowClick = (id: string) => {
-    navigate(`/transcript/${id}`);
-  };
-  
-  const handleContextClick = (recording: Recording, e: React.MouseEvent) => {
+  const handleContextClick = (recording: RecordingListItem, e: React.MouseEvent) => {
     e.stopPropagation();
     setCurrentRecordingId(recording.id);
-    setContextName(recording.context?.name || "");
-    setOverrideGlobal(recording.context?.overrideGlobal || false);
+    setContextName("Default"); // We'll implement context retrieval later
+    setOverrideGlobal(false);
     setContextDialogOpen(true);
   };
   
   const handleSaveContext = () => {
-    // In a real app, this would update the recording's context in your data store
+    // Future implementation: Save context to database
     toast.success("Context settings saved");
     setContextDialogOpen(false);
   };
@@ -79,7 +64,6 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
             <th className="px-6 py-3 text-sm font-medium text-muted-foreground">Created On</th>
             <th className="px-6 py-3 text-sm font-medium text-muted-foreground">Duration</th>
             <th className="px-6 py-3 text-sm font-medium text-muted-foreground">Tags</th>
-            <th className="px-6 py-3 text-sm font-medium text-muted-foreground">Context</th>
             <th className="px-6 py-3 text-right text-sm font-medium text-muted-foreground">Actions</th>
           </tr>
         </thead>
@@ -87,7 +71,7 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
           {recordings.map((recording) => (
             <tr
               key={recording.id}
-              onClick={() => handleRowClick(recording.id)}
+              onClick={() => onRowClick(recording.id)}
               className="border-b hover:bg-accent/50 cursor-pointer transition-colors"
             >
               <td className="px-6 py-4 font-medium">{recording.title}</td>
@@ -106,21 +90,12 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
                   ))}
                 </div>
               </td>
-              <td className="px-6 py-4" onClick={(e) => handleContextClick(recording, e)}>
-                <Button variant="ghost" size="sm" className="flex items-center gap-1.5">
-                  <File className="h-4 w-4" />
-                  <span>{recording.context?.name || "Default"}</span>
-                  {recording.context?.overrideGlobal && (
-                    <Badge variant="secondary" className="ml-1 px-1 py-0 text-[10px]">Override</Badge>
-                  )}
-                </Button>
-              </td>
               <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-end gap-2">
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    onClick={() => handlePlay(recording)}
+                    onClick={(e) => handlePlay(recording, e)}
                     className="h-8 w-8 p-0"
                   >
                     <PlayCircle className="h-5 w-5" />
@@ -129,7 +104,10 @@ const RecordingsTable = ({ recordings, onDelete }: RecordingsTableProps) => {
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    onClick={() => setSelectedRecording(recording)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedRecording(recording);
+                    }}
                     className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                   >
                     <Trash2 className="h-5 w-5" />

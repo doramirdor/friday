@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BrowserRouter, Routes, Route, Outlet, Navigate } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -8,20 +7,24 @@ import IndexPage from "@/pages/Index";
 import LibraryPage from "@/pages/Library";
 import TranscriptDetailsPage from "@/pages/TranscriptDetails";
 import NotFoundPage from "@/pages/NotFound";
+import DatabaseProvider from "@/context/DatabaseContext";
 import "./App.css";
 
 interface AppProps {
   isElectron?: boolean;
 }
 
-function Layout() {
+// Layout component for pages with the toolbar
+const Layout = () => {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col h-screen">
       <AppToolbar />
-      <Outlet />
+      <div className="flex-1 overflow-auto">
+        <Outlet />
+      </div>
     </div>
   );
-}
+};
 
 function App({ isElectron = false }: AppProps) {
   // We can use the isElectron prop to conditionally render things or enable features
@@ -29,17 +32,19 @@ function App({ isElectron = false }: AppProps) {
 
   return (
     <ThemeProvider defaultTheme="light" storageKey="friday-ui-theme">
-      <BrowserRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Navigate to="/library" />} />
-            <Route path="/library" element={<LibraryPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Route>
-          <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />
-        </Routes>
-      </BrowserRouter>
-      <Toaster position="top-center" />
+      <DatabaseProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Navigate to="/library" />} />
+              <Route path="/library" element={<LibraryPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
+            <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />
+          </Routes>
+        </BrowserRouter>
+        <Toaster position="top-center" />
+      </DatabaseProvider>
     </ThemeProvider>
   );
 }
