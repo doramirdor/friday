@@ -20,6 +20,7 @@ import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
 import { Switch } from "@/components/ui/switch";
 import useMicrophoneRecording from '@/hooks/useMicrophoneRecording';
 import AudioPlayer from '@/components/AudioPlayer';
+import useCombinedRecording from '@/hooks/useCombinedRecording';
 
 interface TranscriptLine {
   id: string;
@@ -205,17 +206,7 @@ const TranscriptDetails = () => {
     stopRecording: stopMicRecording
   } = useMicrophoneRecording();
 
-  // Disable useCombinedRecording hook temporarily
-  const combinedRecordingHook = {
-    isAvailable: false,
-    isRecording: false,
-    recordingPath: null,
-    recordingDuration: 0,
-    startRecording: async () => false,
-    stopRecording: async () => false
-  };
-  
-  // Rename to avoid conflicts
+  // Use the actual combined recording hook implementation
   const {
     isAvailable: isCombinedRecordingAvailable,
     isRecording: isCombinedRecording,
@@ -223,7 +214,7 @@ const TranscriptDetails = () => {
     recordingDuration: combinedRecordingDuration,
     startRecording: startCombinedRecording,
     stopRecording: stopCombinedRecording
-  } = combinedRecordingHook;
+  } = useCombinedRecording();
 
   // Update the recording source state to include 'both'
   const [recordingSource, setRecordingSource] = useState<'system' | 'mic' | 'both'>('system');
@@ -404,9 +395,11 @@ const TranscriptDetails = () => {
         const electronAPI = (window as unknown as ElectronWindow).electronAPI;
         const systemAvailable = !!(electronAPI?.isElectron && electronAPI.systemAudio);
         const micAvailable = !!(electronAPI?.isElectron && electronAPI.micRecording);
+        const combinedAvailable = !!(electronAPI?.isElectron && electronAPI.combinedRecording);
         
         console.log("After delay - Direct check for system audio:", systemAvailable);
         console.log("After delay - Direct check for microphone:", micAvailable);
+        console.log("After delay - Direct check for combined recording:", combinedAvailable);
         
         // Set up initialization state based on direct check
         setRecordingServicesInitialized(true);
