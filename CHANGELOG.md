@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2024-11-11
+
+### Added
+- Robust error handling for database operations
+- Database recovery mechanism for corrupted storage
+- Improved error boundaries and error reporting
+
+### Fixed
+- Fixed "Class extends value [object Object] is not a constructor or null" error in PouchDB initialization
+- Improved PouchDB type definitions for better type safety
+- Enhanced database context error handling
+- Implemented automatic database recovery for corrupted storage
+- Made Swift code compatible with macOS (removed iOS-specific AVAudioSession code)
+
 ## [0.3.0] - 2024-11-11
 
 ### Added
