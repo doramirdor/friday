@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.3.0] - 2024-11-11
 
 ### Added
 - Enhanced Google Speech-to-Text integration with configurable options
