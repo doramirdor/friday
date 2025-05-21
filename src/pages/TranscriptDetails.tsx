@@ -21,6 +21,8 @@ import { Switch } from "@/components/ui/switch";
 import useMicrophoneRecording from '@/hooks/useMicrophoneRecording';
 import AudioPlayer from '@/components/AudioPlayer';
 import useCombinedRecording from '@/hooks/useCombinedRecording';
+import useSettings from '@/hooks/useSettings';
+import { DatabaseService } from '@/services/database';
 
 interface TranscriptLine {
   id: string;
@@ -110,6 +112,7 @@ const TranscriptDetails = () => {
   const location = useLocation();
   const meetingState = location.state as MeetingState | undefined;
   const { notes, setNotes, formatText } = useNotes(id || "");
+  const { settings } = useSettings();
   
   const [title, setTitle] = useState(meetingState?.title || "Weekly Team Standup");
   const [description, setDescription] = useState(meetingState?.description || "Discussion about current project status and next steps.");
@@ -163,7 +166,11 @@ const TranscriptDetails = () => {
   const [currentSpeakerId, setCurrentSpeakerId] = useState("s1");
 
   // Add state for live transcript toggle
-  const [isLiveTranscript, setIsLiveTranscript] = useState(meetingState?.liveTranscript || false);
+  const [isLiveTranscript, setIsLiveTranscript] = useState(
+    meetingState?.liveTranscript !== undefined 
+      ? meetingState.liveTranscript 
+      : settings?.liveTranscript || false
+  );
   
   // Audio recording and playback references and states
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -217,7 +224,9 @@ const TranscriptDetails = () => {
   } = useCombinedRecording();
 
   // Update the recording source state to include 'both'
-  const [recordingSource, setRecordingSource] = useState<'system' | 'mic' | 'both'>('system');
+  const [recordingSource, setRecordingSource] = useState<'system' | 'mic' | 'both'>(
+    settings?.recordingSource || 'system'
+  );
 
   // Replace the initialization approach with a more reliable one
   const initStatusRef = useRef({ checked: false });
@@ -912,9 +921,28 @@ const TranscriptDetails = () => {
 
   // Toggle live transcript mode
   const handleToggleLiveTranscript = () => {
-    setIsLiveTranscript(!isLiveTranscript);
+    const newValue = !isLiveTranscript;
+    setIsLiveTranscript(newValue);
+    
+    // Update settings in the database
+    if (settings) {
+      const updateLiveTranscriptSetting = async () => {
+        try {
+          await DatabaseService.saveSettings({
+            ...settings,
+            liveTranscript: newValue,
+            updatedAt: new Date().toISOString()
+          });
+        } catch (err) {
+          console.error("Failed to save live transcript setting:", err);
+        }
+      };
+      
+      updateLiveTranscriptSetting();
+    }
+    
     toast.info(
-      !isLiveTranscript
+      newValue
         ? "Live transcript enabled" 
         : "Live transcript disabled"
     );
@@ -1040,6 +1068,26 @@ const TranscriptDetails = () => {
       </div>
     );
   };
+
+  // Add effect to update settings when recording source changes
+  useEffect(() => {
+    if (settings && recordingSource !== settings.recordingSource) {
+      // Update settings in the background without blocking UI
+      const updateRecordingSource = async () => {
+        try {
+          await DatabaseService.saveSettings({
+            ...settings,
+            recordingSource,
+            updatedAt: new Date().toISOString()
+          });
+        } catch (err) {
+          console.error("Failed to save recording source setting:", err);
+        }
+      };
+      
+      updateRecordingSource();
+    }
+  }, [recordingSource, settings]);
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { TagInput } from "@/components/ui/tag-input";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,188 +23,132 @@ import { zodResolver } from "@hookform/resolvers/zod";
 interface NewMeetingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialLiveTranscript?: boolean;
 }
 
 // Define form schema with Zod
 const formSchema = z.object({
-  title: z.string().min(1, { message: "Meeting title is required" }),
-  context: z.string().optional(),
+  title: z.string().min(2, {
+    message: "Title must be at least 2 characters.",
+  }),
+  description: z.string().optional(),
   tags: z.array(z.string()).optional(),
   liveTranscript: z.boolean().default(false),
 });
 
 type FormValues = z.infer<typeof formSchema>;
 
-const NewMeetingDialog = ({ open, onOpenChange }: NewMeetingDialogProps) => {
+const NewMeetingDialog = ({ 
+  open, 
+  onOpenChange,
+  initialLiveTranscript = false 
+}: NewMeetingDialogProps) => {
   const navigate = useNavigate();
-  const [contextFiles, setContextFiles] = useState<string[]>([]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [liveTranscript, setLiveTranscript] = useState(initialLiveTranscript);
   
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: "",
-      context: "",
+      description: "",
       tags: [],
-      liveTranscript: false, // Changed default to false
+      liveTranscript: initialLiveTranscript,
     },
   });
 
-  const onSubmit = (values: FormValues) => {
-    // Create a new meeting ID
-    const meetingId = `new-${Date.now()}`;
-    
-    // Navigate to transcript page with meeting data
-    navigate(`/transcript/${meetingId}`, {
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (open) {
+      setTitle("");
+      setDescription("");
+      setTags([]);
+      setLiveTranscript(initialLiveTranscript);
+      form.reset({
+        title: "",
+        description: "",
+        tags: [],
+        liveTranscript: initialLiveTranscript,
+      });
+    }
+  }, [open, initialLiveTranscript, form]);
+
+  const onSubmit = () => {
+    // Navigate to transcript details page with the new meeting data
+    navigate(`/transcript/new`, {
       state: {
-        title: values.title,
-        description: values.context || "",
-        tags: values.tags || [],
-        contextFiles: contextFiles,
-        liveTranscript: values.liveTranscript,
+        title: title,
+        description: description,
+        tags: tags,
         createdAt: new Date(),
         isNew: true,
+        liveTranscript: liveTranscript,
       },
     });
-    
-    toast.success("Meeting created successfully");
     onOpenChange(false);
-  };
-  
-  const handleAddContextFile = () => {
-    // This would normally open a file picker dialog
-    // For now, we'll just simulate adding a context file
-    const mockFile = `document-${contextFiles.length + 1}.pdf`;
-    setContextFiles([...contextFiles, mockFile]);
-  };
-  
-  const handleRemoveContextFile = (index: number) => {
-    setContextFiles(contextFiles.filter((_, i) => i !== index));
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>New Meeting</DialogTitle>
+          <DialogTitle>Start New Meeting</DialogTitle>
           <DialogDescription>
-            Set up your meeting details before starting recording.
+            Fill in the details below to create a new meeting.
           </DialogDescription>
         </DialogHeader>
         
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Meeting Title</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Weekly Team Standup" {...field} />
-                  </FormControl>
-                </FormItem>
-              )}
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor="title">Title</Label>
+            <Input 
+              id="title" 
+              placeholder="Weekly Team Standup" 
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
             />
-            
-            <FormField
-              control={form.control}
-              name="context"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Context (optional)</FormLabel>
-                  <FormControl>
-                    <Textarea 
-                      placeholder="Add information about this meeting..."
-                      className="resize-none"
-                      {...field}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
+          </div>
+          
+          <div className="grid gap-2">
+            <Label htmlFor="description">Description</Label>
+            <Textarea 
+              id="description" 
+              placeholder="Discuss project status and upcoming tasks..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)} 
             />
-            
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tags (optional)</FormLabel>
-                  <FormControl>
-                    <TagInput 
-                      tags={field.value || []}
-                      onTagsChange={field.onChange}
-                      placeholder="Add tags..."
-                      id="meeting-tags" 
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
+          </div>
+          
+          <div className="grid gap-2">
+            <Label htmlFor="tags">Tags</Label>
+            <TagInput 
+              id="tags"
+              placeholder="Add tag..."
+              tags={tags}
+              onTagsChange={setTags}
             />
-            
-            <div className="space-y-4">
-              <Label>Context Files (optional)</Label>
-              <div className="border rounded-md p-4 bg-accent/20">
-                {contextFiles.length > 0 ? (
-                  <ul className="space-y-2">
-                    {contextFiles.map((file, index) => (
-                      <li key={index} className="flex items-center justify-between">
-                        <span className="text-sm">{file}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveContextFile(index)}
-                          className="h-8 w-8 p-0 text-destructive"
-                        >
-                          <span className="sr-only">Remove</span>
-                          ×
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No context files added
-                  </p>
-                )}
-              </div>
-              
-              <Button 
-                type="button"
-                variant="outline" 
-                size="sm" 
-                className="w-full"
-                onClick={handleAddContextFile}
-              >
-                Add Context Files
-              </Button>
-            </div>
-            
-            <FormField
-              control={form.control}
-              name="liveTranscript"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                  <div className="space-y-0.5">
-                    <FormLabel>Live Transcript</FormLabel>
-                    <FormDescription>
-                      Enable real-time transcription during recording
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
+          </div>
+          
+          <div className="flex items-center space-x-2 pt-2">
+            <Switch 
+              id="live-transcript" 
+              checked={liveTranscript}
+              onCheckedChange={setLiveTranscript}
             />
-            
-            <DialogFooter>
-              <Button type="submit">Start Meeting</Button>
-            </DialogFooter>
-          </form>
-        </Form>
+            <Label htmlFor="live-transcript">Enable live transcription</Label>
+          </div>
+        </div>
+        
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" onClick={onSubmit}>
+            Start Meeting
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

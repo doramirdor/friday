@@ -7,7 +7,8 @@ import {
   Notes, 
   Context, 
   MeetingDetails,
-  RecordingListItem
+  RecordingListItem,
+  UserSettings
 } from '../models/types';
 import checkAndUpgradePouchDB from './pouchdb-upgrade';
 
@@ -18,6 +19,7 @@ let speakersDb: any;
 let actionItemsDb: any;
 let notesDb: any;
 let contextsDb: any;
+let settingsDb: any;
 
 // Setup database instances
 const setupDatabases = async () => {
@@ -30,6 +32,7 @@ const setupDatabases = async () => {
   actionItemsDb = await createDatabase<ActionItem>('action-items');
   notesDb = await createDatabase<Notes>('notes');
   contextsDb = await createDatabase<Context>('contexts');
+  settingsDb = await createDatabase<UserSettings>('settings');
   
   console.log('Database instances created successfully');
 };
@@ -516,6 +519,49 @@ export const getMeetingDetails = async (meetingId: string): Promise<MeetingDetai
   }
 };
 
+// Settings Operations
+export const saveSettings = async (settings: UserSettings): Promise<UserSettings> => {
+  try {
+    const settingsId = 'user_settings';
+    const now = new Date().toISOString();
+    let newSettings: UserSettings = {
+      ...settings,
+      _id: settingsId,
+      updatedAt: now,
+      type: 'settings'
+    };
+    
+    // Check if settings already exist
+    try {
+      const existingSettings = await settingsDb.get(settingsId);
+      newSettings._rev = existingSettings._rev; // Use existing revision for update
+    } catch (error) {
+      // Settings don't exist yet, creating new
+      console.log('Creating new settings document');
+    }
+    
+    const response = await settingsDb.put(newSettings);
+    return { ...newSettings, _id: response.id, _rev: response.rev };
+  } catch (error) {
+    console.error('Error saving settings:', error);
+    throw error;
+  }
+};
+
+export const getSettings = async (): Promise<UserSettings | null> => {
+  try {
+    const settingsId = 'user_settings';
+    return await settingsDb.get(settingsId);
+  } catch (error) {
+    if ((error as any).status === 404) {
+      // Settings not found, return default settings
+      return null;
+    }
+    console.error('Error getting settings:', error);
+    throw error;
+  }
+};
+
 // Export all database functions
 export const DatabaseService = {
   initDatabase,
@@ -540,5 +586,7 @@ export const DatabaseService = {
   saveContext,
   getContext,
   deleteContext,
-  getMeetingDetails
+  getMeetingDetails,
+  saveSettings,
+  getSettings
 }; 
