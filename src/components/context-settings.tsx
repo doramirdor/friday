@@ -1,31 +1,20 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
-interface ContextFile {
-  id: string;
-  name: string;
-  size: string;
-  type: string;
-  path?: string; // Optional path to the actual file
-  content?: string; // Optional content preview or actual content for small files
-}
+import { DatabaseService } from "@/services/database";
+import { ContextFile as ContextFileType, GlobalContext } from "@/models/types";
 
 const ContextSettings = () => {
-  const [globalContext, setGlobalContext] = useState({
-    name: "Default Context",
-    description: "Global context used for all recordings by default",
-  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [globalContext, setGlobalContext] = useState<GlobalContext | null>(null);
+  const [contextFiles, setContextFiles] = useState<ContextFileType[]>([]);
   
-  const [contextFiles, setContextFiles] = useState<ContextFile[]>([
-    { id: "f1", name: "company-handbook.pdf", size: "2.4 MB", type: "PDF" },
-    { id: "f2", name: "api-documentation.md", size: "345 KB", type: "Markdown" },
-    { id: "f3", name: "team-structure.txt", size: "12 KB", type: "Text" },
-  ]);
+  // State for loading indicator
+  const [isSaving, setIsSaving] = useState(false);
   
   // Create a reference to the hidden file input
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,6 +23,52 @@ const ContextSettings = () => {
   const [showFilePreview, setShowFilePreview] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string>("");
+  
+  // Load global context and context files from database
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        // Load global context
+        const gc = await DatabaseService.getGlobalContext();
+        if (gc) {
+          setGlobalContext(gc);
+        }
+        
+        // Load all context files
+        const files = await DatabaseService.getAllContextFiles();
+        setContextFiles(files);
+      } catch (error) {
+        console.error('Error loading context data:', error);
+        toast.error('Failed to load context data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadData();
+  }, []);
+  
+  // Save global context changes
+  const saveGlobalContext = async (updatedContext: Partial<GlobalContext>) => {
+    if (!globalContext) return;
+    
+    setIsSaving(true);
+    try {
+      const updatedGC = await DatabaseService.saveGlobalContext({
+        ...globalContext,
+        ...updatedContext
+      });
+      
+      setGlobalContext(updatedGC);
+      toast.success('Global context updated');
+    } catch (error) {
+      console.error('Error saving global context:', error);
+      toast.error('Failed to save global context');
+    } finally {
+      setIsSaving(false);
+    }
+  };
   
   // Function to trigger the hidden file input
   const triggerFileInput = () => {
@@ -72,93 +107,136 @@ const ContextSettings = () => {
   };
   
   // Function to add the selected file to the context
-  const confirmAddFile = () => {
-    if (!selectedFile) return;
+  const confirmAddFile = async () => {
+    if (!selectedFile || !globalContext) return;
     
-    // In a real implementation:
-    // 1. Upload/save the file to a secure location
-    // 2. Process the file for use with LLM (extract text, etc.)
-    // 3. Store reference to the file in the database
-    
-    const fileSizeInBytes = selectedFile.size;
-    let fileSizeString = "";
-    
-    if (fileSizeInBytes < 1024) {
-      fileSizeString = `${fileSizeInBytes} B`;
-    } else if (fileSizeInBytes < 1024 * 1024) {
-      fileSizeString = `${(fileSizeInBytes / 1024).toFixed(1)} KB`;
-    } else {
-      fileSizeString = `${(fileSizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-    
-    // Determine file type display name
-    let typeDisplay = "Unknown";
-    if (selectedFile.type.includes("pdf")) {
-      typeDisplay = "PDF";
-    } else if (selectedFile.type.includes("text")) {
-      typeDisplay = "Text";
-    } else if (selectedFile.name.endsWith('.md')) {
-      typeDisplay = "Markdown";
-    } else if (selectedFile.type.includes("word") || selectedFile.name.endsWith('.docx')) {
-      typeDisplay = "Word";
-    } else if (selectedFile.type.includes("csv") || selectedFile.name.endsWith('.csv')) {
-      typeDisplay = "CSV";
-    }
-    
-    // Add the new file to our context files
-    const newFile: ContextFile = {
-      id: `f${Date.now()}`,
-      name: selectedFile.name,
-      size: fileSizeString,
-      type: typeDisplay,
-      // In a real implementation, these would be populated:
-      // path: '/path/to/saved/file.ext',
-      // content: filePreview
-    };
-    
-    setContextFiles([...contextFiles, newFile]);
-    toast.success(`Added ${newFile.name} to context files`);
-    
-    // Close the preview dialog and reset state
-    setShowFilePreview(false);
-    setSelectedFile(null);
-    setFilePreview("");
-    
-    // Reset the file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    setIsSaving(true);
+    try {
+      // Determine file size string
+      const fileSizeInBytes = selectedFile.size;
+      let fileSizeString = "";
+      
+      if (fileSizeInBytes < 1024) {
+        fileSizeString = `${fileSizeInBytes} B`;
+      } else if (fileSizeInBytes < 1024 * 1024) {
+        fileSizeString = `${(fileSizeInBytes / 1024).toFixed(1)} KB`;
+      } else {
+        fileSizeString = `${(fileSizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+      }
+      
+      // Determine file type display name
+      let typeDisplay = "Unknown";
+      if (selectedFile.type.includes("pdf")) {
+        typeDisplay = "PDF";
+      } else if (selectedFile.type.includes("text")) {
+        typeDisplay = "Text";
+      } else if (selectedFile.name.endsWith('.md')) {
+        typeDisplay = "Markdown";
+      } else if (selectedFile.type.includes("word") || selectedFile.name.endsWith('.docx')) {
+        typeDisplay = "Word";
+      } else if (selectedFile.type.includes("csv") || selectedFile.name.endsWith('.csv')) {
+        typeDisplay = "CSV";
+      }
+      
+      // Create a new context file object
+      const newContextFile: ContextFileType = {
+        id: `f${Date.now()}`,
+        name: selectedFile.name,
+        size: fileSizeString,
+        type: typeDisplay,
+        mimeType: selectedFile.type,
+        content: filePreview,
+        addedAt: new Date().toISOString(),
+        dbType: 'contextFile'
+      };
+      
+      // Save the context file to database
+      const savedFile = await DatabaseService.saveContextFile(newContextFile);
+      
+      // Add the file to global context
+      await DatabaseService.addFileToGlobalContext(savedFile.id);
+      
+      // Refresh the files list
+      const updatedFiles = await DatabaseService.getAllContextFiles();
+      setContextFiles(updatedFiles);
+      
+      // Refresh global context
+      const updatedGlobalContext = await DatabaseService.getGlobalContext();
+      if (updatedGlobalContext) {
+        setGlobalContext(updatedGlobalContext);
+      }
+      
+      toast.success(`Added ${newContextFile.name} to context files`);
+    } catch (error) {
+      console.error('Error adding context file:', error);
+      toast.error('Failed to add context file');
+    } finally {
+      // Close the preview dialog and reset state
+      setShowFilePreview(false);
+      setSelectedFile(null);
+      setFilePreview("");
+      setIsSaving(false);
+      
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
   
   const handleAddFiles = () => {
-    // In a real app, we'd trigger the actual file picker
     triggerFileInput();
   };
   
-  const handleRemoveFile = (id: string) => {
+  const handleRemoveFile = async (id: string) => {
     const fileToRemove = contextFiles.find(file => file.id === id);
-    setContextFiles(contextFiles.filter(file => file.id !== id));
+    if (!fileToRemove) return;
     
-    if (fileToRemove) {
-      toast.success(`Removed ${fileToRemove.name}`);
+    setIsSaving(true);
+    try {
+      // Delete the file from database
+      const success = await DatabaseService.deleteContextFile(id);
       
-      // In a real implementation:
-      // 1. Remove file from storage if needed
-      // 2. Update database to remove reference to the file
-      // 3. Make sure the file won't be used in future LLM contexts
+      if (success) {
+        // Update the local state
+        setContextFiles(contextFiles.filter(file => file.id !== id));
+        toast.success(`Removed ${fileToRemove.name}`);
+        
+        // Refresh global context
+        const updatedGlobalContext = await DatabaseService.getGlobalContext();
+        if (updatedGlobalContext) {
+          setGlobalContext(updatedGlobalContext);
+        }
+      }
+    } catch (error) {
+      console.error('Error removing context file:', error);
+      toast.error('Failed to remove context file');
+    } finally {
+      setIsSaving(false);
     }
   };
   
   // Function to view a file (simulated for now)
-  const handleViewFile = (file: ContextFile) => {
-    toast.info(`Viewing ${file.name}`, {
-      description: "In a full implementation, this would open the file for viewing."
-    });
-    
-    // In a real implementation:
-    // 1. Either open the file in an appropriate viewer
-    // 2. Or show a preview of how the file will be used as context
+  const handleViewFile = (file: ContextFileType) => {
+    if (file.content) {
+      // If we have content stored, show it in a preview dialog
+      setFilePreview(file.content);
+      setShowFilePreview(true);
+    } else {
+      toast.info(`Viewing ${file.name}`, {
+        description: "In a full implementation, this would open the file for viewing."
+      });
+    }
   };
+  
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <p className="text-sm text-muted-foreground">Loading context settings...</p>
+      </div>
+    );
+  }
   
   return (
     <div className="space-y-6">
@@ -173,8 +251,9 @@ const ContextSettings = () => {
           <Label htmlFor="context-description">Description</Label>
           <Textarea
             id="context-description"
-            value={globalContext.description}
-            onChange={(e) => setGlobalContext({ ...globalContext, description: e.target.value })}
+            value={globalContext?.description || ""}
+            onChange={(e) => setGlobalContext(prev => prev ? { ...prev, description: e.target.value } : null)}
+            onBlur={() => globalContext ? saveGlobalContext({ description: globalContext.description }) : null}
             rows={3}
           />
         </div>
@@ -183,7 +262,14 @@ const ContextSettings = () => {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Label htmlFor="context-files">Context Files</Label>
-          <Button variant="outline" size="sm" onClick={handleAddFiles}>Add Files</Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleAddFiles}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Processing...' : 'Add Files'}
+          </Button>
           
           {/* Hidden file input */}
           <input 
@@ -213,6 +299,7 @@ const ContextSettings = () => {
                     variant="ghost" 
                     size="sm"
                     onClick={() => handleViewFile(file)}
+                    disabled={isSaving}
                   >
                     View
                   </Button>
@@ -221,6 +308,7 @@ const ContextSettings = () => {
                     size="sm"
                     onClick={() => handleRemoveFile(file.id)}
                     className="text-destructive hover:text-destructive"
+                    disabled={isSaving}
                   >
                     Remove
                   </Button>
@@ -243,13 +331,17 @@ const ContextSettings = () => {
       </div>
       
       {/* File Preview Dialog */}
-      {showFilePreview && selectedFile && (
+      {showFilePreview && (
         <Dialog open={showFilePreview} onOpenChange={setShowFilePreview}>
           <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
-              <DialogTitle>Add File to Context</DialogTitle>
+              <DialogTitle>
+                {selectedFile ? `Add File to Context` : 'File Preview'}
+              </DialogTitle>
               <DialogDescription>
-                Preview of {selectedFile.name} ({selectedFile.type})
+                {selectedFile 
+                  ? `Preview of ${selectedFile.name} (${selectedFile.type})`
+                  : 'File content preview'}
               </DialogDescription>
             </DialogHeader>
             
@@ -258,8 +350,17 @@ const ContextSettings = () => {
             </div>
             
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowFilePreview(false)}>Cancel</Button>
-              <Button onClick={confirmAddFile}>Add to Context</Button>
+              <Button variant="outline" onClick={() => setShowFilePreview(false)}>
+                {selectedFile ? 'Cancel' : 'Close'}
+              </Button>
+              {selectedFile && (
+                <Button 
+                  onClick={confirmAddFile}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Adding...' : 'Add to Context'}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

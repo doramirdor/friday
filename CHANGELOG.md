@@ -8,12 +8,16 @@ All notable changes to this project will be documented in this file.
 - Refactored TranscriptDetails component into a layered architecture with:
   - Main process layer: transcript-handler.js for file operations and IPC handling
   - Preload layer: transcript-bridge.js to safely expose main process functionality
-  - Renderer layer: useTranscript.ts hook and TranscriptDetailsRefactored component
+  - Renderer layer: useTranscript.ts hook and TranscriptDetails component
 - New useTranscript hook for managing transcript state and interactions with the main process
 - Support for saving, loading, and exporting transcripts in multiple formats
 - Auto-save functionality for transcripts during recording
 - Software recording fallback mode that automatically activates when the Swift Recorder binary is unavailable
 - Improved reliability for recording functionality across different environments
+
+### Changed
+- Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
+- Simplified TranscriptDetailsPage to use the new TranscriptDetails component
 
 ### Fixed
 - Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)

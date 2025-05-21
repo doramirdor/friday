@@ -8,6 +8,9 @@ import { promisify } from "util";
 import { exec as execCallback } from "child_process";
 import https from 'https';
 
+// Import our new transcript handler
+import { setupTranscriptHandlers } from "./transcript-handler.js";
+
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -324,32 +327,47 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
 }
 
 const createWindow = async () => {
-  // Create the browser window
-  global.mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "../preload/index.cjs"),
-    },
-  });
+  try {
+    // Ensure the recording directory exists
+    const recordingsPath = ensureRecordingsDirectory();
 
-  // Check if we have permission to record system audio
-  const isPermissionGranted = await checkPermissions();
+    // Set up our handlers
+    setupSystemAudioHandlers(recordingsPath);
+    setupMicrophoneHandlers(recordingsPath);
+    setupCombinedRecordingHandlers(recordingsPath);
+    
+    // Set up transcript handlers 
+    setupTranscriptHandlers();
+    
+    // Create the browser window
+    global.mainWindow = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, "../preload/index.cjs"),
+      },
+    });
 
-  // If we have permission, load the main app, otherwise show permission request screen
-  if (isPermissionGranted) {
-    // In development, use Vite's dev server
-    if (process.env.NODE_ENV === "development") {
-      global.mainWindow.loadURL("http://localhost:8082");
-      global.mainWindow.webContents.openDevTools();
+    // Check if we have permission to record system audio
+    const isPermissionGranted = await checkPermissions();
+
+    // If we have permission, load the main app, otherwise show permission request screen
+    if (isPermissionGranted) {
+      // In development, use Vite's dev server
+      if (process.env.NODE_ENV === "development") {
+        global.mainWindow.loadURL("http://localhost:8082");
+        global.mainWindow.webContents.openDevTools();
+      } else {
+        // In production, load the built app
+        global.mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
+      }
     } else {
-      // In production, load the built app
-      global.mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
+      global.mainWindow.loadFile(path.join(__dirname, "../renderer/screens/permission-denied/screen.html"));
     }
-  } else {
-    global.mainWindow.loadFile(path.join(__dirname, "../renderer/screens/permission-denied/screen.html"));
+  } catch (error) {
+    console.error("Error creating window:", error);
   }
 };
 

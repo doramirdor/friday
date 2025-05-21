@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const { exposeTranscriptAPI } = require('./transcript-bridge');
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -142,3 +143,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     });
   }
 }); 
+
+// Expose the transcript API to the renderer process
+exposeTranscriptAPI(); 

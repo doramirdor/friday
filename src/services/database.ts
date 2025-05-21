@@ -5,7 +5,9 @@ import {
   Speaker, 
   ActionItem, 
   Notes, 
-  Context, 
+  Context,
+  ContextFile,
+  GlobalContext,
   MeetingDetails,
   RecordingListItem,
   UserSettings
@@ -20,6 +22,8 @@ let actionItemsDb: any;
 let notesDb: any;
 let contextsDb: any;
 let settingsDb: any;
+let contextFilesDb: any;
+let globalContextDb: any;
 
 // Setup database instances
 const setupDatabases = async () => {
@@ -33,6 +37,8 @@ const setupDatabases = async () => {
   notesDb = await createDatabase<Notes>('notes');
   contextsDb = await createDatabase<Context>('contexts');
   settingsDb = await createDatabase<UserSettings>('settings');
+  contextFilesDb = await createDatabase<ContextFile>('context-files');
+  globalContextDb = await createDatabase<GlobalContext>('global-context');
   
   console.log('Database instances created successfully');
 };
@@ -585,6 +591,246 @@ export const getSettings = async (): Promise<UserSettings | null> => {
   }
 };
 
+// Global Context Operations
+export const getGlobalContext = async (): Promise<GlobalContext | null> => {
+  try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    if (!globalContextDb) {
+      throw new Error("Global context database is not available even after initialization attempt");
+    }
+    
+    const globalContextId = 'global_context';
+    return await globalContextDb.get(globalContextId);
+  } catch (error) {
+    if ((error as any).status === 404) {
+      // Global context not found, create default
+      const defaultGlobalContext: GlobalContext = {
+        _id: 'global_context',
+        name: 'Default Context',
+        description: 'Global context used for all recordings by default',
+        files: [],
+        updatedAt: new Date().toISOString(),
+        type: 'globalContext'
+      };
+      
+      try {
+        const result = await saveGlobalContext(defaultGlobalContext);
+        return result;
+      } catch (saveError) {
+        console.error('Error creating default global context:', saveError);
+        return null;
+      }
+    }
+    console.error('Error getting global context:', error);
+    throw error;
+  }
+};
+
+export const saveGlobalContext = async (globalContext: GlobalContext): Promise<GlobalContext> => {
+  try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    if (!globalContextDb) {
+      throw new Error("Global context database is not available even after initialization attempt");
+    }
+    
+    const globalContextId = 'global_context';
+    const now = new Date().toISOString();
+    let newGlobalContext: GlobalContext = {
+      ...globalContext,
+      _id: globalContextId,
+      updatedAt: now,
+      type: 'globalContext'
+    };
+    
+    // Check if global context already exists
+    try {
+      const existingGlobalContext = await globalContextDb.get(globalContextId);
+      newGlobalContext._rev = existingGlobalContext._rev; // Use existing revision for update
+    } catch (error) {
+      // Global context doesn't exist yet, creating new
+      console.log('Creating new global context document');
+    }
+    
+    const response = await globalContextDb.put(newGlobalContext);
+    return { ...newGlobalContext, _id: response.id, _rev: response.rev };
+  } catch (error) {
+    console.error('Error saving global context:', error);
+    throw error;
+  }
+};
+
+// Context Files Operations
+export const saveContextFile = async (contextFile: ContextFile): Promise<ContextFile> => {
+  try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    if (!contextFilesDb) {
+      throw new Error("Context files database is not available even after initialization attempt");
+    }
+    
+    const now = new Date().toISOString();
+    let newContextFile: ContextFile = {
+      ...contextFile,
+      _id: contextFile._id || `context_file_${contextFile.id}`,
+      addedAt: contextFile.addedAt || now,
+      updatedAt: now,
+      dbType: 'contextFile'
+    };
+    
+    // Check if context file already exists
+    if (contextFile._id) {
+      try {
+        const existingContextFile = await contextFilesDb.get(contextFile._id);
+        newContextFile._rev = existingContextFile._rev; // Use existing revision for update
+      } catch (error) {
+        // Context file doesn't exist yet with this ID
+      }
+    }
+    
+    const response = await contextFilesDb.put(newContextFile);
+    return { ...newContextFile, _id: response.id, _rev: response.rev };
+  } catch (error) {
+    console.error('Error saving context file:', error);
+    throw error;
+  }
+};
+
+export const getContextFile = async (id: string): Promise<ContextFile | null> => {
+  try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    if (!contextFilesDb) {
+      throw new Error("Context files database is not available even after initialization attempt");
+    }
+    
+    return await contextFilesDb.get(`context_file_${id}`);
+  } catch (error) {
+    if ((error as any).status === 404) {
+      return null;
+    }
+    console.error('Error getting context file:', error);
+    throw error;
+  }
+};
+
+export const getAllContextFiles = async (): Promise<ContextFile[]> => {
+  try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    if (!contextFilesDb) {
+      throw new Error("Context files database is not available even after initialization attempt");
+    }
+    
+    const result = await contextFilesDb.find({
+      selector: {
+        dbType: 'contextFile'
+      },
+      sort: [{ addedAt: 'desc' }]
+    });
+    
+    return result.docs;
+  } catch (error) {
+    console.error('Error getting all context files:', error);
+    throw error;
+  }
+};
+
+export const deleteContextFile = async (id: string): Promise<boolean> => {
+  try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    if (!contextFilesDb) {
+      throw new Error("Context files database is not available even after initialization attempt");
+    }
+    
+    try {
+      // First get the file
+      const fileId = id.startsWith('context_file_') ? id : `context_file_${id}`;
+      const contextFile = await contextFilesDb.get(fileId);
+      
+      // Remove the file from global context if it's there
+      const globalContext = await getGlobalContext();
+      if (globalContext && globalContext.files.includes(id)) {
+        globalContext.files = globalContext.files.filter(fileId => fileId !== id);
+        await saveGlobalContext(globalContext);
+      }
+      
+      // Then delete the file itself
+      await contextFilesDb.remove(contextFile);
+      
+      return true;
+    } catch (error) {
+      if ((error as any).status !== 404) {
+        throw error;
+      }
+      console.log('Context file not found, nothing to delete');
+      return false;
+    }
+  } catch (error) {
+    console.error('Error deleting context file:', error);
+    throw error;
+  }
+};
+
+export const addFileToGlobalContext = async (fileId: string): Promise<GlobalContext> => {
+  try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    // Get the global context
+    let globalContext = await getGlobalContext();
+    if (!globalContext) {
+      throw new Error("Failed to get or create global context");
+    }
+    
+    // Check if file is already in the global context
+    if (!globalContext.files.includes(fileId)) {
+      // Add the file ID to global context
+      globalContext.files.push(fileId);
+      
+      // Save the updated global context
+      globalContext = await saveGlobalContext(globalContext);
+    }
+    
+    return globalContext;
+  } catch (error) {
+    console.error('Error adding file to global context:', error);
+    throw error;
+  }
+};
+
+export const removeFileFromGlobalContext = async (fileId: string): Promise<GlobalContext> => {
+  try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    // Get the global context
+    let globalContext = await getGlobalContext();
+    if (!globalContext) {
+      throw new Error("Failed to get or create global context");
+    }
+    
+    // Remove the file ID from global context
+    globalContext.files = globalContext.files.filter(id => id !== fileId);
+    
+    // Save the updated global context
+    globalContext = await saveGlobalContext(globalContext);
+    
+    return globalContext;
+  } catch (error) {
+    console.error('Error removing file from global context:', error);
+    throw error;
+  }
+};
+
 // Export all database functions
 export const DatabaseService = {
   initDatabase,
@@ -611,5 +857,13 @@ export const DatabaseService = {
   deleteContext,
   getMeetingDetails,
   saveSettings,
-  getSettings
+  getSettings,
+  getGlobalContext,
+  saveGlobalContext,
+  saveContextFile,
+  getContextFile,
+  getAllContextFiles,
+  deleteContextFile,
+  addFileToGlobalContext,
+  removeFileFromGlobalContext
 }; 

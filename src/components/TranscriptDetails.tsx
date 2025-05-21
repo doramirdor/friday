@@ -23,10 +23,10 @@ interface MeetingState {
 type RecordingSource = 'system' | 'mic' | 'both';
 
 /**
- * Refactored TranscriptDetails component that uses the new layered architecture
+ * TranscriptDetails component that uses the layered architecture
  * This component focuses on the UI and delegates business logic to hooks
  */
-const TranscriptDetailsRefactored: React.FC = () => {
+const TranscriptDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -228,7 +228,7 @@ const TranscriptDetailsRefactored: React.FC = () => {
         
         // Start speech recognition if live transcript is enabled
         if (isLiveTranscript) {
-          googleSpeech.startListening();
+          googleSpeech.startRecording();
         }
       } else {
         toast.error(`Failed to start ${recordingSource} recording`);
@@ -481,4 +481,4 @@ const TranscriptDetailsRefactored: React.FC = () => {
   );
 };
 
-export default TranscriptDetailsRefactored; 
+export default TranscriptDetails; 
