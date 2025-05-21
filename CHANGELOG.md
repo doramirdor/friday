@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
 - Simplified TranscriptDetailsPage to use the new TranscriptDetails component
+- Improved settings dialog with fixed size and scrollable content for better user experience
 
 ### Fixed
 - Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)
