@@ -309,7 +309,6 @@ export const saveActionItem = async (actionItem: ActionItem): Promise<ActionItem
     const newActionItem: ActionItem = {
       ...actionItem,
       _id: actionItem._id || `action_${now}_${actionItem.id}`,
-      createdAt: actionItem.createdAt || now,
       type: 'actionItem'
     };
     const response = await actionItemsDb.put(newActionItem);
@@ -519,9 +518,26 @@ export const getMeetingDetails = async (meetingId: string): Promise<MeetingDetai
   }
 };
 
+// Add this helper function to check database initialization
+const ensureDatabaseInitialized = async () => {
+  if (!meetingsDb || !settingsDb) {
+    console.log('Database not initialized yet, initializing now...');
+    await setupDatabases();
+    return true;
+  }
+  return false;
+};
+
 // Settings Operations
 export const saveSettings = async (settings: UserSettings): Promise<UserSettings> => {
   try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    if (!settingsDb) {
+      throw new Error("Settings database is not available even after initialization attempt");
+    }
+    
     const settingsId = 'user_settings';
     const now = new Date().toISOString();
     let newSettings: UserSettings = {
@@ -550,6 +566,13 @@ export const saveSettings = async (settings: UserSettings): Promise<UserSettings
 
 export const getSettings = async (): Promise<UserSettings | null> => {
   try {
+    // Ensure database is initialized
+    await ensureDatabaseInitialized();
+    
+    if (!settingsDb) {
+      throw new Error("Settings database is not available even after initialization attempt");
+    }
+    
     const settingsId = 'user_settings';
     return await settingsDb.get(settingsId);
   } catch (error) {

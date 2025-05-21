@@ -287,10 +287,12 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
           </TabsContent>
           
           <TabsContent value="about" className="p-6 pt-4">
-            <div className="space-y-4">
+            <div className="space-y-4 text-center">
               <div>
-                <h3 className="text-lg font-medium">Friday</h3>
-                <img src={process.env.PUBLIC_URL + '/fridayLogo.png'} alt="Friday Logo" className="w-10 h-10" />
+                {/* <h3 className="text-lg font-medium">Friday</h3> */}
+                <div className="flex justify-center mb-4">
+                  <img src="/fridayLogo.png" alt="Friday Logo" className="w-10 h-10" />
+                </div>
                 <p className="text-sm text-muted-foreground">Version 0.3.1</p>
               </div>
               
