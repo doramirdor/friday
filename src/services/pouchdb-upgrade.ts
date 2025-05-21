@@ -16,8 +16,8 @@ export const checkAndUpgradePouchDB = async (): Promise<void> => {
       console.log(`Found ${pouchdbKeys.length} PouchDB related localStorage items`);
       
       try {
-        // Get the PouchDB constructor
-        const PouchDB = await getPouchDB();
+        // Get the PouchDB constructor - this is no longer async with the direct approach
+        const PouchDB = getPouchDB();
         
         // Attempt to access each database to check for corruption
         for (const key of pouchdbKeys) {
@@ -35,7 +35,8 @@ export const checkAndUpgradePouchDB = async (): Promise<void> => {
         // If we got an initialization error, clear PouchDB data
         if (error instanceof Error && 
             (error.message.includes('constructor') || 
-             error.message.includes('not a function'))) {
+             error.message.includes('not a function') ||
+             error.message.includes('is not a constructor'))) {
           
           console.warn('Detected PouchDB initialization issue - clearing localStorage data');
           

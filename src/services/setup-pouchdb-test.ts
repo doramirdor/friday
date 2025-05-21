@@ -1,6 +1,6 @@
 // PouchDB Setup Test Script
 // This script tests if PouchDB is properly set up and functioning
-import PouchDBLoader, { getPouchDB, createDatabase } from './pouchdb-setup';
+import PouchDBGet, { getPouchDB, createDatabase } from './pouchdb-setup';
 import checkAndUpgradePouchDB from './pouchdb-upgrade';
 
 // Types for our test data
@@ -20,9 +20,9 @@ export async function testPouchDBSetup(): Promise<{success: boolean, message: st
     console.log('🧹 Checking for and cleaning up any corrupted PouchDB data...');
     await checkAndUpgradePouchDB();
     
-    // Test PouchDB loading
+    // Test PouchDB loading - this is now directly from global
     console.log('🔄 Testing PouchDB constructor loading...');
-    const PouchDB = await PouchDBLoader();
+    const PouchDB = getPouchDB();
     console.log('✅ PouchDB constructor loaded successfully');
     
     // Verify PouchDB is a constructor
