@@ -44,7 +44,7 @@ All notable changes to this project will be documented in this file.
 - Permission management for screen recording (required for system audio)
 - System audio recording hooks for React components
 - File system storage for recorded audio files
-- System audio recording support via BlackHole audio driver (fallback)
+- System audio recording support via virtual audio driver (fallback)
 - New useSystemAudio hook for accessing system audio
 - API for checking recording permissions status
 - API for saving and editing transcriptions

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { checkBlackHoleAvailability, checkMicrophonePermission } from "@/utils/audioDeviceCheck";
+import { checkVirtualAudioAvailability, checkMicrophonePermission } from "@/utils/audioDeviceCheck";
 
 interface AudioDevice {
   deviceId: string;
@@ -14,11 +14,11 @@ interface AudioDevice {
 
 export function AudioDeviceInfo() {
   const [devices, setDevices] = useState<AudioDevice[]>([]);
-  const [blackHoleStatus, setBlackHoleStatus] = useState<{ available: boolean; message: string }>({ available: false, message: "Checking..." });
+  const [virtualAudioStatus, setVirtualAudioStatus] = useState<{ available: boolean; message: string }>({ available: false, message: "Checking..." });
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [permissionStatus, setPermissionStatus] = useState<string>("unknown");
 
-  // Load audio devices and check BlackHole status
+  // Load audio devices and check virtual audio status
   useEffect(() => {
     const loadDevices = async () => {
       try {
@@ -27,9 +27,9 @@ export function AudioDeviceInfo() {
         setPermissionStatus(permResult.granted ? "granted" : "denied");
         
         if (permResult.granted) {
-          // Check for BlackHole
-          const bhStatus = await checkBlackHoleAvailability();
-          setBlackHoleStatus(bhStatus);
+          // Check for virtual audio device
+          const vaStatus = await checkVirtualAudioAvailability();
+          setVirtualAudioStatus(vaStatus);
           
           // Enumerate all devices
           const deviceList = await navigator.mediaDevices.enumerateDevices();
@@ -43,10 +43,17 @@ export function AudioDeviceInfo() {
           
           setDevices(audioDevices);
           
-          // Set default selected device (prefer BlackHole if available)
-          const blackHoleDevice = audioDevices.find(device => device.label.includes('BlackHole'));
-          if (blackHoleDevice) {
-            setSelectedDevice(blackHoleDevice.deviceId);
+          // Set default selected device (prefer virtual audio device if available)
+          const virtualAudioDevice = audioDevices.find(device => 
+            device.label.includes('Virtual') || 
+            device.label.includes('VB-Cable') || 
+            device.label.includes('BlackHole') ||
+            device.label.includes('Soundflower') ||
+            device.label.includes('CABLE')
+          );
+          
+          if (virtualAudioDevice) {
+            setSelectedDevice(virtualAudioDevice.deviceId);
           } else if (audioDevices.length > 0) {
             setSelectedDevice(audioDevices[0].deviceId);
           }
@@ -73,9 +80,9 @@ export function AudioDeviceInfo() {
       
       setDevices(audioDevices);
       
-      // Check BlackHole status again
-      const bhStatus = await checkBlackHoleAvailability();
-      setBlackHoleStatus(bhStatus);
+      // Check virtual audio status again
+      const vaStatus = await checkVirtualAudioAvailability();
+      setVirtualAudioStatus(vaStatus);
       
       toast.success("Audio devices refreshed");
     } catch (err) {
@@ -138,6 +145,15 @@ export function AudioDeviceInfo() {
     }
   };
 
+  // Function to check if a device is a virtual audio device
+  const isVirtualAudioDevice = (label: string): boolean => {
+    return label.includes('Virtual') || 
+           label.includes('VB-Cable') || 
+           label.includes('BlackHole') ||
+           label.includes('Soundflower') ||
+           label.includes('CABLE');
+  };
+
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
@@ -156,14 +172,14 @@ export function AudioDeviceInfo() {
           </div>
           
           <div className="flex items-center justify-between">
-            <span>BlackHole Status:</span>
-            <Badge variant={blackHoleStatus.available ? "default" : "secondary"}>
-              {blackHoleStatus.available ? "Available" : "Not Detected"}
+            <span>Virtual Audio Status:</span>
+            <Badge variant={virtualAudioStatus.available ? "default" : "secondary"}>
+              {virtualAudioStatus.available ? "Available" : "Not Detected"}
             </Badge>
           </div>
           
           <div>
-            <p className="text-xs text-muted-foreground mb-2">{blackHoleStatus.message}</p>
+            <p className="text-xs text-muted-foreground mb-2">{virtualAudioStatus.message}</p>
           </div>
           
           <div className="space-y-2">
@@ -175,7 +191,7 @@ export function AudioDeviceInfo() {
               <SelectContent>
                 {devices.map((device) => (
                   <SelectItem key={device.deviceId} value={device.deviceId}>
-                    {device.label.includes('BlackHole') ? `${device.label} (System Audio)` : device.label}
+                    {isVirtualAudioDevice(device.label) ? `${device.label} (System Audio)` : device.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -188,7 +204,7 @@ export function AudioDeviceInfo() {
               <ul className="space-y-1">
                 {devices.map((device) => (
                   <li key={device.deviceId} className="text-xs truncate">
-                    {device.label.includes('BlackHole') ? (
+                    {isVirtualAudioDevice(device.label) ? (
                       <span className="flex items-center">
                         {device.label}
                         <Badge variant="outline" className="ml-2">System Audio</Badge>

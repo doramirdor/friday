@@ -184,7 +184,7 @@ const TranscriptDetails = () => {
   const recordingTimerRef = useRef<number | null>(null);
 
   // Get the system audio hook
-  const { isBlackHoleAvailable, getSystemAudioStream } = useSystemAudio();
+  const { isVirtualAudioAvailable, getSystemAudioStream } = useSystemAudio();
 
   // Get the system audio hook
   const { 

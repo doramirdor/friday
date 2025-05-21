@@ -1,9 +1,9 @@
 /**
- * Checks if the BlackHole audio device is available
+ * Checks if a virtual audio device is available
  * 
  * @returns A promise that resolves to an object with availability and message
  */
-export async function checkBlackHoleAvailability(): Promise<{ 
+export async function checkVirtualAudioAvailability(): Promise<{ 
   available: boolean; 
   message: string;
 }> {
@@ -14,20 +14,25 @@ export async function checkBlackHoleAvailability(): Promise<{
     // Then enumerate the devices
     const devices = await navigator.mediaDevices.enumerateDevices();
     
-    // Look for BlackHole among audio input devices
-    const blackHoleDevice = devices.find(device => 
-      device.kind === 'audioinput' && device.label.includes('BlackHole')
+    // Look for virtual audio devices among audio input devices
+    const virtualAudioDevice = devices.find(device => 
+      device.kind === 'audioinput' && 
+      (device.label.includes('Virtual') || 
+       device.label.includes('VB-Cable') || 
+       device.label.includes('BlackHole') ||
+       device.label.includes('Soundflower') ||
+       device.label.includes('CABLE'))
     );
     
-    if (blackHoleDevice) {
+    if (virtualAudioDevice) {
       return { 
         available: true, 
-        message: `BlackHole found: ${blackHoleDevice.label}` 
+        message: `Virtual audio device found: ${virtualAudioDevice.label}` 
       };
     } else {
       return { 
         available: false, 
-        message: "BlackHole not detected. Please install BlackHole for system audio recording." 
+        message: "No virtual audio device detected. Please install a virtual audio device for system audio recording." 
       };
     }
   } catch (err) {
@@ -64,11 +69,11 @@ export async function checkMicrophonePermission(): Promise<{
 }
 
 /**
- * Tests recording from BlackHole device
+ * Tests recording from a virtual audio device
  * 
  * @returns A promise that resolves to a result object
  */
-export async function testBlackHoleRecording(): Promise<{
+export async function testVirtualAudioRecording(): Promise<{
   success: boolean;
   message: string;
   stream?: MediaStream;
@@ -77,40 +82,45 @@ export async function testBlackHoleRecording(): Promise<{
     // First enumerate the devices
     const devices = await navigator.mediaDevices.enumerateDevices();
     
-    // Look for BlackHole device
-    const blackHoleDevice = devices.find(device => 
-      device.kind === 'audioinput' && device.label.includes('BlackHole')
+    // Look for virtual audio device
+    const virtualAudioDevice = devices.find(device => 
+      device.kind === 'audioinput' && 
+      (device.label.includes('Virtual') || 
+       device.label.includes('VB-Cable') || 
+       device.label.includes('BlackHole') ||
+       device.label.includes('Soundflower') ||
+       device.label.includes('CABLE'))
     );
     
-    if (!blackHoleDevice) {
+    if (!virtualAudioDevice) {
       return {
         success: false,
-        message: "BlackHole device not found"
+        message: "Virtual audio device not found"
       };
     }
     
-    // Try to get a stream from BlackHole
+    // Try to get a stream from the virtual audio device
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: blackHoleDevice.deviceId }
+      audio: { deviceId: virtualAudioDevice.deviceId }
     });
     
     // Check if we got a valid stream with active tracks
     if (stream && stream.getAudioTracks().length > 0) {
       return {
         success: true,
-        message: "Successfully connected to BlackHole audio device",
+        message: "Successfully connected to virtual audio device",
         stream
       };
     } else {
       return {
         success: false,
-        message: "Connected to BlackHole but no audio tracks available"
+        message: "Connected to virtual audio device but no audio tracks available"
       };
     }
   } catch (err) {
     return {
       success: false,
-      message: `Error testing BlackHole: ${err instanceof Error ? err.message : String(err)}`
+      message: `Error testing virtual audio device: ${err instanceof Error ? err.message : String(err)}`
     };
   }
 } 
