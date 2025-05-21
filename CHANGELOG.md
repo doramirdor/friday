@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [0.3.1] - 2024-05-21
 
 ### Added
+- Database persistence for user settings using PouchDB
+- useSettings hook for managing application settings
+- Automatic migration of settings from localStorage to PouchDB
+- Consistent API for updating and retrieving settings
+- Settings synchronization between components
+- Recording source preference persistence
+- Live transcription preference persistence
 - Robust error handling for database operations
 - Database recovery mechanism for corrupted storage
 - Improved error boundaries and error reporting
