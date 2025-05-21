@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)
+- START_FAILED errors when attempting to use combined recording by implementing better path resolution and error handling
+- Enhanced Swift Recorder binary path detection to use multiple fallbacks if the primary path isn't found
+
 ## [0.3.1] - 2024-05-21
 
 ### Added
