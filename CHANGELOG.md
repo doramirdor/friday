@@ -4,10 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Software recording fallback mode that automatically activates when the Swift Recorder binary is unavailable
+- Improved reliability for recording functionality across different environments
+
 ### Fixed
 - Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)
 - START_FAILED errors when attempting to use combined recording by implementing better path resolution and error handling
 - Enhanced Swift Recorder binary path detection to use multiple fallbacks if the primary path isn't found
+- RECORDER_NOT_FOUND errors by implementing a software-only recording mode that works without the Swift binary
 
 ## [0.3.1] - 2024-05-21
 
