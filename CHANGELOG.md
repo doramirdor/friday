@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.3.1] - 2024-11-11
+## [0.3.1] - 2024-05-21
 
 ### Added
 - Robust error handling for database operations
@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 - Improved error boundaries and error reporting
 
 ### Fixed
-- Fixed "Class extends value [object Object] is not a constructor or null" error in PouchDB initialization
+- Fixed "Class extends value [object Object] is not a constructor or null" error in PouchDB initialization by correcting the ESM module handling
 - Improved PouchDB type definitions for better type safety
 - Enhanced database context error handling
 - Implemented automatic database recovery for corrupted storage
