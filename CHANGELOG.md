@@ -10,15 +10,19 @@ All notable changes to this project will be documented in this file.
 - Improved error boundaries and error reporting
 - PouchDB runtime patching script to fix constructor issues in different environments
 - Asynchronous database initialization system that avoids ESM/CommonJS conflicts
+- Global PouchDB constructor patching that works across module systems
+- Direct bundler module cache overriding for PouchDB constructor issues
 
 ### Fixed
 - Fixed "Class extends value [object Object] is not a constructor or null" error in PouchDB initialization with enhanced ESM module handling
 - Added robust PouchDB constructor resolution for compatibility with both browser and Electron environments
 - Improved automatic recovery from PouchDB initialization errors
 - Implemented better error detection and storage cleanup for corrupted PouchDB data
-- Enhanced global error handler to detect and recover from PouchDB failures 
+- Enhanced global error handler to detect and recover from PouchDB failures
 - Implemented dynamic imports and async database initialization to prevent module conflicts
 - Added browser-side patching for PouchDB AMD/ESM module loading
+- Implemented global constructor patching that completely avoids module imports
+- Added direct module cache patching for webpack/vite bundlers
 - Improved PouchDB type definitions for better type safety
 - Enhanced database context error handling
 - Implemented automatic database recovery for corrupted storage
