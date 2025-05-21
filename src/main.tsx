@@ -8,13 +8,30 @@ window.addEventListener('error', (event) => {
   
   // Check if it's a PouchDB error
   if (event.error?.toString().includes('PouchDB') || 
-      event.error?.message?.includes('Class extends value')) {
-    console.error('PouchDB error detected - consider clearing localStorage and reloading');
+      event.error?.message?.includes('Class extends value') ||
+      event.error?.message?.includes('not a constructor') ||
+      event.error?.message?.includes('is not a function')) {
+        
+    console.error('PouchDB error detected - attempting recovery');
     
-    // You could add some UI here to inform the user
+    // Clear PouchDB related localStorage data
+    const keys = Object.keys(localStorage);
+    const pouchdbKeys = keys.filter(key => 
+      key.startsWith('_pouch_') || key.startsWith('friday-app-')
+    );
+    
+    if (pouchdbKeys.length > 0) {
+      console.log(`Clearing ${pouchdbKeys.length} PouchDB storage items to recover from error`);
+      for (const key of pouchdbKeys) {
+        console.log(`Removing: ${key}`);
+        localStorage.removeItem(key);
+      }
+    }
+    
+    // Add a UI element to inform user and offer reload
     document.body.innerHTML += `
-      <div style="position:fixed; top:0; left:0; right:0; background:red; color:white; padding:10px; z-index:9999">
-        Database error detected. <button onclick="localStorage.clear(); window.location.reload()">Clear Data & Reload</button>
+      <div style="position:fixed; top:0; left:0; right:0; background:#ff4444; color:white; padding:15px; z-index:9999; text-align:center; font-weight:bold;">
+        Database error detected. <button style="background:white; color:#ff4444; border:none; padding:5px 10px; margin-left:10px; cursor:pointer; border-radius:4px;" onclick="window.location.reload()">Reload Application</button>
       </div>
     `;
   }
