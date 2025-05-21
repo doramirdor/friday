@@ -2,7 +2,7 @@ import { spawn, exec } from "node:child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
-import { dialog, shell } from "electron";
+import { dialog, shell, app } from "electron";
 import { checkPermissions } from "./permission.js";
 
 const execAsync = promisify(exec);
@@ -29,9 +29,50 @@ const initRecording = (filepath, filename, source = 'system') => {
     if (filename) args.push("--filename", filename);
     args.push("--source", source);
 
+    // Get the correct path to the Recorder binary based on whether we're in development or production
+    const isDevMode = process.env.NODE_ENV === 'development';
+    let recorderPath;
+    
+    if (isDevMode) {
+      // In development mode, the binary is directly in the src/swift directory
+      recorderPath = path.join(process.cwd(), "src", "swift", "Recorder");
+    } else {
+      // In production, the binary should be in the app's resources directory
+      recorderPath = path.join(app.getAppPath(), "src", "swift", "Recorder");
+      
+      // Alternative paths to try if the first one fails
+      const alternativePaths = [
+        path.join(process.resourcesPath, "src", "swift", "Recorder"),
+        path.join(app.getAppPath(), "..", "src", "swift", "Recorder"),
+        path.join(app.getPath("exe"), "..", "Resources", "src", "swift", "Recorder")
+      ];
+      
+      if (!fs.existsSync(recorderPath)) {
+        console.log(`Recorder not found at primary path: ${recorderPath}, trying alternatives...`);
+        for (const altPath of alternativePaths) {
+          if (fs.existsSync(altPath)) {
+            recorderPath = altPath;
+            console.log(`Found Recorder at alternative path: ${recorderPath}`);
+            break;
+          } else {
+            console.log(`Recorder not found at alternative path: ${altPath}`);
+          }
+        }
+      }
+    }
+    
+    // Log the final path for debugging
+    console.log(`Using Recorder binary at: ${recorderPath}`);
+    if (!fs.existsSync(recorderPath)) {
+      console.error(`ERROR: Recorder binary not found at ${recorderPath}`);
+      global.mainWindow.webContents.send("recording-error", "RECORDER_NOT_FOUND");
+      resolve(false);
+      return;
+    }
+
     // Set up the recorder process
     try {
-      recordingProcess = spawn("./src/swift/Recorder", args);
+      recordingProcess = spawn(recorderPath, args);
       
       // Handle process exit
       recordingProcess.on("exit", (code) => {
