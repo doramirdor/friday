@@ -25,6 +25,8 @@ All notable changes to this project will be documented in this file.
 - START_FAILED errors when attempting to use combined recording by implementing better path resolution and error handling
 - Enhanced Swift Recorder binary path detection to use multiple fallbacks if the primary path isn't found
 - RECORDER_NOT_FOUND errors by implementing a software-only recording mode that works without the Swift binary
+- Settings dialog alignment issue where content was vertically centered instead of aligned to the top
+- Incomplete scrolling in the transcription tab of the settings dialog which prevented access to bottom content
 
 ## [0.3.1] - 2024-05-21
 
