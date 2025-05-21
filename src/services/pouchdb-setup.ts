@@ -1,58 +1,70 @@
-// Import PouchDB as an ESM module
-import PouchDBModule from 'pouchdb';
-import PouchDBFindModule from 'pouchdb-find';
+// Dynamic PouchDB loader that handles both ESM and CommonJS environments
 
-// Function to safely get PouchDB constructor
-const getPouchDBConstructor = () => {
+// Define types only (not importing the actual modules here)
+type PouchDBType = any;  // Simplify for now to avoid dependency issues
+type PouchDBFindType = any;
+
+let PouchDB: PouchDBType | null = null;
+let initialized = false;
+
+// DB namespace
+const DB_NAME = 'friday-app';
+
+// This function ensures PouchDB is loaded correctly before use
+const ensurePouchDBLoaded = async (): Promise<PouchDBType> => {
+  if (initialized && PouchDB) {
+    return PouchDB;
+  }
+  
   try {
-    // Handle different module formats (ESM/CommonJS)
-    const PouchDBConstructor = 
-      // @ts-ignore - Handle both module patterns
-      (typeof PouchDBModule === 'function') ? PouchDBModule :
-      // @ts-ignore - Handle default export
-      (PouchDBModule.default && typeof PouchDBModule.default === 'function') ? PouchDBModule.default :
-      // Fallback for object with constructor
-      PouchDBModule;
+    console.log('🔄 Initializing PouchDB dynamically...');
+    
+    // Dynamic imports to ensure proper module loading in different environments
+    const PouchDBModule = await import('pouchdb');
+    const PouchDBFindModule = await import('pouchdb-find');
+    
+    // Get the actual constructor (handle both ESM and CommonJS)
+    const PouchDBConstructor = PouchDBModule.default || PouchDBModule;
+    const PouchDBFindPlugin = PouchDBFindModule.default || PouchDBFindModule;
     
     // Validate that we have a constructor
     if (typeof PouchDBConstructor !== 'function') {
-      throw new Error('PouchDB is not a constructor: ' + (typeof PouchDBConstructor));
+      throw new Error('PouchDB is not a function: ' + typeof PouchDBConstructor);
     }
     
-    return PouchDBConstructor;
+    // Register the find plugin
+    PouchDBConstructor.plugin(PouchDBFindPlugin);
+    
+    // Store the constructor
+    PouchDB = PouchDBConstructor;
+    initialized = true;
+    
+    console.log('✅ PouchDB initialized successfully');
+    return PouchDB;
   } catch (error) {
-    console.error('Error resolving PouchDB constructor:', error);
+    console.error('❌ PouchDB initialization error:', error);
     throw error;
   }
 };
 
-// Get the PouchDB constructor
-const PouchDB = getPouchDBConstructor();
-
-// Similarly handle the find plugin
-const PouchDBFind = 
-  // @ts-ignore - Handle both module patterns
-  (typeof PouchDBFindModule === 'function') ? PouchDBFindModule :
-  // @ts-ignore - Handle default export
-  (PouchDBFindModule.default && typeof PouchDBFindModule.default === 'function') ? PouchDBFindModule.default : 
-  PouchDBFindModule;
-
-// Register the PouchDB find plugin
-PouchDB.plugin(PouchDBFind);
-
-// Create DB namespace
-const DB_NAME = 'friday-app';
-
 // Export a factory function to create database instances
-export const createDatabase = <T = any>(name: string) => {
+export const createDatabase = async <T = any>(name: string) => {
   try {
-    // @ts-ignore - Handle PouchDB typing for new instances
-    return new PouchDB(`${DB_NAME}-${name}`);
+    const PouchDBInstance = await ensurePouchDBLoaded();
+    // @ts-ignore - Handle PouchDB dynamic typing with generics
+    return new PouchDBInstance(`${DB_NAME}-${name}`);
   } catch (error) {
     console.error(`Error creating database ${name}:`, error);
     throw error;
   }
 };
 
-// Export the configured PouchDB class
-export default PouchDB; 
+// Export a function to get the PouchDB constructor
+export const getPouchDB = async () => {
+  return await ensurePouchDBLoaded();
+};
+
+// Export default as a function that returns a promise with PouchDB
+export default async () => {
+  return await ensurePouchDBLoaded();
+}; 

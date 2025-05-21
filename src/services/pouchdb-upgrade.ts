@@ -1,5 +1,5 @@
 // An upgrade service to handle PouchDB version migrations and compatibility fixes
-import PouchDB from './pouchdb-setup';
+import { getPouchDB } from './pouchdb-setup';
 
 /**
  * Check if PouchDB storage format needs to be upgraded
@@ -16,6 +16,9 @@ export const checkAndUpgradePouchDB = async (): Promise<void> => {
       console.log(`Found ${pouchdbKeys.length} PouchDB related localStorage items`);
       
       try {
+        // Get the PouchDB constructor
+        const PouchDB = await getPouchDB();
+        
         // Attempt to access each database to check for corruption
         for (const key of pouchdbKeys) {
           const dbName = key.replace('_pouch_', '').replace('friday-app-', '');

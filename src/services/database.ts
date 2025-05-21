@@ -11,17 +11,37 @@ import {
 } from '../models/types';
 import checkAndUpgradePouchDB from './pouchdb-upgrade';
 
-// Create database instances for different data types
-const meetingsDb = createDatabase<Meeting>('meetings');
-const transcriptsDb = createDatabase('transcripts');
-const speakersDb = createDatabase<Speaker>('speakers');
-const actionItemsDb = createDatabase<ActionItem>('action-items');
-const notesDb = createDatabase<Notes>('notes');
-const contextsDb = createDatabase<Context>('contexts');
+// Database instances - will be initialized in setupDatabases
+let meetingsDb: any;
+let transcriptsDb: any;
+let speakersDb: any;
+let actionItemsDb: any;
+let notesDb: any;
+let contextsDb: any;
+
+// Setup database instances
+const setupDatabases = async () => {
+  console.log('Setting up database instances...');
+  
+  // Create database instances for different data types
+  meetingsDb = await createDatabase<Meeting>('meetings');
+  transcriptsDb = await createDatabase('transcripts');
+  speakersDb = await createDatabase<Speaker>('speakers');
+  actionItemsDb = await createDatabase<ActionItem>('action-items');
+  notesDb = await createDatabase<Notes>('notes');
+  contextsDb = await createDatabase<Context>('contexts');
+  
+  console.log('Database instances created successfully');
+};
 
 // Create indexes for efficient querying
 const setupIndexes = async () => {
   try {
+    // Make sure databases are initialized
+    if (!meetingsDb) {
+      await setupDatabases();
+    }
+    
     // Meeting index
     await meetingsDb.createIndex({
       index: { fields: ['type', 'createdAt'] }
@@ -54,8 +74,12 @@ export const initDatabase = async () => {
     // First, check for and fix any PouchDB version compatibility issues
     await checkAndUpgradePouchDB();
     
+    // Set up database instances
+    await setupDatabases();
+    
     // Then set up database indexes
     await setupIndexes();
+    
     console.log('Database initialized successfully');
     return true;
   } catch (error) {
