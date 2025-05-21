@@ -2,9 +2,10 @@
 import PouchDBModule from 'pouchdb';
 import PouchDBFindModule from 'pouchdb-find';
 
-// Use type assertions to handle the module exports
+// Create a properly working PouchDB instance
+// This ensures we handle both CommonJS and ESM module formats correctly
 // @ts-ignore - Handle both CommonJS and ESM module patterns
-const PouchDB: typeof PouchDBModule = (PouchDBModule as any).default || PouchDBModule;
+const PouchDB = (PouchDBModule as any).default || PouchDBModule;
 // @ts-ignore - Handle both CommonJS and ESM module patterns
 const PouchDBFind = (PouchDBFindModule as any).default || PouchDBFindModule;
 
@@ -16,7 +17,8 @@ const DB_NAME = 'friday-app';
 
 // Export a factory function to create database instances
 export const createDatabase = <T = any>(name: string) => {
-  return new PouchDB<T>(`${DB_NAME}-${name}`);
+  // @ts-ignore - Handle PouchDB typing for new instances
+  return new PouchDB(`${DB_NAME}-${name}`);
 };
 
 // Export the configured PouchDB class
