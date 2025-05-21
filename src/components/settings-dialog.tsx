@@ -151,8 +151,8 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
           </TabsList>
           
           <div className="flex-1 overflow-y-auto">
-            <TabsContent value="general" className="p-6 pt-4 h-full">
-              <div className="space-y-6">
+            <TabsContent value="general" className="p-6 pt-4 h-auto mt-0 block">
+              <div className="space-y-6 pb-6">
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium">Save Location</h3>
                   <div className="flex items-center gap-2">
@@ -205,8 +205,8 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               </div>
             </TabsContent>
             
-            <TabsContent value="shortcuts" className="p-6 pt-4 h-full">
-              <div className="space-y-6">
+            <TabsContent value="shortcuts" className="p-6 pt-4 h-auto mt-0 block">
+              <div className="space-y-6 pb-6">
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium">Global Shortcuts</h3>
                   <div className="space-y-3">
@@ -247,8 +247,8 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               </div>
             </TabsContent>
             
-            <TabsContent value="transcription" className="p-6 pt-4 h-full">
-              <div className="space-y-6">
+            <TabsContent value="transcription" className="p-6 pt-4 h-auto mt-0 block">
+              <div className="space-y-6 pb-20">
                 <div className="flex items-center justify-between space-x-2">
                   <Label htmlFor="live-transcription" className="flex flex-col gap-0.5">
                     <span>Live Transcription</span>
@@ -283,11 +283,11 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               </div>
             </TabsContent>
             
-            <TabsContent value="context" className="p-6 pt-4 h-full">
+            <TabsContent value="context" className="p-6 pt-4 h-auto mt-0 block">
               <ContextSettings />
             </TabsContent>
             
-            <TabsContent value="about" className="p-6 pt-4 h-full">
+            <TabsContent value="about" className="p-6 pt-4 h-auto mt-0 block">
               <div className="space-y-4 text-center">
                 <div>
                   {/* <h3 className="text-lg font-medium">Friday</h3> */}
