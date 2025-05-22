@@ -1,6 +1,20 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const path = require('path');
-const { exposeTranscriptAPI } = require(path.join(__dirname, 'transcript-bridge'));
+
+// Try to load the transcript-bridge module directly
+let transcriptBridge;
+try {
+  // First try direct path
+  transcriptBridge = require('./transcript-bridge.js');
+} catch (e) {
+  try {
+    // Then try the full path in case we're in a bundled environment
+    transcriptBridge = require(require('path').join(__dirname, 'transcript-bridge.js'));
+  } catch (err) {
+    console.error('Failed to load transcript-bridge module:', err);
+    // Create a dummy function to prevent errors
+    transcriptBridge = { exposeTranscriptAPI: () => console.warn('Transcript API not available') };
+  }
+}
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -146,4 +160,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 }); 
 
 // Expose the transcript API to the renderer process
-exposeTranscriptAPI(); 
+try {
+  transcriptBridge.exposeTranscriptAPI();
+  console.log('✅ Transcript API exposed successfully');
+} catch (err) {
+  console.error('Failed to expose transcript API:', err);
+} 
