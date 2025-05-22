@@ -46,6 +46,7 @@ const setupDatabases = async () => {
 // Create indexes for efficient querying
 const setupIndexes = async () => {
   try {
+    console.log('Setting up database indexes...');
     // Make sure databases are initialized
     if (!meetingsDb) {
       await setupDatabases();
@@ -78,8 +79,9 @@ const setupIndexes = async () => {
 };
 
 // Initialize the database
-export const initDatabase = async () => {
+const initDatabase = async () => {
   try {
+    console.log('Initializing database...');
     // First, check for and fix any PouchDB version compatibility issues
     await checkAndUpgradePouchDB();
     
@@ -99,7 +101,7 @@ export const initDatabase = async () => {
 };
 
 // Meeting CRUD Operations
-export const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
+const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
   try {
     const now = new Date().toISOString();
     const newMeeting: Meeting = {
@@ -117,7 +119,7 @@ export const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
   }
 };
 
-export const getMeeting = async (id: string): Promise<Meeting | null> => {
+const getMeeting = async (id: string): Promise<Meeting | null> => {
   try {
     return await meetingsDb.get(id);
   } catch (error) {
@@ -129,7 +131,7 @@ export const getMeeting = async (id: string): Promise<Meeting | null> => {
   }
 };
 
-export const updateMeeting = async (meeting: Meeting): Promise<Meeting> => {
+const updateMeeting = async (meeting: Meeting): Promise<Meeting> => {
   try {
     const now = new Date().toISOString();
     const updatedMeeting: Meeting = {
@@ -144,7 +146,7 @@ export const updateMeeting = async (meeting: Meeting): Promise<Meeting> => {
   }
 };
 
-export const deleteMeeting = async (id: string): Promise<boolean> => {
+const deleteMeeting = async (id: string): Promise<boolean> => {
   try {
     const doc = await meetingsDb.get(id);
     await meetingsDb.remove(doc);
@@ -162,7 +164,7 @@ export const deleteMeeting = async (id: string): Promise<boolean> => {
   }
 };
 
-export const getAllMeetings = async (): Promise<Meeting[]> => {
+const getAllMeetings = async (): Promise<Meeting[]> => {
   try {
     const result = await meetingsDb.find({
       selector: {
@@ -177,7 +179,7 @@ export const getAllMeetings = async (): Promise<Meeting[]> => {
   }
 };
 
-export const getMeetingsList = async (): Promise<RecordingListItem[]> => {
+const getMeetingsList = async (): Promise<RecordingListItem[]> => {
   try {
     const meetings = await getAllMeetings();
     return meetings.map(meeting => ({
@@ -195,7 +197,7 @@ export const getMeetingsList = async (): Promise<RecordingListItem[]> => {
 };
 
 // Transcript Operations
-export const saveTranscript = async (meetingId: string, transcript: TranscriptLine[]): Promise<boolean> => {
+const saveTranscript = async (meetingId: string, transcript: TranscriptLine[]): Promise<boolean> => {
   try {
     // Store each transcript line as a separate document with the meetingId
     await transcriptsDb.bulkDocs(
@@ -213,7 +215,7 @@ export const saveTranscript = async (meetingId: string, transcript: TranscriptLi
   }
 };
 
-export const getTranscript = async (meetingId: string): Promise<TranscriptLine[]> => {
+const getTranscript = async (meetingId: string): Promise<TranscriptLine[]> => {
   try {
     const result = await transcriptsDb.find({
       selector: {
@@ -239,7 +241,7 @@ export const getTranscript = async (meetingId: string): Promise<TranscriptLine[]
   }
 };
 
-export const deleteTranscript = async (meetingId: string): Promise<boolean> => {
+const deleteTranscript = async (meetingId: string): Promise<boolean> => {
   try {
     // Find all transcript lines for this meeting
     const result = await transcriptsDb.find({
@@ -249,13 +251,10 @@ export const deleteTranscript = async (meetingId: string): Promise<boolean> => {
       }
     });
     
-    // Delete all transcript lines
-    await transcriptsDb.bulkDocs(
-      result.docs.map(doc => ({
-        ...doc,
-        _deleted: true
-      }))
-    );
+    // Delete each document
+    for (const doc of result.docs) {
+      await transcriptsDb.remove(doc);
+    }
     
     return true;
   } catch (error) {
@@ -264,10 +263,22 @@ export const deleteTranscript = async (meetingId: string): Promise<boolean> => {
   }
 };
 
-// Speakers Operations
-export const saveSpeakers = async (meetingId: string, speakers: Speaker[]): Promise<boolean> => {
+// Speaker Operations
+const saveSpeakers = async (meetingId: string, speakers: Speaker[]): Promise<boolean> => {
   try {
-    // Store each speaker as a separate document with the meetingId
+    // First delete existing speakers for this meeting
+    const existingSpeakers = await speakersDb.find({
+      selector: {
+        meetingId,
+        type: 'speaker'
+      }
+    });
+    
+    for (const doc of existingSpeakers.docs) {
+      await speakersDb.remove(doc);
+    }
+    
+    // Then add the new ones
     await speakersDb.bulkDocs(
       speakers.map(speaker => ({
         ...speaker,
@@ -276,6 +287,7 @@ export const saveSpeakers = async (meetingId: string, speakers: Speaker[]): Prom
         type: 'speaker'
       }))
     );
+    
     return true;
   } catch (error) {
     console.error('Error saving speakers:', error);
@@ -283,7 +295,7 @@ export const saveSpeakers = async (meetingId: string, speakers: Speaker[]): Prom
   }
 };
 
-export const getSpeakers = async (meetingId: string): Promise<Speaker[]> => {
+const getSpeakers = async (meetingId: string): Promise<Speaker[]> => {
   try {
     const result = await speakersDb.find({
       selector: {
@@ -292,15 +304,12 @@ export const getSpeakers = async (meetingId: string): Promise<Speaker[]> => {
       }
     });
     
-    // Convert back to Speaker format with required properties
     return result.docs.map(doc => ({
       id: doc.id,
       name: doc.name,
       color: doc.color,
-      type: 'speaker',
       meetingId: doc.meetingId,
-      _id: doc._id,
-      _rev: doc._rev
+      type: 'speaker'
     }));
   } catch (error) {
     console.error('Error getting speakers:', error);
@@ -308,15 +317,17 @@ export const getSpeakers = async (meetingId: string): Promise<Speaker[]> => {
   }
 };
 
-// Action Items Operations
-export const saveActionItem = async (actionItem: ActionItem): Promise<ActionItem> => {
+// Action Item Operations
+const saveActionItem = async (actionItem: ActionItem): Promise<ActionItem> => {
   try {
     const now = new Date().toISOString();
     const newActionItem: ActionItem = {
       ...actionItem,
-      _id: actionItem._id || `action_${now}_${actionItem.id}`,
+      _id: actionItem._id || `action_${actionItem.meetingId}_${actionItem.id}`,
+      updatedAt: now,
       type: 'actionItem'
     };
+    
     const response = await actionItemsDb.put(newActionItem);
     return { ...newActionItem, _id: response.id, _rev: response.rev };
   } catch (error) {
@@ -325,15 +336,18 @@ export const saveActionItem = async (actionItem: ActionItem): Promise<ActionItem
   }
 };
 
-export const toggleActionItem = async (id: string, completed: boolean): Promise<ActionItem> => {
+const toggleActionItem = async (id: string, completed: boolean): Promise<ActionItem> => {
   try {
     const actionItem = await actionItemsDb.get(id);
-    const now = new Date().toISOString();
+    
+    if (!actionItem) {
+      throw new Error(`Action item not found: ${id}`);
+    }
     
     const updatedActionItem = {
       ...actionItem,
       completed,
-      completedAt: completed ? now : undefined
+      updatedAt: new Date().toISOString()
     };
     
     const response = await actionItemsDb.put(updatedActionItem);
@@ -344,22 +358,7 @@ export const toggleActionItem = async (id: string, completed: boolean): Promise<
   }
 };
 
-export const getActionItems = async (meetingId: string): Promise<ActionItem[]> => {
-  try {
-    const result = await actionItemsDb.find({
-      selector: {
-        meetingId,
-        type: 'actionItem'
-      }
-    });
-    return result.docs;
-  } catch (error) {
-    console.error('Error getting action items:', error);
-    throw error;
-  }
-};
-
-export const deleteActionItems = async (meetingId: string): Promise<boolean> => {
+const getActionItems = async (meetingId: string): Promise<ActionItem[]> => {
   try {
     const result = await actionItemsDb.find({
       selector: {
@@ -368,12 +367,27 @@ export const deleteActionItems = async (meetingId: string): Promise<boolean> => 
       }
     });
     
-    await actionItemsDb.bulkDocs(
-      result.docs.map(doc => ({
-        ...doc,
-        _deleted: true
-      }))
-    );
+    return result.docs;
+  } catch (error) {
+    console.error('Error getting action items:', error);
+    throw error;
+  }
+};
+
+const deleteActionItems = async (meetingId: string): Promise<boolean> => {
+  try {
+    // Find all action items for this meeting
+    const result = await actionItemsDb.find({
+      selector: {
+        meetingId,
+        type: 'actionItem'
+      }
+    });
+    
+    // Delete each document
+    for (const doc of result.docs) {
+      await actionItemsDb.remove(doc);
+    }
     
     return true;
   } catch (error) {
@@ -383,33 +397,38 @@ export const deleteActionItems = async (meetingId: string): Promise<boolean> => 
 };
 
 // Notes Operations
-export const saveNotes = async (notes: Notes): Promise<Notes> => {
+const saveNotes = async (notes: Notes): Promise<Notes> => {
   try {
     const now = new Date().toISOString();
-    const newNotes: Notes = {
-      ...notes,
-      _id: notes._id || `notes_${notes.meetingId}`,
-      updatedAt: now,
-      type: 'notes'
-    };
+    let notesDoc: Notes;
     
     // Check if notes already exist for this meeting
     try {
-      const existingNotes = await notesDb.get(newNotes._id);
-      newNotes._rev = existingNotes._rev; // Use existing revision for update
+      notesDoc = await notesDb.get(`notes_${notes.meetingId}`);
+      notesDoc = {
+        ...notesDoc,
+        content: notes.content,
+        updatedAt: now
+      };
     } catch (error) {
-      // Notes don't exist yet, creating new
+      // Notes don't exist yet, create new
+      notesDoc = {
+        ...notes,
+        _id: `notes_${notes.meetingId}`,
+        updatedAt: now,
+        type: 'notes'
+      };
     }
     
-    const response = await notesDb.put(newNotes);
-    return { ...newNotes, _id: response.id, _rev: response.rev };
+    const response = await notesDb.put(notesDoc);
+    return { ...notesDoc, _id: response.id, _rev: response.rev };
   } catch (error) {
     console.error('Error saving notes:', error);
     throw error;
   }
 };
 
-export const getNotes = async (meetingId: string): Promise<Notes | null> => {
+const getNotes = async (meetingId: string): Promise<Notes | null> => {
   try {
     return await notesDb.get(`notes_${meetingId}`);
   } catch (error) {
@@ -421,17 +440,18 @@ export const getNotes = async (meetingId: string): Promise<Notes | null> => {
   }
 };
 
-export const deleteNotes = async (meetingId: string): Promise<boolean> => {
+const deleteNotes = async (meetingId: string): Promise<boolean> => {
   try {
     try {
-      const notes = await notesDb.get(`notes_${meetingId}`);
-      await notesDb.remove(notes);
+      const doc = await notesDb.get(`notes_${meetingId}`);
+      await notesDb.remove(doc);
     } catch (error) {
+      // If notes don't exist, that's fine
       if ((error as any).status !== 404) {
         throw error;
       }
-      // Notes don't exist, nothing to delete
     }
+    
     return true;
   } catch (error) {
     console.error('Error deleting notes:', error);
@@ -440,31 +460,40 @@ export const deleteNotes = async (meetingId: string): Promise<boolean> => {
 };
 
 // Context Operations
-export const saveContext = async (context: Context): Promise<Context> => {
+const saveContext = async (context: Context): Promise<Context> => {
   try {
-    const newContext: Context = {
-      ...context,
-      _id: context._id || `context_${context.meetingId}`,
-      type: 'context'
-    };
+    const now = new Date().toISOString();
+    let contextDoc: Context;
     
     // Check if context already exists for this meeting
     try {
-      const existingContext = await contextsDb.get(newContext._id);
-      newContext._rev = existingContext._rev; // Use existing revision for update
+      contextDoc = await contextsDb.get(`context_${context.meetingId}`);
+      contextDoc = {
+        ...contextDoc,
+        name: context.name,
+        files: context.files,
+        overrideGlobal: context.overrideGlobal,
+        updatedAt: now
+      };
     } catch (error) {
-      // Context doesn't exist yet, creating new
+      // Context doesn't exist yet, create new
+      contextDoc = {
+        ...context,
+        _id: `context_${context.meetingId}`,
+        updatedAt: now,
+        type: 'context'
+      };
     }
     
-    const response = await contextsDb.put(newContext);
-    return { ...newContext, _id: response.id, _rev: response.rev };
+    const response = await contextsDb.put(contextDoc);
+    return { ...contextDoc, _id: response.id, _rev: response.rev };
   } catch (error) {
     console.error('Error saving context:', error);
     throw error;
   }
 };
 
-export const getContext = async (meetingId: string): Promise<Context | null> => {
+const getContext = async (meetingId: string): Promise<Context | null> => {
   try {
     return await contextsDb.get(`context_${meetingId}`);
   } catch (error) {
@@ -476,17 +505,18 @@ export const getContext = async (meetingId: string): Promise<Context | null> => 
   }
 };
 
-export const deleteContext = async (meetingId: string): Promise<boolean> => {
+const deleteContext = async (meetingId: string): Promise<boolean> => {
   try {
     try {
-      const context = await contextsDb.get(`context_${meetingId}`);
-      await contextsDb.remove(context);
+      const doc = await contextsDb.get(`context_${meetingId}`);
+      await contextsDb.remove(doc);
     } catch (error) {
+      // If context doesn't exist, that's fine
       if ((error as any).status !== 404) {
         throw error;
       }
-      // Context doesn't exist, nothing to delete
     }
+    
     return true;
   } catch (error) {
     console.error('Error deleting context:', error);
@@ -494,10 +524,11 @@ export const deleteContext = async (meetingId: string): Promise<boolean> => {
   }
 };
 
-// Get complete meeting details
-export const getMeetingDetails = async (meetingId: string): Promise<MeetingDetails | null> => {
+// Get full meeting details
+const getMeetingDetails = async (meetingId: string): Promise<MeetingDetails | null> => {
   try {
     const meeting = await getMeeting(meetingId);
+    
     if (!meeting) {
       return null;
     }
@@ -512,11 +543,11 @@ export const getMeetingDetails = async (meetingId: string): Promise<MeetingDetai
     
     return {
       meeting,
-      transcript: transcript || [],
-      speakers: speakers || [],
-      actionItems: actionItems || [],
-      notes: notes || { meetingId, content: '', type: 'notes', updatedAt: new Date().toISOString() },
-      context: context || { meetingId, name: '', files: [], overrideGlobal: false, type: 'context' }
+      transcript,
+      speakers,
+      actionItems,
+      notes,
+      context
     };
   } catch (error) {
     console.error('Error getting meeting details:', error);
@@ -524,66 +555,55 @@ export const getMeetingDetails = async (meetingId: string): Promise<MeetingDetai
   }
 };
 
-// Add this helper function to check database initialization
+// Ensure database is initialized
 const ensureDatabaseInitialized = async () => {
-  if (!meetingsDb || !settingsDb) {
-    console.log('Database not initialized yet, initializing now...');
+  if (!meetingsDb) {
     await setupDatabases();
-    return true;
+    await setupIndexes();
   }
-  return false;
 };
 
 // Settings Operations
-export const saveSettings = async (settings: UserSettings): Promise<UserSettings> => {
+const saveSettings = async (settings: UserSettings): Promise<UserSettings> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    if (!settingsDb) {
-      throw new Error("Settings database is not available even after initialization attempt");
-    }
-    
-    const settingsId = 'user_settings';
     const now = new Date().toISOString();
-    let newSettings: UserSettings = {
-      ...settings,
-      _id: settingsId,
-      updatedAt: now,
-      type: 'settings'
-    };
+    let settingsDoc: UserSettings;
     
     // Check if settings already exist
     try {
-      const existingSettings = await settingsDb.get(settingsId);
-      newSettings._rev = existingSettings._rev; // Use existing revision for update
+      settingsDoc = await settingsDb.get('settings');
+      settingsDoc = {
+        ...settingsDoc,
+        ...settings,
+        updatedAt: now
+      };
     } catch (error) {
-      // Settings don't exist yet, creating new
-      console.log('Creating new settings document');
+      // Settings don't exist yet, create new
+      settingsDoc = {
+        ...settings,
+        _id: 'settings',
+        updatedAt: now,
+        type: 'settings'
+      };
     }
     
-    const response = await settingsDb.put(newSettings);
-    return { ...newSettings, _id: response.id, _rev: response.rev };
+    const response = await settingsDb.put(settingsDoc);
+    return { ...settingsDoc, _id: response.id, _rev: response.rev };
   } catch (error) {
     console.error('Error saving settings:', error);
     throw error;
   }
 };
 
-export const getSettings = async (): Promise<UserSettings | null> => {
+const getSettings = async (): Promise<UserSettings | null> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    if (!settingsDb) {
-      throw new Error("Settings database is not available even after initialization attempt");
-    }
-    
-    const settingsId = 'user_settings';
-    return await settingsDb.get(settingsId);
+    return await settingsDb.get('settings');
   } catch (error) {
     if ((error as any).status === 404) {
-      // Settings not found, return default settings
       return null;
     }
     console.error('Error getting settings:', error);
@@ -592,71 +612,67 @@ export const getSettings = async (): Promise<UserSettings | null> => {
 };
 
 // Global Context Operations
-export const getGlobalContext = async (): Promise<GlobalContext | null> => {
+const getGlobalContext = async (): Promise<GlobalContext | null> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    if (!globalContextDb) {
-      throw new Error("Global context database is not available even after initialization attempt");
-    }
+    let globalContext: GlobalContext;
     
-    const globalContextId = 'global_context';
-    return await globalContextDb.get(globalContextId);
-  } catch (error) {
-    if ((error as any).status === 404) {
-      // Global context not found, create default
-      const defaultGlobalContext: GlobalContext = {
-        _id: 'global_context',
-        name: 'Default Context',
-        description: 'Global context used for all recordings by default',
-        files: [],
-        updatedAt: new Date().toISOString(),
-        type: 'globalContext'
-      };
-      
-      try {
-        const result = await saveGlobalContext(defaultGlobalContext);
-        return result;
-      } catch (saveError) {
-        console.error('Error creating default global context:', saveError);
-        return null;
+    try {
+      globalContext = await globalContextDb.get('global_context');
+    } catch (error) {
+      if ((error as any).status === 404) {
+        // Create default global context
+        globalContext = {
+          _id: 'global_context',
+          name: 'Global Context',
+          files: [],
+          updatedAt: new Date().toISOString(),
+          type: 'globalContext'
+        };
+        
+        const response = await globalContextDb.put(globalContext);
+        globalContext._rev = response.rev;
+      } else {
+        throw error;
       }
     }
+    
+    return globalContext;
+  } catch (error) {
     console.error('Error getting global context:', error);
     throw error;
   }
 };
 
-export const saveGlobalContext = async (globalContext: GlobalContext): Promise<GlobalContext> => {
+const saveGlobalContext = async (globalContext: GlobalContext): Promise<GlobalContext> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    if (!globalContextDb) {
-      throw new Error("Global context database is not available even after initialization attempt");
-    }
-    
-    const globalContextId = 'global_context';
     const now = new Date().toISOString();
-    let newGlobalContext: GlobalContext = {
-      ...globalContext,
-      _id: globalContextId,
-      updatedAt: now,
-      type: 'globalContext'
-    };
+    let contextDoc: GlobalContext;
     
     // Check if global context already exists
     try {
-      const existingGlobalContext = await globalContextDb.get(globalContextId);
-      newGlobalContext._rev = existingGlobalContext._rev; // Use existing revision for update
+      contextDoc = await globalContextDb.get('global_context');
+      contextDoc = {
+        ...contextDoc,
+        name: globalContext.name,
+        files: globalContext.files,
+        updatedAt: now
+      };
     } catch (error) {
-      // Global context doesn't exist yet, creating new
-      console.log('Creating new global context document');
+      // Global context doesn't exist yet, create new
+      contextDoc = {
+        ...globalContext,
+        _id: 'global_context',
+        updatedAt: now,
+        type: 'globalContext'
+      };
     }
     
-    const response = await globalContextDb.put(newGlobalContext);
-    return { ...newGlobalContext, _id: response.id, _rev: response.rev };
+    const response = await globalContextDb.put(contextDoc);
+    return { ...contextDoc, _id: response.id, _rev: response.rev };
   } catch (error) {
     console.error('Error saving global context:', error);
     throw error;
@@ -664,52 +680,32 @@ export const saveGlobalContext = async (globalContext: GlobalContext): Promise<G
 };
 
 // Context Files Operations
-export const saveContextFile = async (contextFile: ContextFile): Promise<ContextFile> => {
+const saveContextFile = async (contextFile: ContextFile): Promise<ContextFile> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    if (!contextFilesDb) {
-      throw new Error("Context files database is not available even after initialization attempt");
-    }
-    
     const now = new Date().toISOString();
-    let newContextFile: ContextFile = {
+    const fileDoc: ContextFile = {
       ...contextFile,
-      _id: contextFile._id || `context_file_${contextFile.id}`,
-      addedAt: contextFile.addedAt || now,
+      _id: contextFile._id || `file_${now}`,
+      createdAt: contextFile.createdAt || now,
       updatedAt: now,
-      dbType: 'contextFile'
+      type: 'contextFile'
     };
     
-    // Check if context file already exists
-    if (contextFile._id) {
-      try {
-        const existingContextFile = await contextFilesDb.get(contextFile._id);
-        newContextFile._rev = existingContextFile._rev; // Use existing revision for update
-      } catch (error) {
-        // Context file doesn't exist yet with this ID
-      }
-    }
-    
-    const response = await contextFilesDb.put(newContextFile);
-    return { ...newContextFile, _id: response.id, _rev: response.rev };
+    const response = await contextFilesDb.put(fileDoc);
+    return { ...fileDoc, _id: response.id, _rev: response.rev };
   } catch (error) {
     console.error('Error saving context file:', error);
     throw error;
   }
 };
 
-export const getContextFile = async (id: string): Promise<ContextFile | null> => {
+const getContextFile = async (id: string): Promise<ContextFile | null> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    if (!contextFilesDb) {
-      throw new Error("Context files database is not available even after initialization attempt");
-    }
-    
-    return await contextFilesDb.get(`context_file_${id}`);
+    return await contextFilesDb.get(id);
   } catch (error) {
     if ((error as any).status === 404) {
       return null;
@@ -719,20 +715,15 @@ export const getContextFile = async (id: string): Promise<ContextFile | null> =>
   }
 };
 
-export const getAllContextFiles = async (): Promise<ContextFile[]> => {
+const getAllContextFiles = async (): Promise<ContextFile[]> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
-    
-    if (!contextFilesDb) {
-      throw new Error("Context files database is not available even after initialization attempt");
-    }
     
     const result = await contextFilesDb.find({
       selector: {
-        dbType: 'contextFile'
+        type: 'contextFile'
       },
-      sort: [{ addedAt: 'desc' }]
+      sort: [{ createdAt: 'desc' }]
     });
     
     return result.docs;
@@ -742,62 +733,60 @@ export const getAllContextFiles = async (): Promise<ContextFile[]> => {
   }
 };
 
-export const deleteContextFile = async (id: string): Promise<boolean> => {
+const deleteContextFile = async (id: string): Promise<boolean> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    if (!contextFilesDb) {
-      throw new Error("Context files database is not available even after initialization attempt");
+    const doc = await contextFilesDb.get(id);
+    await contextFilesDb.remove(doc);
+    
+    // Also remove from global context if it exists there
+    const globalContext = await getGlobalContext();
+    if (globalContext && globalContext.files.includes(id)) {
+      globalContext.files = globalContext.files.filter(fileId => fileId !== id);
+      await saveGlobalContext(globalContext);
     }
     
-    try {
-      // First get the file
-      const fileId = id.startsWith('context_file_') ? id : `context_file_${id}`;
-      const contextFile = await contextFilesDb.get(fileId);
-      
-      // Remove the file from global context if it's there
-      const globalContext = await getGlobalContext();
-      if (globalContext && globalContext.files.includes(id)) {
-        globalContext.files = globalContext.files.filter(fileId => fileId !== id);
-        await saveGlobalContext(globalContext);
+    // Remove from any meeting contexts as well
+    const contexts = await contextsDb.find({
+      selector: {
+        type: 'context',
+        files: { $elemMatch: { $eq: id } }
       }
-      
-      // Then delete the file itself
-      await contextFilesDb.remove(contextFile);
-      
-      return true;
-    } catch (error) {
-      if ((error as any).status !== 404) {
-        throw error;
-      }
-      console.log('Context file not found, nothing to delete');
-      return false;
+    });
+    
+    for (const context of contexts.docs) {
+      context.files = context.files.filter((fileId: string) => fileId !== id);
+      await contextsDb.put(context);
     }
+    
+    return true;
   } catch (error) {
     console.error('Error deleting context file:', error);
     throw error;
   }
 };
 
-export const addFileToGlobalContext = async (fileId: string): Promise<GlobalContext> => {
+// Helper functions for global context
+const addFileToGlobalContext = async (fileId: string): Promise<GlobalContext> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    // Get the global context
-    let globalContext = await getGlobalContext();
+    const globalContext = await getGlobalContext();
     if (!globalContext) {
-      throw new Error("Failed to get or create global context");
+      throw new Error('Global context not found');
     }
     
-    // Check if file is already in the global context
+    // Check if file exists
+    const file = await getContextFile(fileId);
+    if (!file) {
+      throw new Error(`Context file not found: ${fileId}`);
+    }
+    
+    // Add file if not already in the list
     if (!globalContext.files.includes(fileId)) {
-      // Add the file ID to global context
       globalContext.files.push(fileId);
-      
-      // Save the updated global context
-      globalContext = await saveGlobalContext(globalContext);
+      return await saveGlobalContext(globalContext);
     }
     
     return globalContext;
@@ -807,22 +796,20 @@ export const addFileToGlobalContext = async (fileId: string): Promise<GlobalCont
   }
 };
 
-export const removeFileFromGlobalContext = async (fileId: string): Promise<GlobalContext> => {
+const removeFileFromGlobalContext = async (fileId: string): Promise<GlobalContext> => {
   try {
-    // Ensure database is initialized
     await ensureDatabaseInitialized();
     
-    // Get the global context
-    let globalContext = await getGlobalContext();
+    const globalContext = await getGlobalContext();
     if (!globalContext) {
-      throw new Error("Failed to get or create global context");
+      throw new Error('Global context not found');
     }
     
-    // Remove the file ID from global context
-    globalContext.files = globalContext.files.filter(id => id !== fileId);
-    
-    // Save the updated global context
-    globalContext = await saveGlobalContext(globalContext);
+    // Remove file if it exists in the list
+    if (globalContext.files.includes(fileId)) {
+      globalContext.files = globalContext.files.filter(id => id !== fileId);
+      return await saveGlobalContext(globalContext);
+    }
     
     return globalContext;
   } catch (error) {
@@ -831,39 +818,61 @@ export const removeFileFromGlobalContext = async (fileId: string): Promise<Globa
   }
 };
 
-// Export all database functions
+// Export as a namespaced service
 export const DatabaseService = {
   initDatabase,
+  
+  // Meeting operations
   createMeeting,
   getMeeting,
   updateMeeting,
   deleteMeeting,
   getAllMeetings,
   getMeetingsList,
+  
+  // Transcript operations
   saveTranscript,
   getTranscript,
   deleteTranscript,
+  
+  // Speaker operations
   saveSpeakers,
   getSpeakers,
+  
+  // Action item operations
   saveActionItem,
   toggleActionItem,
   getActionItems,
   deleteActionItems,
+  
+  // Notes operations
   saveNotes,
   getNotes,
   deleteNotes,
+  
+  // Context operations
   saveContext,
   getContext,
   deleteContext,
+  
+  // Meeting details
   getMeetingDetails,
+  
+  // Settings operations
   saveSettings,
   getSettings,
+  
+  // Global context operations
   getGlobalContext,
   saveGlobalContext,
+  
+  // Context files operations
   saveContextFile,
   getContextFile,
   getAllContextFiles,
   deleteContextFile,
+  
+  // Helper functions
   addFileToGlobalContext,
   removeFileFromGlobalContext
 }; 
