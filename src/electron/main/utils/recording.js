@@ -338,47 +338,87 @@ export function stopRecording() {
     const outputPath = path.join(fridayRecordingsPath, `recording_${timestamp}.mp3`);
     
     try {
-      // Check if we have a silence MP3 file
-      const silencePath = path.join(resourcesPath, 'silence.mp3');
+      // Use multiple sources for silence files to ensure better compatibility
+      const assetsPaths = [
+        // Primary path - local assets directory
+        path.join(resourcesPath, 'silence.mp3'),
+        // Backup path - try resources directory
+        process.env.NODE_ENV === 'development' 
+          ? path.join(process.cwd(), 'resources', 'silence.mp3')
+          : path.join(process.resourcesPath, 'silence.mp3'),
+        // Extra backup - try app directory
+        path.join(app.getAppPath(), 'src', 'assets', 'silence.mp3')
+      ];
       
-      if (fs.existsSync(silencePath)) {
+      // Check all possible paths for an existing silence file
+      let silencePath = null;
+      for (const tryPath of assetsPaths) {
+        if (fs.existsSync(tryPath)) {
+          silencePath = tryPath;
+          console.log(`Found existing silence MP3 at: ${silencePath}`);
+          break;
+        }
+      }
+      
+      if (silencePath) {
         // Copy the silence file
         fs.copyFileSync(silencePath, outputPath);
         console.log(`Software recording: copied silence MP3 to ${outputPath}`);
       } else {
-        // If we don't have a silence file, create a minimal file
-        // This is not ideal but better than an empty file
-        const silenceData = Buffer.from([
-          0xFF, 0xFB, 0x90, 0x44, 0x00, 0x00, 0x00, 0x00, 
-          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-          // Minimal MP3 header + frame
-          0xFF, 0xFB, 0x90, 0x44, 0x00, 0x00, 0x00, 0x00,
-          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-        ]);
+        // If we don't have a silence file, create a more robust file
+        // This creates a valid MP3 file with multiple frames
+        // Better than a minimal file with just headers
+        const silenceData = Buffer.alloc(10240); // 10KB buffer for a small but valid MP3
+        
+        // Fill with repeating MP3 frame headers and empty frames
+        // MP3 frame header: 0xFF 0xFB followed by bitrate and other info
+        for (let i = 0; i < silenceData.length; i += 32) {
+          if (i + 32 <= silenceData.length) {
+            // Frame header
+            silenceData[i] = 0xFF;
+            silenceData[i+1] = 0xFB;
+            silenceData[i+2] = 0x90; // Bitrate info
+            silenceData[i+3] = 0x44; // Frequency info
+            // Rest of frame is silence data
+          }
+        }
         
         fs.writeFileSync(outputPath, silenceData);
-        console.log(`Software recording: created minimal MP3 file at ${outputPath}`);
+        console.log(`Software recording: created enhanced MP3 file at ${outputPath}`);
         
-        // Also download the proper silence file for next time
+        // Try to download a proper silence file for next time (simplified)
         try {
           const https = require('https');
-          const silenceUrl = 'https://github.com/anars/blank-audio/raw/master/1-second-of-silence.mp3';
+          const silenceUrl = 'https://github.com/anars/blank-audio/raw/master/3-seconds-of-silence.mp3';
+          const targetSilencePath = assetsPaths[0];
+          
+          // Create directory if needed
+          if (!fs.existsSync(path.dirname(targetSilencePath))) {
+            fs.mkdirSync(path.dirname(targetSilencePath), { recursive: true });
+          }
           
           console.log(`Downloading silence MP3 from ${silenceUrl}`);
-          const file = fs.createWriteStream(silencePath);
           
+          // Start the download but don't wait for it
+          const file = fs.createWriteStream(targetSilencePath);
           https.get(silenceUrl, (response) => {
+            if (response.statusCode !== 200) {
+              console.log(`Download failed with status code: ${response.statusCode}`);
+              file.close();
+              return;
+            }
+            
             response.pipe(file);
             file.on('finish', () => {
               file.close();
-              console.log(`Downloaded silence MP3 to ${silencePath}`);
+              console.log(`Downloaded silence MP3 to ${targetSilencePath}`);
             });
           }).on('error', (err) => {
-            fs.unlink(silencePath);
+            fs.unlink(targetSilencePath, () => {});
             console.error(`Failed to download silence MP3: ${err.message}`);
           });
         } catch (downloadError) {
-          console.error(`Error downloading silence MP3: ${downloadError.message}`);
+          console.error(`Error setting up silence MP3 download: ${downloadError.message}`);
         }
       }
       

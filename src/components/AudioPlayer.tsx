@@ -58,11 +58,8 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
   
   // Helper function to play audio with native player when browser playback fails
   const playWithNativePlayer = async (forceUse = false) => {
-    // If not forcing native player, return false - we want to disable automatic native player
-    if (!forceUse) {
-      console.log('AudioPlayer: Native player disabled unless manually requested');
-      return false;
-    }
+    // Always allow native player if explicitly requested by user
+    // This is backwards compatible with previous behavior, but fixes automatic fallback
     
     const win = window as any;
     if (win?.electronAPI?.playAudioFile && audioUrl) {
@@ -188,8 +185,15 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
         const error = audioRef.current?.error;
         if (error && error.code === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED = 4
           console.warn("AudioPlayer: Media format not supported in browser");
-          // Only show toast if this is the first error
-          toast.error("Audio format not supported in browser. Try using the native player button.");
+          
+          // Try the native player automatically if it's a format error
+          if (await playWithNativePlayer(true)) {
+            // If successful, just inform but don't show error
+            toast.info("Opening audio in native player due to format incompatibility");
+          } else {
+            // Only show error toast if native player also failed
+            toast.error("Audio format not supported. Try using the native player button.");
+          }
         } else {
           toast.error("Audio can't be played in browser. Try using the native player button.");
         }

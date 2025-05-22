@@ -1007,27 +1007,37 @@ ipcMain.handle("load-audio-file", async (event, filepath) => {
     const dataUrl = `data:${mimeType};base64,${base64Data}?path=${encodeURIComponent(filepath)}`;
     console.log(`✅ main.js: Created data URL for ${filepath}, length: ${dataUrl.length} characters`);
     
-    // For MP3 files that might have issues with data URLs, convert to WAV for browser compatibility
-    let audioBlob = null;
-    if (ext === ".mp3" && fileSizeMB < 5) { // Only for reasonably sized files
+    // Always convert MP3 files to WAV for browser compatibility
+    // This ensures better cross-browser playback reliability
+    if (ext === ".mp3" && fileSizeMB < 20) { // Handle reasonably sized files (up to 20MB)
       try {
-        console.log(`🔄 main.js: Creating blob URL for better compatibility`);
+        console.log(`🔄 main.js: Converting MP3 to WAV for browser compatibility`);
         const tempDir = app.getPath('temp');
         const tempWavFile = path.join(tempDir, `${path.basename(filepath, ext)}.wav`);
         
+        // Check if ffmpeg is available
+        try {
+          await exec('ffmpeg -version');
+        } catch (ffmpegError) {
+          console.error(`❌ main.js: ffmpeg not available:`, ffmpegError);
+          throw new Error('ffmpeg not available for conversion');
+        }
+        
         // Convert the MP3 to WAV using ffmpeg
+        console.log(`🔄 main.js: Running ffmpeg to convert MP3 to WAV`);
         await exec(`ffmpeg -i "${filepath}" -acodec pcm_s16le -ar 44100 -ac 2 "${tempWavFile}" -y`);
         console.log(`✅ main.js: Converted MP3 to WAV for better browser compatibility: ${tempWavFile}`);
         
         // Read the converted WAV file
         const wavBuffer = fs.readFileSync(tempWavFile);
+        console.log(`✅ main.js: Read WAV file, size: ${wavBuffer.length} bytes`);
         
         // Clean up the temporary file
         fs.unlinkSync(tempWavFile);
         
         // Create a data URL for the WAV file
         const wavDataUrl = `data:audio/wav;base64,${wavBuffer.toString("base64")}?path=${encodeURIComponent(filepath)}`;
-        console.log(`✅ main.js: Created WAV data URL as fallback, length: ${wavDataUrl.length} characters`);
+        console.log(`✅ main.js: Created WAV data URL, length: ${wavDataUrl.length} characters`);
         
         return { 
           success: true, 
@@ -1040,6 +1050,7 @@ ipcMain.handle("load-audio-file", async (event, filepath) => {
         };
       } catch (error) {
         console.error(`❌ main.js: Error converting MP3 to WAV:`, error);
+        console.log(`⚠️ main.js: Falling back to original data URL`);
         // Continue with original data URL if conversion fails
       }
     }
