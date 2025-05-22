@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from "electron";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -7,6 +7,8 @@ import speech from "@google-cloud/speech";
 import { promisify } from "util";
 import { exec as execCallback } from "child_process";
 import https from 'https';
+import isDev from "electron-is-dev";
+import { google } from "@google-cloud/speech/build/protos/protos";
 
 // Import our new transcript handler
 import { setupTranscriptHandlers } from "./transcript-handler.js";
