@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - Enhanced transcript editing capabilities with inline editing and speaker assignment
 - Improved recording controls with better visual feedback and status indicators
 - Upgraded audio player with waveform visualization and playback controls
+- Replaced defaultProps with JavaScript default parameters in function components
 
 ### Fixed
 - Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)
@@ -43,6 +44,8 @@ All notable changes to this project will be documented in this file.
 - Meeting page data not being properly passed to TranscriptDetails component, restoring missing title, description, tags, and live transcription settings
 - Fixed UI layout issues in TranscriptDetails component with responsive design improvements
 - Addressed panel collapsing behavior in the transcript view
+- Fixed duplicate function declaration in TranscriptDetails component
+- Resolved React warning about using defaultProps in function components by using JavaScript default parameters
 
 ## [0.3.1] - 2024-05-21
 
