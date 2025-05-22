@@ -38,6 +38,7 @@ All notable changes to this project will be documented in this file.
 - Implemented singleton pattern for database initialization to prevent duplicate setup and improve performance
 
 ### Fixed
+- Fixed audio player not showing by improving the display condition to always show player when audio is available, regardless of meeting state
 - Fixed audio player not being displayed in TranscriptDetails component when audio is successfully loaded
 - Fixed preload script module not found error by implementing more robust module loading with fallbacks
 - Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)
