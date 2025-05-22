@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX, Laptop, Headphones } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,10 @@ import {
   TranscriptLine as DBTranscriptLine,
   Speaker as DBSpeaker
 } from '@/models/types';
+import { useSettings } from "@/hooks/useSettings";
+import useMicrophoneRecording from "@/hooks/useMicrophoneRecording";
+import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
+import useCombinedRecording from "@/hooks/useCombinedRecording";
 
 interface TranscriptLine {
   id: string;
@@ -160,54 +164,46 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const recordingTimerRef = useRef<number | null>(null);
   
   // Setup hooks
-  // const { settings } = useSettings();
-  // const [recordingSource, setRecordingSource] = useState<RecordingSource>(
-  //   settings?.recordingSource || 'system'
-  // );
+  const { settings } = useSettings();
+  const [recordingSource, setRecordingSource] = useState<RecordingSource>(
+    settings?.recordingSource || 'system'
+  );
   
   // Get meeting ID or generate a new one
   const meetingId = id || `meeting_${Date.now()}`;
   
-  // Use our transcript hook
-  // const {
-  //   isLoading: isTranscriptLoading,
-  //   error: transcriptError,
-  //   addTranscriptLine,
-  //   updateTranscriptLine,
-  //   deleteTranscriptLine,
-  //   addSpeaker,
-  //   updateSpeaker,
-  //   deleteSpeaker,
-  //   saveTranscript
-  // } = useTranscript(meetingId);
-  
   // Initialize recording hooks
-  // const { 
-  //   isAvailable: isSystemAvailable,
-  //   isRecording: isSystemRecording, 
-  //   startRecording: startSystemRecording,
-  //   stopRecording: stopSystemRecording,
-  //   recordingPath: systemRecordingPath,
-  //   recordingDuration: systemRecordingDuration 
-  // } = useSystemAudioRecording();
+  const { 
+    isAvailable: isSystemAvailable,
+    isRecording: isSystemRecording, 
+    startRecording: startSystemRecording,
+    stopRecording: stopSystemRecording,
+    recordingPath: systemRecordingPath,
+    recordingDuration: systemRecordingDuration 
+  } = useSystemAudioRecording();
   
-  // const { 
-  //   isAvailable: isMicAvailable,
-  //   isRecording: isMicRecording, 
-  //   startRecording: startMicRecording,
-  //   stopRecording: stopMicRecording,
-  //   recordingPath: micRecordingPath,
-  //   recordingDuration: micRecordingDuration 
-  // } = useMicrophoneRecording();
+  const { 
+    isAvailable: isMicAvailable,
+    isRecording: isMicRecording, 
+    startRecording: startMicRecording,
+    stopRecording: stopMicRecording,
+    recordingPath: micRecordingPath,
+    recordingDuration: micRecordingDuration 
+  } = useMicrophoneRecording();
   
-  // const { 
-  //   isAvailable: isCombinedAvailable,
-  //   isRecording: isCombinedRecording, 
-  //   startRecording: startCombinedRecording,
-  //   stopRecording: stopCombinedRecording,
-  //   recordingPath: combinedRecordingPath,
-  //   recordingDuration: combinedRecordingDuration 
-  // } = useCombinedRecording();
+  const { 
+    isAvailable: isCombinedAvailable,
+    isRecording: isCombinedRecording, 
+    startRecording: startCombinedRecording,
+    stopRecording: stopCombinedRecording,
+    recordingPath: combinedRecordingPath,
+    recordingDuration: combinedRecordingDuration 
+  } = useCombinedRecording();
+
+  // Update isRecording state based on any active recording
+  useEffect(() => {
+    setIsRecording(isSystemRecording || isMicRecording || isCombinedRecording);
+  }, [isSystemRecording, isMicRecording, isCombinedRecording]);
   
   // Initialize speakers if empty
   useEffect(() => {
@@ -253,9 +249,11 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     
     if (win?.electronAPI?.loadAudioFile) {
       try {
+        console.log('Loading audio file:', filePath);
         const result = await win.electronAPI.loadAudioFile(filePath);
         
         if (result.success && result.dataUrl) {
+          console.log('Audio loaded successfully from:', filePath);
           setRecordedAudioUrl(result.dataUrl);
           toast.success('Audio loaded successfully');
         } else {
@@ -271,36 +269,57 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   
   // Effect to update recording path when any recording completes
   useEffect(() => {
-    const path = null; // Placeholder for audio recording path
+    let path = null;
+    
+    if (systemRecordingPath && !isSystemRecording) {
+      path = systemRecordingPath;
+      console.log('System recording completed, path:', path);
+    } else if (micRecordingPath && !isMicRecording) {
+      path = micRecordingPath;
+      console.log('Mic recording completed, path:', path);
+    } else if (combinedRecordingPath && !isCombinedRecording) {
+      path = combinedRecordingPath;
+      console.log('Combined recording completed, path:', path);
+    }
     
     if (path && path !== recordedAudioUrl) {
+      console.log('Setting recorded audio URL:', path);
       setRecordedAudioUrl(path);
       
       // Load the audio for playback
       loadAudioFile(path);
     }
-  }, [recordedAudioUrl, loadAudioFile]);
+  }, [
+    systemRecordingPath, 
+    micRecordingPath, 
+    combinedRecordingPath,
+    isSystemRecording,
+    isMicRecording,
+    isCombinedRecording,
+    recordedAudioUrl,
+    loadAudioFile
+  ]);
   
   // Effect to update recording duration from active recording source
   useEffect(() => {
     let duration = 0;
     
-    if (isRecording) {
-      // duration = systemRecordingDuration;
-    } else if (isRecording) {
-      // duration = micRecordingDuration;
-    } else if (isRecording) {
-      // duration = combinedRecordingDuration;
+    if (isSystemRecording) {
+      duration = systemRecordingDuration;
+    } else if (isMicRecording) {
+      duration = micRecordingDuration;
+    } else if (isCombinedRecording) {
+      duration = combinedRecordingDuration;
     }
     
     setRecordingDuration(duration);
   }, [
-    isRecording, 
-    // isMicRecording, 
-    // isCombinedRecording,
-    // systemRecordingDuration,
-    // micRecordingDuration,
-    // combinedRecordingDuration
+    isSystemRecording, 
+    isMicRecording, 
+    isCombinedRecording,
+    systemRecordingDuration,
+    micRecordingDuration,
+    combinedRecordingDuration
   ]);
   
   // Start/stop recording based on current source
@@ -308,87 +327,42 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     if (!isRecording) {
       // Start recording
       try {
-        // Reset audio chunks
-        audioChunksRef.current = [];
+        console.log(`Starting ${recordingSource} recording`);
+        let success = false;
         
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
-        
-        // Create media recorder
-        const mediaRecorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
-        
-        // Set up event handlers
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
+        if (recordingSource === 'system' && isSystemAvailable) {
+          success = await startSystemRecording();
+        } else if (recordingSource === 'mic' && isMicAvailable) {
+          success = await startMicRecording();
+        } else if (recordingSource === 'both' && isCombinedAvailable) {
+          success = await startCombinedRecording();
+        } else {
+          // If preferred source is not available, fall back to available options
+          if (isSystemAvailable) {
+            success = await startSystemRecording();
+            setRecordingSource('system');
+          } else if (isMicAvailable) {
+            success = await startMicRecording();
+            setRecordingSource('mic');
+          } else {
+            throw new Error("No recording methods available");
           }
-        };
-        
-        mediaRecorder.onstop = () => {
-          // Create audio blob from chunks
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        }
+
+        if (success) {
+          // Start the speech recognition
+          speech.startRecording();
           
-          // Create URL for the blob and set it
-          const audioUrl = URL.createObjectURL(audioBlob);
-          setRecordedAudioUrl(audioUrl);
+          // Start recording timer
+          startRecordingTimer();
           
-          // Send for transcription if live transcript is disabled
-          if (!isLiveTranscript) {
-            // Start background transcription processing
-            if (isElectron && window.electronAPI?.invokeGoogleSpeech) {
-              // Convert blob to ArrayBuffer and send to Google Speech API
-              const reader = new FileReader();
-              reader.readAsArrayBuffer(audioBlob);
-              reader.onloadend = async () => {
-                try {
-                  const buffer = reader.result as ArrayBuffer;
-                  const result = await window.electronAPI.invokeGoogleSpeech(buffer);
-                  
-                  // Add as a new transcript line
-                  setTranscriptLines(prevLines => [
-                    ...prevLines,
-                    {
-                      id: `l${Date.now()}`,
-                      text: result,
-                      speakerId: currentSpeakerId,
-                    }
-                  ]);
-                  
-                  toast.success("Audio transcription completed");
-                } catch (err) {
-                  toast.error("Transcription failed");
-                  console.error(err);
-                }
-              };
-            } else {
-              // Use Web Speech API for transcription
-              toast.info("Processing audio for transcription");
-              // Here we could use a different approach for full audio transcription
-              // like sending to a server or using a more powerful API
-            }
+          if (isNewMeeting) {
+            setIsNewMeeting(false);
           }
           
-          // Save the recording locally
-          // In a real app, you might save to IndexedDB or filesystem via Electron
-          toast.success("Recording saved locally");
-        };
-        
-        // Start recording
-        mediaRecorder.start(1000); // Capture in 1-second chunks
-        
-        // Start the speech recognition
-        speech.startRecording();
-        
-        // Start recording timer
-        startRecordingTimer();
-        
-        setIsRecording(true);
-        toast.success("Recording started");
-        
-        if (isNewMeeting) {
-          setIsNewMeeting(false);
+          toast.success(`${recordingSource === 'both' ? 'Combined' : recordingSource === 'system' ? 'System audio' : 'Microphone'} recording started`);
+        } else {
+          toast.error("Failed to start recording");
         }
       } catch (err) {
         console.error("Error starting recording:", err);
@@ -396,6 +370,35 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       }
     } else {
       // Stop recording
+      console.log("Stopping recording");
+      let success = false;
+      
+      try {
+        if (isSystemRecording) {
+          success = await stopSystemRecording();
+        } else if (isMicRecording) {
+          success = await stopMicRecording();
+        } else if (isCombinedRecording) {
+          success = await stopCombinedRecording();
+        }
+        
+        // Stop the speech recognition
+        speech.stopRecording();
+        
+        // Stop recording timer
+        stopRecordingTimer();
+        
+        if (success) {
+          toast.success("Recording stopped");
+        } else {
+          toast.error("Failed to stop recording");
+        }
+      } catch (err) {
+        console.error("Error stopping recording:", err);
+        toast.error("Failed to stop recording");
+      }
+      
+      // For web fallback, handle the media recorder if it exists
       if (mediaRecorderRef.current) {
         mediaRecorderRef.current.stop();
       }
@@ -407,17 +410,39 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         });
         streamRef.current = null;
       }
-      
-      // Stop the speech recognition
-      speech.stopRecording();
-      
-      // Stop recording timer
-      stopRecordingTimer();
-      
-      setIsRecording(false);
-      toast.info("Recording stopped");
     }
-  }, [isRecording, speech, isNewMeeting, isElectron, isLiveTranscript, currentSpeakerId]);
+  }, [
+    isRecording, 
+    recordingSource,
+    isSystemAvailable,
+    isMicAvailable,
+    isCombinedAvailable,
+    isSystemRecording,
+    isMicRecording,
+    isCombinedRecording,
+    startSystemRecording,
+    startMicRecording,
+    startCombinedRecording,
+    stopSystemRecording,
+    stopMicRecording,
+    stopCombinedRecording,
+    speech,
+    isNewMeeting
+  ]);
+
+  // Handle recording source change
+  const handleRecordingSourceChange = useCallback((source: RecordingSource) => {
+    console.log(`Changing recording source to ${source}`);
+    setRecordingSource(source);
+    
+    // Save to settings if available
+    if (settings) {
+      const { updateSettings } = useSettings();
+      updateSettings({ recordingSource: source });
+    }
+    
+    toast.success(`Recording source changed to ${source === 'both' ? 'system audio + microphone' : source}`);
+  }, [settings]);
   
   // Format time for display
   const formatTime = (seconds: number) => {
@@ -513,6 +538,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   // Update audio source when recorded audio URL changes
   useEffect(() => {
     if (audioRef.current && recordedAudioUrl) {
+      console.log('Updating audio source to:', recordedAudioUrl);
       audioRef.current.src = recordedAudioUrl;
       audioRef.current.load();
     }
@@ -913,6 +939,45 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
               <div className="p-6 border-b">
                 {isNewMeeting || transcriptLines.length === 0 ? (
                   <div className="flex flex-col items-center gap-4 py-8">
+                    {/* Recording source selector */}
+                    <div className="flex items-center justify-center mb-4 space-x-4">
+                      <div className="flex items-center gap-2 p-2 rounded-md border border-input">
+                        <Button
+                          variant={recordingSource === 'system' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('system')}
+                          className="flex gap-2 items-center"
+                          disabled={!isSystemAvailable}
+                          title={!isSystemAvailable ? "System audio recording not available" : "Record system audio"}
+                        >
+                          <Laptop className="h-4 w-4" />
+                          <span>System</span>
+                        </Button>
+                        <Button
+                          variant={recordingSource === 'mic' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('mic')}
+                          className="flex gap-2 items-center"
+                          disabled={!isMicAvailable}
+                          title={!isMicAvailable ? "Microphone recording not available" : "Record microphone"}
+                        >
+                          <Mic className="h-4 w-4" />
+                          <span>Mic</span>
+                        </Button>
+                        <Button
+                          variant={recordingSource === 'both' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('both')}
+                          className="flex gap-2 items-center"
+                          disabled={!isCombinedAvailable}
+                          title={!isCombinedAvailable ? "Combined recording not available" : "Record both system audio and microphone"}
+                        >
+                          <Headphones className="h-4 w-4" />
+                          <span>Both</span>
+                        </Button>
+                      </div>
+                    </div>
+                    
                     <div className="flex items-center justify-center mb-4 space-x-2">
                       <Button
                         variant={isRecording ? "destructive" : "default"}
@@ -1039,14 +1104,50 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                     )}
                     
                     {/* Button to start a new recording */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="mt-2"
-                      onClick={handleStartStopRecording}
-                    >
-                      {isRecording ? "Stop Recording" : "Record New Audio"}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-2"
+                        onClick={handleStartStopRecording}
+                      >
+                        {isRecording ? "Stop Recording" : "Record New Audio"}
+                      </Button>
+
+                      {/* Recording source selector for existing recording */}
+                      <div className="flex items-center gap-2 mt-2 p-1 rounded-md border border-input">
+                        <Button
+                          variant={recordingSource === 'system' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('system')}
+                          className="flex gap-1 items-center h-8"
+                          disabled={!isSystemAvailable}
+                        >
+                          <Laptop className="h-3 w-3" />
+                          <span className="text-xs">System</span>
+                        </Button>
+                        <Button
+                          variant={recordingSource === 'mic' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('mic')}
+                          className="flex gap-1 items-center h-8"
+                          disabled={!isMicAvailable}
+                        >
+                          <Mic className="h-3 w-3" />
+                          <span className="text-xs">Mic</span>
+                        </Button>
+                        <Button
+                          variant={recordingSource === 'both' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('both')}
+                          className="flex gap-1 items-center h-8"
+                          disabled={!isCombinedAvailable}
+                        >
+                          <Headphones className="h-3 w-3" />
+                          <span className="text-xs">Both</span>
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
