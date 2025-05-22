@@ -1103,9 +1103,10 @@ extension AVAudioPCMBuffer {
     }
 }
 
-// Add a dummy main function to satisfy the linker
-@_cdecl("main")
-func main() -> Int32 {
+// Replace the @_cdecl("main") function at the end of the file with a function that has a different name
+// Around line 1107
+@_cdecl("recorderMain")
+func recorderMain() -> Int32 {
     // This function is just a placeholder to satisfy the linker
     // The actual functionality is called through other entry points
     return 0

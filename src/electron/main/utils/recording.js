@@ -9,8 +9,8 @@ const execAsync = promisify(exec);
 let recordingProcess = null;
 
 // Flag to track if we're using software-only mode
-// Start with software recording mode set to true
-let useSoftwareRecordingMode = true;
+// Start with software recording mode set to false
+let useSoftwareRecordingMode = false;
 
 const initRecording = (filepath, filename, source = 'system') => {
   return new Promise(async (resolve) => {
@@ -90,13 +90,8 @@ const initRecording = (filepath, filename, source = 'system') => {
     if (!fs.existsSync(recorderPath)) {
       console.error(`ERROR: Recorder binary not found at ${recorderPath}`);
       
-      // Instead of failing, switch to software recording mode
-      console.log("Switching to software recording mode...");
-      useSoftwareRecordingMode = true;
-      
-      // Try again with software recording mode
-      const softwareResult = await initRecording(filepath, filename, source);
-      resolve(softwareResult);
+      // Display an error and return false instead of switching to software mode
+      resolve(false);
       return;
     }
 
