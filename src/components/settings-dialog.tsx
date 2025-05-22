@@ -118,40 +118,42 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 gap-0 max-h-[80vh] h-[600px] overflow-hidden">
-        <DialogHeader className="p-6 pb-2">
+      <DialogContent className="max-w-2xl p-0 gap-0 max-h-[80vh] h-[600px] overflow-hidden flex flex-col">
+        <DialogHeader className="p-6 pb-2 shrink-0">
           <DialogTitle className="text-xl">Settings</DialogTitle>
           <DialogDescription>
             Customize Friday to match your workflow
           </DialogDescription>
         </DialogHeader>
         
-        <Tabs defaultValue="general" className="w-full h-full flex flex-col">
-          <TabsList className="w-full justify-start border-b rounded-none px-6 h-12 shrink-0">
-            <TabsTrigger value="general" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
-              <Settings className="w-4 h-4" />
-              General
-            </TabsTrigger>
-            <TabsTrigger value="shortcuts" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
-              <Keyboard className="w-4 h-4" />
-              Shortcuts
-            </TabsTrigger>
-            <TabsTrigger value="transcription" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
-              <Mic className="w-4 h-4" />
-              Transcription
-            </TabsTrigger>
-            <TabsTrigger value="context" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
-              <File className="w-4 h-4" />
-              Context
-            </TabsTrigger>
-            <TabsTrigger value="about" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
-              <Info className="w-4 h-4" />
-              About
-            </TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="general" className="w-full flex-1 flex flex-col overflow-hidden">
+          <div className="shrink-0 sticky top-0 bg-background z-10 border-b">
+            <TabsList className="w-full justify-start rounded-none px-6 h-12">
+              <TabsTrigger value="general" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+                <Settings className="w-4 h-4" />
+                General
+              </TabsTrigger>
+              <TabsTrigger value="shortcuts" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+                <Keyboard className="w-4 h-4" />
+                Shortcuts
+              </TabsTrigger>
+              <TabsTrigger value="transcription" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+                <Mic className="w-4 h-4" />
+                Transcription
+              </TabsTrigger>
+              <TabsTrigger value="context" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+                <File className="w-4 h-4" />
+                Context
+              </TabsTrigger>
+              <TabsTrigger value="about" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none flex gap-2 items-center">
+                <Info className="w-4 h-4" />
+                About
+              </TabsTrigger>
+            </TabsList>
+          </div>
           
           <div className="flex-1 overflow-y-auto">
-            <TabsContent value="general" className="p-6 pt-4 h-auto mt-0 block">
+            <TabsContent value="general" className="p-6 pt-4 data-[state=active]:block h-auto mt-0 mb-0">
               <div className="space-y-6 pb-6">
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium">Save Location</h3>
@@ -205,7 +207,7 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               </div>
             </TabsContent>
             
-            <TabsContent value="shortcuts" className="p-6 pt-4 h-auto mt-0 block">
+            <TabsContent value="shortcuts" className="p-6 pt-4 data-[state=active]:block h-auto mt-0 mb-0">
               <div className="space-y-6 pb-6">
                 <div className="space-y-3">
                   <h3 className="text-sm font-medium">Global Shortcuts</h3>
@@ -247,7 +249,7 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               </div>
             </TabsContent>
             
-            <TabsContent value="transcription" className="p-6 pt-4 h-auto mt-0 block">
+            <TabsContent value="transcription" className="p-6 pt-4 data-[state=active]:block h-auto mt-0 mb-0">
               <div className="space-y-6 pb-20">
                 <div className="flex items-center justify-between space-x-2">
                   <Label htmlFor="live-transcription" className="flex flex-col gap-0.5">
@@ -283,12 +285,12 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
               </div>
             </TabsContent>
             
-            <TabsContent value="context" className="p-6 pt-4 h-auto mt-0 block">
+            <TabsContent value="context" className="p-6 pt-4 data-[state=active]:block h-auto mt-0 mb-0">
               <ContextSettings />
             </TabsContent>
             
-            <TabsContent value="about" className="p-6 pt-4 h-auto mt-0 block">
-              <div className="space-y-4 text-center">
+            <TabsContent value="about" className="p-6 pt-4 data-[state=active]:block h-auto mt-0 mb-0">
+              <div className="space-y-4 text-center pb-6">
                 <div>
                   {/* <h3 className="text-lg font-medium">Friday</h3> */}
                   <div className="flex justify-center mb-4">

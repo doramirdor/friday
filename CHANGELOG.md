@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - Incomplete scrolling in the transcription tab of the settings dialog which prevented access to bottom content
 - Inconsistent tab panel rendering in settings dialog by ensuring all tabs have uniform alignment and proper spacing
 - Added proper spacing and consistent bottom padding across all settings tab panels for better usability
+- Fixed settings dialog tab navigation to ensure it always stays fixed at the top when scrolling through content
 
 ## [0.3.1] - 2024-05-21
 
