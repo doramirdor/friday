@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.
 - Added action items tracking system for meeting follow-ups
 - Added context management system for project files and references
 - Implemented comprehensive save functionality that preserves all meeting data in the database
+- Added recording source selection (system, mic, both) in the TranscriptDetails component
+- Enhanced debug logging for recording processes and audio file handling
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
@@ -32,6 +34,7 @@ All notable changes to this project will be documented in this file.
 - Upgraded audio player with waveform visualization and playback controls
 - Replaced defaultProps with JavaScript default parameters in function components
 - Enhanced save functionality to store all meeting data including details, action items, notes, context, transcript, and audio recording path
+- Improved recording source selection with visual indicators for active source
 
 ### Fixed
 - Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)
@@ -48,6 +51,9 @@ All notable changes to this project will be documented in this file.
 - Addressed panel collapsing behavior in the transcript view
 - Fixed duplicate function declaration in TranscriptDetails component
 - Resolved React warning about using defaultProps in function components by using JavaScript default parameters
+- Fixed missing recording source selection (system, mic, both) in the transcript details page
+- Fixed audio playback after recording stops by properly handling file paths and loading audio files
+- Enhanced error handling for audio recording to provide better user feedback
 
 ## [0.3.1] - 2024-05-21
 
