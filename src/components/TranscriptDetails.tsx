@@ -72,11 +72,11 @@ interface TranscriptDetailsProps {
   initialMeetingState?: MeetingState;
 }
 
-const TranscriptDetails = () => {
+const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingState }) => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const meetingState = location.state as MeetingState | undefined;
+  const meetingState = initialMeetingState || location.state as MeetingState | undefined;
   const { notes, setNotes, formatText } = useNotes(id || "");
   
   const [title, setTitle] = useState(meetingState?.title || "Weekly Team Standup");
@@ -1279,11 +1279,6 @@ const TranscriptDetails = () => {
       </div>
     </div>
   );
-};
-
-// Set default props
-TranscriptDetails.defaultProps = {
-  initialMeetingState: undefined
 };
 
 export default TranscriptDetails; 
