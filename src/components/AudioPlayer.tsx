@@ -107,9 +107,19 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
   
   // Update audio source when audioUrl changes and play automatically if autoPlay is true
   useEffect(() => {
+    // Reset error state
     setAudioError(false);
     
-    if (audioRef.current && audioUrl) {
+    // Guard against invalid URLs
+    if (!audioUrl) {
+      return;
+    }
+
+    // Add a loading state tracker
+    let isLoading = true;
+    let timeoutId: number | undefined;
+    
+    if (audioRef.current) {
       // Debug log to check audio URL
       console.log(`AudioPlayer: Setting audio source, URL type: ${audioUrl.substring(0, 20)}...`);
       
@@ -124,6 +134,15 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
         console.log("AudioPlayer: Using file path or other URL type");
       }
       
+      // Set up a timeout to prevent infinite loading
+      timeoutId = window.setTimeout(() => {
+        if (isLoading) {
+          console.error("AudioPlayer: Loading timed out after 5 seconds");
+          setAudioError(true);
+          isLoading = false;
+        }
+      }, 5000);
+      
       // Set the source and load the audio
       audioRef.current.src = audioUrl;
       audioRef.current.load();
@@ -132,6 +151,15 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
       const metadataHandler = () => {
         console.log(`AudioPlayer: Audio metadata loaded, duration: ${audioRef.current?.duration}s`);
         setAudioError(false);
+        isLoading = false;
+        if (timeoutId) clearTimeout(timeoutId);
+        
+        // Additional check for very short or zero duration files (likely invalid)
+        if (audioRef.current && audioRef.current.duration < 0.1) {
+          console.warn("AudioPlayer: Suspiciously short audio duration detected");
+          setAudioError(true);
+          toast.error("Audio file appears to be empty or invalid");
+        }
       };
       
       // Log errors
@@ -139,52 +167,54 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
         console.error("AudioPlayer: Error loading audio:", e);
         console.error("AudioPlayer: Error details:", audioRef.current?.error);
         setAudioError(true);
+        isLoading = false;
+        if (timeoutId) clearTimeout(timeoutId);
         
         // No longer auto-trying native player on error
         // Just show the error message and let the user decide
         toast.error("Audio can't be played in browser. Try using the native player button.");
       };
       
+      // Add abort handler for clean cancellation
+      const abortHandler = () => {
+        console.log("AudioPlayer: Loading aborted");
+        isLoading = false;
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+      
       // Add listeners
       audioRef.current.addEventListener('loadedmetadata', metadataHandler);
       audioRef.current.addEventListener('error', errorHandler);
+      audioRef.current.addEventListener('abort', abortHandler);
       
       // Add a small delay before playing to ensure audio is properly loaded
+      let playTimeout: number | undefined;
+      
       if (autoPlay) {
-        const playTimeout = setTimeout(() => {
-          if (audioRef.current) {
+        playTimeout = window.setTimeout(() => {
+          if (audioRef.current && !isLoading && !audioError) {
             audioRef.current.play()
               .then(() => {
                 setIsPlaying(true);
                 toast.success("Playing recorded audio");
               })
-              .catch(async (error) => {
+              .catch((error) => {
                 console.error("Error playing audio:", error);
-                
-                // Try native player as fallback
-                if (await playWithNativePlayer()) {
-                  // Native player is working, we can update the UI
-                  setIsPlaying(true);
-                } else {
-                  toast.error("Failed to play audio automatically");
-                }
+                toast.error("Failed to play audio automatically");
               });
           }
-        }, 500);
-        
-        return () => {
-          clearTimeout(playTimeout);
-          if (audioRef.current) {
-            audioRef.current.removeEventListener('loadedmetadata', metadataHandler);
-            audioRef.current.removeEventListener('error', errorHandler);
-          }
-        };
+        }, 1000); // Increased timeout for better reliability
       }
       
+      // Clean up function
       return () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (playTimeout) clearTimeout(playTimeout);
+        
         if (audioRef.current) {
           audioRef.current.removeEventListener('loadedmetadata', metadataHandler);
           audioRef.current.removeEventListener('error', errorHandler);
+          audioRef.current.removeEventListener('abort', abortHandler);
         }
       };
     }
@@ -409,6 +439,6 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
       )}
     </div>
   );
-};
-
+  };
+  
 export default AudioPlayer;

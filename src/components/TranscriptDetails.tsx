@@ -245,6 +245,12 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   
   // Helper function to load audio file for playback
   const loadAudioFile = useCallback(async (filePath: string) => {
+    // Skip if we're already loading this file
+    if (recordedAudioUrl === filePath) {
+      console.log('Audio file already loaded:', filePath);
+      return;
+    }
+    
     // In Electron environment, we need to use IPC to load the file
     const win = window as any;
     
@@ -255,18 +261,35 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         
         if (result.success && result.dataUrl) {
           console.log('Audio loaded successfully from:', filePath);
+          // Set the URL directly without re-triggering the loadAudioFile
           setRecordedAudioUrl(result.dataUrl);
           toast.success('Audio loaded successfully');
         } else {
           console.error('Error loading audio:', result.error);
           toast.error(`Failed to load audio: ${result.error}`);
+          
+          // Use the raw file path as fallback for the player to try
+          if (filePath && filePath.trim() !== '') {
+            console.log('Using raw file path as fallback');
+            setRecordedAudioUrl(filePath);
+          }
         }
       } catch (error) {
         console.error('Error loading audio file:', error);
         toast.error('Failed to load audio file');
+        
+        // Use the raw file path as fallback
+        if (filePath && filePath.trim() !== '') {
+          console.log('Using raw file path as fallback after error');
+          setRecordedAudioUrl(filePath);
+        }
       }
+    } else {
+      // If the loadAudioFile API is not available, just use the file path directly
+      console.log('loadAudioFile API not available, using raw path');
+      setRecordedAudioUrl(filePath);
     }
-  }, []);
+  }, [recordedAudioUrl]);
   
   // Effect to update recording path when any recording completes
   useEffect(() => {
@@ -283,12 +306,38 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       console.log('Combined recording completed, path:', path);
     }
     
-    if (path && path !== recordedAudioUrl) {
-      console.log('Setting recorded audio URL:', path);
-      setRecordedAudioUrl(path);
-      
-      // Load the audio for playback
-      loadAudioFile(path);
+    if (path) {
+      // Ensure the file exists before trying to load it
+      const win = window as any;
+      if (win?.electronAPI?.checkFileExists) {
+        // First check if the file exists and has content
+        win.electronAPI.checkFileExists(path)
+          .then((exists: boolean) => {
+            if (exists) {
+              console.log('Audio file exists, loading:', path);
+              // Only load if it's different from current
+              if (path !== recordedAudioUrl) {
+                loadAudioFile(path);
+              }
+            } else {
+              console.error('Audio file does not exist or is empty:', path);
+              toast.error('Recording file could not be created properly');
+            }
+          })
+          .catch((error: any) => {
+            console.error('Error checking file existence:', error);
+            // Try loading anyway as fallback
+            if (path !== recordedAudioUrl) {
+              loadAudioFile(path);
+            }
+          });
+      } else {
+        // If we can't check, just try to load it
+        if (path !== recordedAudioUrl) {
+          console.log('Setting recorded audio URL:', path);
+          loadAudioFile(path);
+        }
+      }
     }
   }, [
     systemRecordingPath, 

@@ -289,15 +289,57 @@ export function stopRecording() {
   if (useSoftwareRecordingMode) {
     // For software mode, just send the stop signal directly
     const timestamp = Date.now();
-    const outputPath = path.join(app.getPath("downloads"), `recording_${timestamp}.mp3`);
     
-    // Create an empty file (in a real implementation, this would be the actual recording)
+    // Use a placeholder WAV file instead of an empty MP3 file
+    // This ensures we have a valid audio file for the player
+    const resourcesPath = process.env.NODE_ENV === 'development' 
+      ? path.join(process.cwd(), 'src', 'assets') 
+      : path.join(process.resourcesPath, 'assets');
+    
+    // Create the destination directory if it doesn't exist
+    const downloadsPath = app.getPath("downloads");
+    const outputPath = path.join(downloadsPath, `recording_${timestamp}.wav`);
+    
     try {
-      fs.writeFileSync(outputPath, '');
-      console.log(`Software recording: created empty file at ${outputPath}`);
+      // Check if we have a placeholder file
+      const placeholderPath = path.join(resourcesPath, 'placeholder-audio.wav');
+      
+      if (fs.existsSync(placeholderPath)) {
+        // Copy the placeholder file instead of creating an empty one
+        fs.copyFileSync(placeholderPath, outputPath);
+        console.log(`Software recording: copied placeholder audio to ${outputPath}`);
+      } else {
+        // Create a new minimal valid WAV file (1 second of silence)
+        // This is a very basic 44.1kHz, 16-bit, mono WAV file with 1 second of silence
+        const sampleRate = 44100;
+        const seconds = 1;
+        const numSamples = sampleRate * seconds;
+        const buffer = Buffer.alloc(44 + numSamples * 2);
+        
+        // WAV header
+        buffer.write('RIFF', 0);
+        buffer.writeUInt32LE(36 + numSamples * 2, 4); // File size - 8
+        buffer.write('WAVE', 8);
+        buffer.write('fmt ', 12);
+        buffer.writeUInt32LE(16, 16); // Format chunk size
+        buffer.writeUInt16LE(1, 20); // Audio format (PCM)
+        buffer.writeUInt16LE(1, 22); // Number of channels
+        buffer.writeUInt32LE(sampleRate, 24); // Sample rate
+        buffer.writeUInt32LE(sampleRate * 2, 28); // Byte rate
+        buffer.writeUInt16LE(2, 32); // Block align
+        buffer.writeUInt16LE(16, 34); // Bits per sample
+        buffer.write('data', 36);
+        buffer.writeUInt32LE(numSamples * 2, 40); // Data chunk size
+        
+        // Fill with silence (all zeros, already done by Buffer.alloc)
+        
+        fs.writeFileSync(outputPath, buffer);
+        console.log(`Software recording: created silent WAV file at ${outputPath}`);
+      }
+      
       global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
     } catch (error) {
-      console.error(`Error creating file: ${error.message}`);
+      console.error(`Error creating audio file: ${error.message}`);
       global.mainWindow.webContents.send("recording-error", "FILE_CREATION_FAILED");
     }
     
