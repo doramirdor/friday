@@ -9,7 +9,8 @@ const execAsync = promisify(exec);
 let recordingProcess = null;
 
 // Flag to track if we're using software-only mode
-let useSoftwareRecordingMode = false;
+// Start with software recording mode set to true
+let useSoftwareRecordingMode = true;
 
 const initRecording = (filepath, filename, source = 'system') => {
   return new Promise(async (resolve) => {

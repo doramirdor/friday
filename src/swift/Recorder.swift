@@ -6,12 +6,14 @@ import CoreAudio
 // Global signal handler
 var recorderInstance: RecorderCLI?
 func handleInterruptSignal(signal: Int32) {
+    print("DEBUG: Received interrupt signal: \(signal)")
     if signal == SIGINT {
         RecorderCLI.terminateRecording()
         recorderInstance?.convertAndFinish()
     }
 }
 
+@available(macOS 13.0, *)
 class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDelegate, AVAudioPlayerDelegate {
     static var screenCaptureStream: SCStream?
     static var audioFileForRecording: AVAudioFile?
@@ -49,17 +51,29 @@ class RecorderCLI: NSObject, SCStreamDelegate, SCStreamOutput, AVAudioRecorderDe
     }
 
     func processCommandLineArguments() {
+        print("DEBUG: Processing command line arguments")
         let arguments = CommandLine.arguments
+        
+        print("DEBUG: Arguments count: \(arguments.count)")
+        for (index, arg) in arguments.enumerated() {
+            print("DEBUG: Arg[\(index)]: \(arg)")
+        }
+        
         guard arguments.contains("--record") else {
+            print("DEBUG: No --record argument found")
             if arguments.contains("--check-permissions") {
+                print("DEBUG: Checking permissions")
                 PermissionsRequester.requestScreenCaptureAccess { granted in
                     if granted {
+                        print("DEBUG: Permission granted")
                         ResponseHandler.returnResponse(["code": "PERMISSION_GRANTED"])
                     } else {
+                        print("DEBUG: Permission denied")
                         ResponseHandler.returnResponse(["code": "PERMISSION_DENIED"])
                     }
                 }
             } else {
+                print("DEBUG: Invalid arguments")
                 ResponseHandler.returnResponse(["code": "INVALID_ARGUMENTS"])
             }
 
