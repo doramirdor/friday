@@ -420,9 +420,12 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const handleToggleLiveTranscript = useCallback(() => {
     setIsLiveTranscript(prev => !prev);
     
-    // Update settings if needed
-    // (Implement this part using your settings logic)
-  }, []);
+    toast.info(
+      !isLiveTranscript
+        ? "Live transcript enabled" 
+        : "Live transcript disabled"
+    );
+  }, [isLiveTranscript]);
   
   // Change the current speaker
   const handleChangeSpeaker = useCallback((speakerId: string) => {
@@ -675,15 +678,21 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     toast.info(`Speaker changed to ${speakers.find(s => s.id === speakerId)?.name || 'Unknown'}`);
   };
 
-  // Toggle live transcript mode
-  const handleToggleLiveTranscript = () => {
-    setIsLiveTranscript(!isLiveTranscript);
-    toast.info(
-      !isLiveTranscript
-        ? "Live transcript enabled" 
-        : "Live transcript disabled"
-    );
-  };
+  // Handle audio playback
+  const handlePlayPause = useCallback(() => {
+    if (!recordedAudioUrl || !audioRef.current) {
+      toast.error("No recorded audio available");
+      return;
+    }
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    
+    setIsPlaying(!isPlaying);
+  }, [isPlaying, recordedAudioUrl]);
 
   // Render the component
   return (
