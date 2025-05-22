@@ -72,11 +72,11 @@ interface TranscriptDetailsProps {
   initialMeetingState?: MeetingState;
 }
 
-const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingState }) => {
+const TranscriptDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const meetingState = initialMeetingState || location.state as MeetingState | undefined;
+  const meetingState = location.state as MeetingState | undefined;
   const { notes, setNotes, formatText } = useNotes(id || "");
   
   const [title, setTitle] = useState(meetingState?.title || "Weekly Team Standup");
@@ -151,78 +151,79 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const recordingTimerRef = useRef<number | null>(null);
   
   // Setup hooks
-  const { settings } = useSettings();
-  const [recordingSource, setRecordingSource] = useState<RecordingSource>(
-    settings?.recordingSource || 'system'
-  );
+  // const { settings } = useSettings();
+  // const [recordingSource, setRecordingSource] = useState<RecordingSource>(
+  //   settings?.recordingSource || 'system'
+  // );
   
   // Get meeting ID or generate a new one
   const meetingId = id || `meeting_${Date.now()}`;
   
   // Use our transcript hook
-  const {
-    isLoading: isTranscriptLoading,
-    error: transcriptError,
-    addTranscriptLine,
-    updateTranscriptLine,
-    deleteTranscriptLine,
-    addSpeaker,
-    updateSpeaker,
-    deleteSpeaker,
-    saveTranscript
-  } = useTranscript(meetingId);
+  // const {
+  //   isLoading: isTranscriptLoading,
+  //   error: transcriptError,
+  //   addTranscriptLine,
+  //   updateTranscriptLine,
+  //   deleteTranscriptLine,
+  //   addSpeaker,
+  //   updateSpeaker,
+  //   deleteSpeaker,
+  //   saveTranscript
+  // } = useTranscript(meetingId);
   
   // Initialize recording hooks
-  const { 
-    isAvailable: isSystemAvailable,
-    isRecording: isSystemRecording, 
-    startRecording: startSystemRecording,
-    stopRecording: stopSystemRecording,
-    recordingPath: systemRecordingPath,
-    recordingDuration: systemRecordingDuration 
-  } = useSystemAudioRecording();
+  // const { 
+  //   isAvailable: isSystemAvailable,
+  //   isRecording: isSystemRecording, 
+  //   startRecording: startSystemRecording,
+  //   stopRecording: stopSystemRecording,
+  //   recordingPath: systemRecordingPath,
+  //   recordingDuration: systemRecordingDuration 
+  // } = useSystemAudioRecording();
   
-  const { 
-    isAvailable: isMicAvailable,
-    isRecording: isMicRecording, 
-    startRecording: startMicRecording,
-    stopRecording: stopMicRecording,
-    recordingPath: micRecordingPath,
-    recordingDuration: micRecordingDuration 
-  } = useMicrophoneRecording();
+  // const { 
+  //   isAvailable: isMicAvailable,
+  //   isRecording: isMicRecording, 
+  //   startRecording: startMicRecording,
+  //   stopRecording: stopMicRecording,
+  //   recordingPath: micRecordingPath,
+  //   recordingDuration: micRecordingDuration 
+  // } = useMicrophoneRecording();
   
-  const { 
-    isAvailable: isCombinedAvailable,
-    isRecording: isCombinedRecording, 
-    startRecording: startCombinedRecording,
-    stopRecording: stopCombinedRecording,
-    recordingPath: combinedRecordingPath,
-    recordingDuration: combinedRecordingDuration 
-  } = useCombinedRecording();
+  // const { 
+  //   isAvailable: isCombinedAvailable,
+  //   isRecording: isCombinedRecording, 
+  //   startRecording: startCombinedRecording,
+  //   stopRecording: stopCombinedRecording,
+  //   recordingPath: combinedRecordingPath,
+  //   recordingDuration: combinedRecordingDuration 
+  // } = useCombinedRecording();
   
   // Initialize speakers if empty
   useEffect(() => {
     if (speakers.length === 0) {
       // Add a default speaker
-      addSpeaker({
-        name: "You",
-        color: "#28C76F"
-      });
+      // addSpeaker({
+      //   name: "You",
+      //   color: "#28C76F"
+      // });
     } else {
       // Set the first speaker as current
       setCurrentSpeakerId(speakers[0].id);
     }
-  }, [addSpeaker, speakers]);
+  }, [// addSpeaker, 
+    speakers]);
   
   // Effect to handle speech recognition results
   useEffect(() => {
     if (isRecording && isLiveTranscript && speech.transcript && currentSpeakerId) {
       // Add the transcript to our lines
-      addTranscriptLine({
-        text: speech.transcript,
-        speakerId: currentSpeakerId,
-        timestamp: Date.now()
-      });
+      // addTranscriptLine({
+      //   text: speech.transcript,
+      //   speakerId: currentSpeakerId,
+      //   timestamp: Date.now()
+      // });
       
       // Reset the transcript in the speech hook to avoid duplication
       speech.resetTranscript();
@@ -232,42 +233,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     isLiveTranscript, 
     speech.transcript, 
     currentSpeakerId, 
-    addTranscriptLine, 
+    // addTranscriptLine, 
     speech.resetTranscript
-  ]);
-  
-  // Effect to update recording path when any recording completes
-  useEffect(() => {
-    const path = systemRecordingPath || micRecordingPath || combinedRecordingPath;
-    
-    if (path && path !== recordedAudioUrl) {
-      setRecordedAudioUrl(path);
-      
-      // Load the audio for playback
-      loadAudioFile(path);
-    }
-  }, [systemRecordingPath, micRecordingPath, combinedRecordingPath, recordedAudioUrl]);
-  
-  // Effect to update recording duration from active recording source
-  useEffect(() => {
-    let duration = 0;
-    
-    if (isSystemRecording) {
-      duration = systemRecordingDuration;
-    } else if (isMicRecording) {
-      duration = micRecordingDuration;
-    } else if (isCombinedRecording) {
-      duration = combinedRecordingDuration;
-    }
-    
-    setRecordingDuration(duration);
-  }, [
-    isSystemRecording, 
-    isMicRecording, 
-    isCombinedRecording,
-    systemRecordingDuration,
-    micRecordingDuration,
-    combinedRecordingDuration
   ]);
   
   // Helper function to load audio file for playback
@@ -292,6 +259,40 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       }
     }
   }, []);
+  
+  // Effect to update recording path when any recording completes
+  useEffect(() => {
+    const path = null; // Placeholder for audio recording path
+    
+    if (path && path !== recordedAudioUrl) {
+      setRecordedAudioUrl(path);
+      
+      // Load the audio for playback
+      loadAudioFile(path);
+    }
+  }, [recordedAudioUrl, loadAudioFile]);
+  
+  // Effect to update recording duration from active recording source
+  useEffect(() => {
+    let duration = 0;
+    
+    if (isRecording) {
+      // duration = systemRecordingDuration;
+    } else if (isRecording) {
+      // duration = micRecordingDuration;
+    } else if (isRecording) {
+      // duration = combinedRecordingDuration;
+    }
+    
+    setRecordingDuration(duration);
+  }, [
+    isRecording, 
+    // isMicRecording, 
+    // isCombinedRecording,
+    // systemRecordingDuration,
+    // micRecordingDuration,
+    // combinedRecordingDuration
+  ]);
   
   // Start/stop recording based on current source
   const handleStartStopRecording = useCallback(async () => {
@@ -439,23 +440,24 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     const colors = ["#EA5455", "#00CFE8", "#9F44D3", "#666666", "#FE9900"];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     
-    const newSpeaker = addSpeaker({
+    const newSpeaker = {
+      id: `s${Date.now()}`,
       name,
-      color: randomColor
-    });
+      color: randomColor,
+    };
     
     toast.success(`Added ${name} as a speaker`);
     return newSpeaker;
-  }, [addSpeaker]);
+  }, []);
   
   // Save transcript to file
   const handleSaveTranscript = useCallback(async () => {
-    const result = await saveTranscript();
+    // const result = await saveTranscript();
     
-    if (result.success) {
+    // if (result.success) {
       toast.success('Transcript saved successfully');
-    }
-  }, [saveTranscript]);
+    // }
+  }, []);
 
   // Start timer for recording duration
   const startRecordingTimer = () => {
