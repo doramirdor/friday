@@ -972,14 +972,15 @@ ipcMain.handle("load-audio-file", async (event, filepath) => {
     const fileSizeMB = stats.size / (1024 * 1024);
     console.log(`📊 main.js: Audio file size: ${fileSizeMB.toFixed(2)} MB`);
     
-    // If file is large (>10MB), suggest native player instead
-    if (fileSizeMB > 10) {
+    // If file is large (>20MB), suggest native player instead
+    if (fileSizeMB > 20) {
       console.log(`⚠️ main.js: File is large (${fileSizeMB.toFixed(2)} MB), suggesting native player`);
       return { 
-        success: false, 
-        error: "File too large for browser playback", 
+        success: true, 
         originalPath: filepath,
-        fileSizeMB: fileSizeMB
+        fileSizeMB: fileSizeMB,
+        useNativePlayer: true,
+        message: "File too large for browser playback, using native player"
       };
     }
     
@@ -993,12 +994,52 @@ ipcMain.handle("load-audio-file", async (event, filepath) => {
     if (ext === ".mp3") mimeType = "audio/mpeg";
     else if (ext === ".ogg") mimeType = "audio/ogg";
     else if (ext === ".flac") mimeType = "audio/flac";
+    else if (ext === ".m4a" || ext === ".aac") mimeType = "audio/aac";
     
     console.log(`🎵 main.js: Determined MIME type: ${mimeType} for file extension ${ext}`);
     
-    // Create a data URL
-    const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+    // Create a data URL, appending the original path for better error recovery
+    // We'll encode the path at the end with a custom parameter
+    const base64Data = buffer.toString("base64");
+    const dataUrl = `data:${mimeType};base64,${base64Data}?path=${encodeURIComponent(filepath)}`;
     console.log(`✅ main.js: Created data URL for ${filepath}, length: ${dataUrl.length} characters`);
+    
+    // For MP3 files that might have issues with data URLs, convert to WAV for browser compatibility
+    let audioBlob = null;
+    if (ext === ".mp3" && fileSizeMB < 5) { // Only for reasonably sized files
+      try {
+        console.log(`🔄 main.js: Creating blob URL for better compatibility`);
+        const tempDir = app.getPath('temp');
+        const tempWavFile = path.join(tempDir, `${path.basename(filepath, ext)}.wav`);
+        
+        // Convert the MP3 to WAV using ffmpeg
+        await exec(`ffmpeg -i "${filepath}" -acodec pcm_s16le -ar 44100 -ac 2 "${tempWavFile}" -y`);
+        console.log(`✅ main.js: Converted MP3 to WAV for better browser compatibility: ${tempWavFile}`);
+        
+        // Read the converted WAV file
+        const wavBuffer = fs.readFileSync(tempWavFile);
+        
+        // Clean up the temporary file
+        fs.unlinkSync(tempWavFile);
+        
+        // Create a data URL for the WAV file
+        const wavDataUrl = `data:audio/wav;base64,${wavBuffer.toString("base64")}?path=${encodeURIComponent(filepath)}`;
+        console.log(`✅ main.js: Created WAV data URL as fallback, length: ${wavDataUrl.length} characters`);
+        
+        return { 
+          success: true, 
+          dataUrl: wavDataUrl, // Primary URL (more compatible)
+          originalDataUrl: dataUrl, // Original data URL as fallback
+          originalPath: filepath,
+          mimeType: "audio/wav", // Now it's WAV
+          fileSizeMB,
+          isConverted: true
+        };
+      } catch (error) {
+        console.error(`❌ main.js: Error converting MP3 to WAV:`, error);
+        // Continue with original data URL if conversion fails
+      }
+    }
     
     return { 
       success: true, 
@@ -1035,6 +1076,25 @@ ipcMain.handle("play-audio-file", async (event, filepath) => {
     return { success: true };
   } catch (error) {
     console.error("❌ main.js: Error playing audio file:", error);
+    return { error: error.message };
+  }
+});
+
+// Handle showing item in folder
+ipcMain.handle("show-item-in-folder", async (event, filepath) => {
+  try {
+    console.log(`🔄 main.js: Showing item in folder: ${filepath}`);
+    
+    if (!fs.existsSync(filepath)) {
+      console.error(`❌ main.js: File not found: ${filepath}`);
+      return { error: "File not found" };
+    }
+    
+    // Show the file in the native file explorer
+    shell.showItemInFolder(filepath);
+    return { success: true };
+  } catch (error) {
+    console.error("❌ main.js: Error showing item in folder:", error);
     return { error: error.message };
   }
 });

@@ -136,6 +136,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return await ipcRenderer.invoke("play-audio-file", filepath);
   },
   
+  // Show file in native file explorer
+  showItemInFolder: async (filepath) => {
+    return await ipcRenderer.invoke("show-item-in-folder", filepath);
+  },
+  
   // Test functions for diagnostics
   testAudio: async (apiKey) => {
     return await ipcRenderer.invoke("test-audio", apiKey);

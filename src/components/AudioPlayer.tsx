@@ -17,6 +17,7 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
   const [volume, setVolume] = useState<number>(80);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isHighlighted, setIsHighlighted] = useState<boolean>(true);
+  const [audioError, setAudioError] = useState<boolean>(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -47,25 +48,74 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
-        URL.revokeObjectURL(audioRef.current.src);
+        if (audioRef.current.src.startsWith('blob:')) {
+          URL.revokeObjectURL(audioRef.current.src);
+        }
         audioRef.current = null;
       }
     };
   }, []);
   
+  // Helper function to play audio with native player when browser playback fails
+  const playWithNativePlayer = async () => {
+    const win = window as any;
+    if (win?.electronAPI?.playAudioFile && audioUrl) {
+      try {
+        // Extract the original file path if it's in the audioUrl
+        let filePath = audioUrl;
+        
+        // If it's a data URL, we need to extract the path from debug info
+        if (audioUrl.startsWith('data:')) {
+          // Try to look for a path at the end of the URL (special format we might add)
+          const pathMatch = audioUrl.match(/\?path=(.+)$/);
+          if (pathMatch && pathMatch[1]) {
+            filePath = decodeURIComponent(pathMatch[1]);
+          } else {
+            // Try to get the path from the latest debug logs
+            // This is just a fallback and might not always work
+            const debugConsole = document.querySelector('.debug-info-path')?.textContent;
+            if (debugConsole) {
+              const pathMatch = debugConsole.match(/from:\s*([^,\s]+)/);
+              if (pathMatch && pathMatch[1]) {
+                filePath = pathMatch[1];
+              }
+            }
+          }
+        }
+        
+        // Only try native player if we have a file path (not a data URL)
+        if (!filePath.startsWith('data:') && !filePath.startsWith('blob:')) {
+          console.log('AudioPlayer: Trying native player with path:', filePath);
+          const result = await win.electronAPI.playAudioFile(filePath);
+          if (result.success) {
+            toast.success("Playing with native audio player");
+            return true;
+          }
+        }
+      } catch (error) {
+        console.error('Error playing with native player:', error);
+      }
+    }
+    return false;
+  };
+  
   // Update audio source when audioUrl changes and play automatically if autoPlay is true
   useEffect(() => {
+    setAudioError(false);
+    
     if (audioRef.current && audioUrl) {
       // Debug log to check audio URL
-      console.log(`AudioPlayer: Setting audio source, URL starts with: ${audioUrl.substring(0, 50)}...`);
+      console.log(`AudioPlayer: Setting audio source, URL type: ${audioUrl.substring(0, 20)}...`);
       
       // Make sure the URL is valid
       if (audioUrl.startsWith('data:audio/')) {
         console.log("AudioPlayer: Using data URL");
       } else if (audioUrl.startsWith('file://')) {
         console.log("AudioPlayer: Using file URL - this may not work in browser");
+      } else if (audioUrl.startsWith('http')) {
+        console.log("AudioPlayer: Using HTTP URL");
       } else {
-        console.log("AudioPlayer: Using other URL type:", audioUrl.split(':')[0]);
+        console.log("AudioPlayer: Using file path or other URL type");
       }
       
       // Set the source and load the audio
@@ -75,12 +125,22 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
       // Log when audio metadata is loaded
       const metadataHandler = () => {
         console.log(`AudioPlayer: Audio metadata loaded, duration: ${audioRef.current?.duration}s`);
+        setAudioError(false);
       };
       
       // Log errors
-      const errorHandler = (e: ErrorEvent) => {
+      const errorHandler = async (e: ErrorEvent) => {
         console.error("AudioPlayer: Error loading audio:", e);
         console.error("AudioPlayer: Error details:", audioRef.current?.error);
+        setAudioError(true);
+        
+        // Try using native player as fallback
+        if (await playWithNativePlayer()) {
+          // Native player is working, we can update the UI
+          setIsPlaying(true);
+        } else {
+          toast.error("Failed to play audio");
+        }
       };
       
       // Add listeners
@@ -96,9 +156,16 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
                 setIsPlaying(true);
                 toast.success("Playing recorded audio");
               })
-              .catch(error => {
+              .catch(async (error) => {
                 console.error("Error playing audio:", error);
-                toast.error("Failed to play audio automatically");
+                
+                // Try native player as fallback
+                if (await playWithNativePlayer()) {
+                  // Native player is working, we can update the UI
+                  setIsPlaying(true);
+                } else {
+                  toast.error("Failed to play audio automatically");
+                }
               });
           }
         }, 500);
@@ -137,7 +204,7 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
     }
   }, [volume, isMuted]);
 
-  const handlePlayPause = () => {
+  const handlePlayPause = async () => {
     if (!audioUrl || !audioRef.current) {
       toast.error("No recorded audio available");
       return;
@@ -145,23 +212,28 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
     
     if (isPlaying) {
       audioRef.current.pause();
+      setIsPlaying(false);
     } else {
-      audioRef.current.play()
-        .then(() => {
-          // Play successful
-        })
-        .catch(error => {
-          console.error("Error playing audio:", error);
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+      } catch (error) {
+        console.error("Error playing audio:", error);
+        
+        // Try using native player as fallback
+        if (await playWithNativePlayer()) {
+          // Native player is working, we can update the UI
+          setIsPlaying(true);
+        } else {
           toast.error("Failed to play audio");
-        });
+        }
+      }
     }
-    
-    setIsPlaying(!isPlaying);
   };
   
   // Handle audio time change (seeking)
   const handleAudioTimeChange = (value: number[]) => {
-    if (audioRef.current && audioUrl) {
+    if (audioRef.current && audioUrl && !audioError) {
       audioRef.current.currentTime = value[0];
       setCurrentAudioTime(value[0]);
     }
@@ -180,19 +252,51 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
   // Download the audio file
   const handleDownload = () => {
     if (audioUrl) {
-      // Create an anchor element
-      const a = document.createElement('a');
-      a.href = audioUrl;
-      a.download = `recording-${new Date().toISOString().replace(/:/g, '-')}.mp3`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      toast.success("Downloading recording");
+      // Check if we have an Electron environment
+      const win = window as any;
+      if (win?.electronAPI?.loadAudioFile) {
+        // If it's a data URL, we might be able to extract the original path
+        if (audioUrl.startsWith('data:')) {
+          // Try to get the original path if it's in a custom format we added
+          const pathMatch = audioUrl.match(/\?path=(.+)$/);
+          if (pathMatch && pathMatch[1]) {
+            const originalPath = decodeURIComponent(pathMatch[1]);
+            // Use shell to show the file in explorer/finder
+            if (win.electronAPI.showItemInFolder) {
+              win.electronAPI.showItemInFolder(originalPath);
+              return;
+            }
+          }
+        }
+      }
+      
+      // Fall back to browser download
+      try {
+        const a = document.createElement('a');
+        a.href = audioUrl;
+        a.download = `recording-${new Date().toISOString().replace(/:/g, '-')}.mp3`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        toast.success("Downloading recording");
+      } catch (error) {
+        console.error("Error downloading audio:", error);
+        toast.error("Failed to download recording");
+      }
     }
   };
 
   return (
     <div className={`flex flex-col gap-4 ${isHighlighted ? 'animate-pulse' : ''}`}>
+      {audioError && (
+        <div className="p-2 mb-2 bg-amber-50 border border-amber-200 rounded-md">
+          <p className="text-sm text-amber-700">
+            Audio playback in browser failed. Use the play button to try native player.
+          </p>
+          <div className="hidden debug-info-path">{audioUrl}</div>
+        </div>
+      )}
+      
       <div className="flex items-center gap-4">
         <Button
           variant="outline"
@@ -254,7 +358,7 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
           max={audioDuration || 100}
           step={0.1}
           onValueChange={handleAudioTimeChange}
-          disabled={!audioUrl}
+          disabled={!audioUrl || audioError}
           className={isHighlighted ? 'slider-highlighted' : ''}
         />
       </div>
