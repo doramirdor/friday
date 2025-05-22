@@ -134,7 +134,7 @@ async function diagnoseRecordingIssues() {
   
   try {
     // Generate a proper test file with a tone
-    runCommand(`ffmpeg -f lavfi -i "sine=frequency=440:duration=3" -q:a 2 "${testFilePath}" -y`);
+    runCommand(`ffmpeg -f lavfi -i "sine=frequency=440:duration=60" -q:a 2 "${testFilePath}" -y`);
     
     if (fileExists(testFilePath)) {
       console.log(`✅ Test recording created at: ${testFilePath}`);

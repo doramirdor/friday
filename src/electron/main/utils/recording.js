@@ -8,7 +8,7 @@ import { checkPermissions } from "./permission.js";
 const execAsync = promisify(exec);
 let recordingProcess = null;
 
-// Flag to track if we're using software-only mode
+// Change the useSoftwareRecordingMode flag to false to use the native Swift recorder
 // Start with software recording mode set to false
 let useSoftwareRecordingMode = false;
 
@@ -395,7 +395,7 @@ export async function stopRecording() {
           const ffmpegProcess = spawn('ffmpeg', [
             '-f', 'lavfi',
             '-i', 'anullsrc=r=44100:cl=stereo',
-            '-t', '3',
+            '-t', '60',
             '-q:a', '2',
             outputPath
           ]);
@@ -431,7 +431,7 @@ export async function stopRecording() {
           // Last resort - use a different approach with ffmpeg
           try {
             await import('child_process').then(({ execSync }) => {
-              execSync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 3 -q:a 2 "${outputPath}"`);
+              execSync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 60 -q:a 2 "${outputPath}"`);
             });
             
             if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
