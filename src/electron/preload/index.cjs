@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const { exposeTranscriptAPI } = require('./transcript-bridge');
+const path = require('path');
+const { exposeTranscriptAPI } = require(path.join(__dirname, 'transcript-bridge'));
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
