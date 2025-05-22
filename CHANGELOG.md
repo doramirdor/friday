@@ -55,6 +55,7 @@ All notable changes to this project will be documented in this file.
 - Fixed audio playback after recording stops by properly handling file paths and loading audio files
 - Enhanced error handling for audio recording to provide better user feedback
 - Fixed preload script module path resolution error by using absolute paths for module imports
+- Fixed DatabaseService export in database.ts to use proper namespaced pattern, resolving import errors across the application
 
 ## [0.3.1] - 2024-05-21
 
