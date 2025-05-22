@@ -338,6 +338,8 @@ export function stopRecording() {
     const outputPath = path.join(fridayRecordingsPath, `recording_${timestamp}.mp3`);
     
     try {
+      console.log(`Creating recording file at: ${outputPath}`);
+      
       // Use multiple sources for silence files to ensure better compatibility
       const assetsPaths = [
         // Primary path - local assets directory
@@ -347,7 +349,10 @@ export function stopRecording() {
           ? path.join(process.cwd(), 'resources', 'silence.mp3')
           : path.join(process.resourcesPath, 'silence.mp3'),
         // Extra backup - try app directory
-        path.join(app.getAppPath(), 'src', 'assets', 'silence.mp3')
+        path.join(app.getAppPath(), 'src', 'assets', 'silence.mp3'),
+        // Additional fallbacks
+        path.join(process.cwd(), 'src', 'assets', 'silence.mp3'),
+        path.join(app.getPath("userData"), 'silence.mp3')
       ];
       
       // Check all possible paths for an existing silence file
@@ -361,11 +366,36 @@ export function stopRecording() {
       }
       
       if (silencePath) {
-        // Copy the silence file
-        fs.copyFileSync(silencePath, outputPath);
-        console.log(`Software recording: copied silence MP3 to ${outputPath}`);
+        try {
+          // Get file size to verify it's not empty
+          const stats = fs.statSync(silencePath);
+          if (stats.size > 0) {
+            // Copy the silence file
+            fs.copyFileSync(silencePath, outputPath);
+            
+            // Verify the copy worked
+            const outputStats = fs.statSync(outputPath);
+            if (outputStats.size > 0) {
+              console.log(`Software recording: copied silence MP3 to ${outputPath} (${outputStats.size} bytes)`);
+            } else {
+              throw new Error("Copied file has 0 bytes");
+            }
+          } else {
+            throw new Error("Source silence file is empty (0 bytes)");
+          }
+        } catch (copyError) {
+          console.error(`Error copying silence file: ${copyError.message}`);
+          // Fall back to creating a synthetic file
+          throw copyError; // Will be caught by outer try/catch and continue to fallback
+        }
       } else {
-        // If we don't have a silence file, create a more robust file
+        console.log("No silence file found, creating synthetic MP3 file");
+      }
+      
+      // If we get here without a valid copy, create a synthetic file
+      if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
+        console.log("Creating synthetic MP3 file...");
+        
         // This creates a valid MP3 file with multiple frames
         // Better than a minimal file with just headers
         const silenceData = Buffer.alloc(10240); // 10KB buffer for a small but valid MP3
@@ -384,7 +414,13 @@ export function stopRecording() {
         }
         
         fs.writeFileSync(outputPath, silenceData);
-        console.log(`Software recording: created enhanced MP3 file at ${outputPath}`);
+        
+        // Verify file was created successfully
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+          console.log(`Software recording: created enhanced MP3 file at ${outputPath} (${fs.statSync(outputPath).size} bytes)`);
+        } else {
+          throw new Error("Failed to create synthetic MP3 file");
+        }
         
         // Try to download a proper silence file for next time (simplified)
         try {
@@ -397,24 +433,57 @@ export function stopRecording() {
             fs.mkdirSync(path.dirname(targetSilencePath), { recursive: true });
           }
           
-          console.log(`Downloading silence MP3 from ${silenceUrl}`);
+          // Use a temporary file for the download to avoid partial downloads
+          const tempDownloadPath = `${targetSilencePath}.download`;
+          console.log(`Downloading silence MP3 from ${silenceUrl} to ${tempDownloadPath}`);
           
-          // Start the download but don't wait for it
-          const file = fs.createWriteStream(targetSilencePath);
+          // Start the download
+          const file = fs.createWriteStream(tempDownloadPath);
           https.get(silenceUrl, (response) => {
             if (response.statusCode !== 200) {
               console.log(`Download failed with status code: ${response.statusCode}`);
               file.close();
+              // Clean up partial file
+              try { fs.unlinkSync(tempDownloadPath); } catch (e) {}
               return;
             }
             
-            response.pipe(file);
-            file.on('finish', () => {
-              file.close();
-              console.log(`Downloaded silence MP3 to ${targetSilencePath}`);
+            // Collect the data
+            let downloadedData = [];
+            let downloadSize = 0;
+            
+            response.on('data', (chunk) => {
+              downloadedData.push(chunk);
+              downloadSize += chunk.length;
+            });
+            
+            response.on('end', () => {
+              file.end();
+              file.on('finish', () => {
+                file.close(() => {
+                  console.log(`Download completed: ${downloadSize} bytes`);
+                  
+                  // Verify download was successful
+                  try {
+                    const stats = fs.statSync(tempDownloadPath);
+                    if (stats.size > 0) {
+                      // Move temp file to target
+                      fs.renameSync(tempDownloadPath, targetSilencePath);
+                      console.log(`Successfully saved silence MP3 to ${targetSilencePath}`);
+                    } else {
+                      console.error("Downloaded file is empty, discarding");
+                      fs.unlinkSync(tempDownloadPath);
+                    }
+                  } catch (e) {
+                    console.error(`Error verifying download: ${e.message}`);
+                    try { fs.unlinkSync(tempDownloadPath); } catch (e) {}
+                  }
+                });
+              });
             });
           }).on('error', (err) => {
-            fs.unlink(targetSilencePath, () => {});
+            file.close();
+            try { fs.unlinkSync(tempDownloadPath); } catch (e) {}
             console.error(`Failed to download silence MP3: ${err.message}`);
           });
         } catch (downloadError) {
