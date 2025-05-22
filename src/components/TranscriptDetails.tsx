@@ -28,6 +28,7 @@ import { useSettings } from "@/hooks/useSettings";
 import useMicrophoneRecording from "@/hooks/useMicrophoneRecording";
 import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
 import useCombinedRecording from "@/hooks/useCombinedRecording";
+import AudioPlayer from "@/components/AudioPlayer";
 
 interface TranscriptLine {
   id: string;
@@ -1015,91 +1016,17 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                     </div>
                   </div>
                 ) : (
-                  // Audio player controls
+                  // Audio player controls - Replace this section with the AudioPlayer component
                   <div className="flex flex-col gap-4 mb-4">
-                    <div className="flex items-center gap-4">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={handlePlayPause}
-                        className="h-10 w-10 rounded-full"
-                        disabled={!recordedAudioUrl}
-                      >
-                        {isPlaying ? (
-                          <Pause className="h-5 w-5" />
-                        ) : (
-                          <Play className="h-5 w-5" />
-                        )}
-                        <span className="sr-only">
-                          {isPlaying ? "Pause" : "Play"}
-                        </span>
-                      </Button>
-                      
-                      <div className="text-sm font-medium">
-                        {formatTime(currentAudioTime)} / {formatTime(audioDuration)}
-                      </div>
-                      
-                      <div className="flex items-center gap-2 ml-auto">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={handleToggleMute}
-                          className="h-8 w-8 p-0"
-                        >
-                          {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                        </Button>
-                        <div className="w-20">
-                          <Slider
-                            value={[volume]}
-                            min={0}
-                            max={100}
-                            step={1}
-                            onValueChange={handleVolumeChange}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Audio scrubber */}
-                    <div className="w-full">
-                      <Slider
-                        value={[currentAudioTime]}
-                        min={0}
-                        max={audioDuration || 100}
-                        step={0.1}
-                        onValueChange={handleAudioTimeChange}
-                        disabled={!recordedAudioUrl}
+                    {recordedAudioUrl ? (
+                      <AudioPlayer 
+                        audioUrl={recordedAudioUrl}
+                        autoPlay={false}
+                        showWaveform={true}
                       />
-                    </div>
-                    
-                    {/* Audio waveform visualization */}
-                    {recordedAudioUrl && (
-                      <div className="h-20 bg-muted rounded-md waveform-bg relative">
-                        {/* Simulated waveform for now */}
-                        <div className="absolute inset-0 flex items-center px-4">
-                          <div className="w-full h-16 flex items-center">
-                            {Array.from({ length: 100 }).map((_, i) => {
-                              const height = Math.sin(i * 0.2) * 20 + 30;
-                              return (
-                                <div
-                                  key={i}
-                                  className="w-1 mx-0.5 bg-primary-dark opacity-70"
-                                  style={{
-                                    height: `${height}%`,
-                                  }}
-                                />
-                              );
-                            })}
-                          </div>
-                        </div>
-                        
-                        {/* Playhead */}
-                        <div 
-                          className="absolute top-0 bottom-0 w-0.5 bg-primary"
-                          style={{ 
-                            left: `${(currentAudioTime / (audioDuration || 1)) * 100}%` 
-                          }}
-                        />
+                    ) : (
+                      <div className="text-center py-4 text-muted-foreground">
+                        <p>No audio recording available</p>
                       </div>
                     )}
                     
