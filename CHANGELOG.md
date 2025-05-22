@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
 - Replaced defaultProps with JavaScript default parameters in function components
 - Enhanced save functionality to store all meeting data including details, action items, notes, context, transcript, and audio recording path
 - Improved recording source selection with visual indicators for active source
+- Implemented singleton pattern for database initialization to prevent duplicate setup and improve performance
 
 ### Fixed
 - Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)
@@ -56,6 +57,7 @@ All notable changes to this project will be documented in this file.
 - Enhanced error handling for audio recording to provide better user feedback
 - Fixed preload script module path resolution error by using absolute paths for module imports
 - Fixed DatabaseService export in database.ts to use proper namespaced pattern, resolving import errors across the application
+- Fixed database being initialized multiple times, causing duplicate setup and potential performance issues
 
 ## [0.3.1] - 2024-05-21
 
