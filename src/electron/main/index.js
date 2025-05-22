@@ -8,7 +8,8 @@ import { promisify } from "util";
 import { exec as execCallback } from "child_process";
 import https from 'https';
 import isDev from "electron-is-dev";
-import { google } from "@google-cloud/speech/build/protos/protos";
+import pkg from "@google-cloud/speech/build/protos/protos.js";
+const { google } = pkg;
 
 // Import our new transcript handler
 import { setupTranscriptHandlers } from "./transcript-handler.js";
