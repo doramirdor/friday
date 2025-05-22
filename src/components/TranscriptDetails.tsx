@@ -26,11 +26,15 @@ type RecordingSource = 'system' | 'mic' | 'both';
  * TranscriptDetails component that uses the layered architecture
  * This component focuses on the UI and delegates business logic to hooks
  */
-const TranscriptDetails: React.FC = () => {
+interface TranscriptDetailsProps {
+  initialMeetingState?: MeetingState;
+}
+
+const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingState }) => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const meetingState = location.state as MeetingState | undefined;
+  const meetingState = initialMeetingState || location.state as MeetingState | undefined;
   
   // Setup hooks
   const { settings } = useSettings();
@@ -89,6 +93,8 @@ const TranscriptDetails: React.FC = () => {
   
   // Local state
   const [title, setTitle] = useState(meetingState?.title || "New Meeting");
+  const [description, setDescription] = useState(meetingState?.description || "");
+  const [tags, setTags] = useState<string[]>(meetingState?.tags || []);
   const [currentSpeakerId, setCurrentSpeakerId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -296,7 +302,7 @@ const TranscriptDetails: React.FC = () => {
       toast.success('Transcript saved successfully');
     }
   }, [saveTranscript]);
-  
+
   // Render the component
   return (
     <div className="min-h-screen flex flex-col">
@@ -324,11 +330,41 @@ const TranscriptDetails: React.FC = () => {
       
       <main className="flex-1 overflow-hidden p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
-          {/* Left panel - Recording controls */}
+          {/* Left panel - Recording controls and Meeting details */}
           <div className="md:col-span-1 border rounded-md p-4 flex flex-col">
-            <h2 className="text-lg font-medium mb-4">Recording</h2>
+            <h2 className="text-lg font-medium mb-4">Meeting Info</h2>
+            
+            {/* Meeting details */}
+            <div className="mb-4 pb-4 border-b">
+              <p className="text-sm text-muted-foreground mb-2">Title</p>
+              <p className="font-medium">{title}</p>
+              
+              {description && (
+                <>
+                  <p className="text-sm text-muted-foreground mt-3 mb-2">Description</p>
+                  <p className="text-sm">{description}</p>
+                </>
+              )}
+              
+              {tags.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-sm text-muted-foreground mb-2">Tags</p>
+                  <div className="flex flex-wrap gap-2">
+                    {tags.map((tag, index) => (
+                      <span 
+                        key={index}
+                        className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-secondary text-secondary-foreground"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             
             {/* Recording controls */}
+            <h2 className="text-lg font-medium mb-4">Recording</h2>
             <div className="flex flex-col items-center gap-4 py-8">
               <div className="flex items-center justify-center mb-4 space-x-2">
                 <Button
@@ -397,32 +433,39 @@ const TranscriptDetails: React.FC = () => {
             {/* Speaker selector */}
             {speakers.length > 0 && (
               <div className="mt-auto">
-                <h3 className="text-sm font-medium mb-2">Current Speaker</h3>
-                <div className="flex flex-wrap gap-2">
-                  {speakers.map(speaker => (
-                    <Button
+                <h3 className="text-sm font-medium mb-2">Speakers</h3>
+                <div className="space-y-2">
+                  {speakers.map((speaker) => (
+                    <div 
                       key={speaker.id}
-                      variant={currentSpeakerId === speaker.id ? "default" : "outline"}
-                      size="sm"
+                      className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${
+                        currentSpeakerId === speaker.id ? "bg-secondary" : "hover:bg-secondary/50"
+                      }`}
                       onClick={() => handleChangeSpeaker(speaker.id)}
-                      style={{ 
-                        borderColor: speaker.color,
-                        backgroundColor: currentSpeakerId === speaker.id ? speaker.color : 'transparent',
-                        color: currentSpeakerId === speaker.id ? 'white' : speaker.color
-                      }}
                     >
-                      {speaker.name}
-                    </Button>
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: speaker.color }}
+                      />
+                      <span className="text-sm">{speaker.name}</span>
+                    </div>
                   ))}
+                  {/* Add new speaker button */}
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="w-full justify-start text-muted-foreground hover:text-foreground"
                     onClick={() => {
-                      const name = prompt('Enter speaker name');
-                      if (name) handleAddNewSpeaker(name);
+                      const name = prompt("Enter speaker name");
+                      if (name) {
+                        const newSpeaker = handleAddNewSpeaker(name);
+                        if (newSpeaker) {
+                          setCurrentSpeakerId(newSpeaker.id);
+                        }
+                      }
                     }}
                   >
-                    + Add
+                    + Add Speaker
                   </Button>
                 </div>
               </div>
@@ -430,12 +473,48 @@ const TranscriptDetails: React.FC = () => {
           </div>
           
           {/* Center panel - Transcript */}
-          <div className="md:col-span-2 border rounded-md p-4 flex flex-col">
-            <h2 className="text-lg font-medium mb-4">Transcript</h2>
+          <div className="md:col-span-2 border rounded-md flex flex-col overflow-hidden">
+            <div className="p-4 border-b">
+              <h2 className="text-lg font-medium">Transcript</h2>
+            </div>
             
-            {/* Audio player */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {isTranscriptLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-muted-foreground">Loading transcript...</p>
+                </div>
+              ) : transcriptLines.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-muted-foreground">No transcript yet. Start recording to begin.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {transcriptLines.map((line) => {
+                    const speaker = speakers.find(s => s.id === line.speakerId);
+                    return (
+                      <div key={line.id} className="group">
+                        <div className="flex items-start gap-2">
+                          <div
+                            className="w-3 h-3 mt-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: speaker?.color || '#666666' }}
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{speaker?.name || 'Unknown'}</p>
+                            <p className="text-sm">{line.text}</p>
+                          </div>
+                          <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100">
+                            {new Date(line.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            
             {recordedAudioUrl && (
-              <div className="mb-4">
+              <div className="p-4 border-t">
                 <AudioPlayer
                   audioUrl={recordedAudioUrl}
                   autoPlay={false}
@@ -443,42 +522,16 @@ const TranscriptDetails: React.FC = () => {
                 />
               </div>
             )}
-            
-            {/* Transcript lines */}
-            <div className="flex-1 overflow-y-auto">
-              {transcriptLines.length === 0 ? (
-                <div className="text-center py-16 text-muted-foreground">
-                  <p>No transcript available yet</p>
-                  <p className="mt-2 text-sm">Start recording to begin transcription</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {transcriptLines.map((line) => (
-                    <div 
-                      key={line.id}
-                      className="p-2 rounded-md hover:bg-accent/50"
-                    >
-                      <div className="flex gap-2">
-                        <span 
-                          className="font-medium"
-                          style={{ 
-                            color: speakers.find(s => s.id === line.speakerId)?.color || "#666666",
-                          }}
-                        >
-                          {speakers.find(s => s.id === line.speakerId)?.name || "Unknown"}:
-                        </span>
-                        <p className="flex-1">{line.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </main>
     </div>
   );
+};
+
+// Set default props
+TranscriptDetails.defaultProps = {
+  initialMeetingState: undefined
 };
 
 export default TranscriptDetails; 
