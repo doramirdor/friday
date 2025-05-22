@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
 - RECORDER_NOT_FOUND errors by implementing a software-only recording mode that works without the Swift binary
 - Settings dialog alignment issue where content was vertically centered instead of aligned to the top
 - Incomplete scrolling in the transcription tab of the settings dialog which prevented access to bottom content
+- Inconsistent tab panel rendering in settings dialog by ensuring all tabs have uniform alignment and proper spacing
+- Added proper spacing and consistent bottom padding across all settings tab panels for better usability
 
 ## [0.3.1] - 2024-05-21
 
