@@ -15,6 +15,15 @@ import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useGoogleSpeech from "@/hooks/useGoogleSpeech";
 import { Toggle } from "@/components/ui/toggle";
 import { Slider } from "@/components/ui/slider";
+import { DatabaseService } from '@/services/database';
+import { 
+  Meeting, 
+  ActionItem as DBActionItem, 
+  Notes as DBNotes, 
+  Context as DBContext,
+  TranscriptLine as DBTranscriptLine,
+  Speaker as DBSpeaker
+} from '@/models/types';
 
 interface TranscriptLine {
   id: string;
@@ -654,9 +663,156 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     });
   };
   
-  const handleSave = () => {
-    toast.success("Changes saved successfully");
-  };
+  const handleSave = useCallback(async () => {
+    if (!meetingId) {
+      toast.error("Cannot save: Missing meeting ID");
+      return;
+    }
+
+    try {
+      // Start with a loading toast
+      const loadingToast = toast.loading("Saving meeting data...");
+      
+      // 1. Create or update the meeting record
+      const meetingData: Meeting = {
+        _id: meetingId,
+        title,
+        description,
+        tags,
+        createdAt: meetingState?.createdAt ? new Date(meetingState.createdAt).toISOString() : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        recordingPath: recordedAudioUrl || undefined,
+        recordingDuration: recordingDuration || undefined,
+        liveTranscript: isLiveTranscript,
+        type: 'meeting'
+      };
+      
+      // Try to get existing meeting first
+      try {
+        const existingMeeting = await DatabaseService.getMeeting(meetingId);
+        if (existingMeeting && existingMeeting._rev) {
+          meetingData._rev = existingMeeting._rev;
+          await DatabaseService.updateMeeting(meetingData);
+        } else {
+          await DatabaseService.createMeeting(meetingData);
+        }
+      } catch (err) {
+        // If meeting doesn't exist, create it
+        await DatabaseService.createMeeting(meetingData);
+      }
+      
+      // 2. Save transcript lines with required properties
+      if (transcriptLines.length > 0) {
+        const formattedTranscriptLines = transcriptLines.map(line => ({
+          ...line,
+          meetingId,
+          type: 'transcriptLine' as const
+        }));
+        await DatabaseService.saveTranscript(meetingId, formattedTranscriptLines as DBTranscriptLine[]);
+      }
+      
+      // 3. Save speakers with required properties
+      if (speakers.length > 0) {
+        const formattedSpeakers = speakers.map(speaker => ({
+          ...speaker,
+          meetingId, 
+          type: 'speaker' as const
+        }));
+        await DatabaseService.saveSpeakers(meetingId, formattedSpeakers as DBSpeaker[]);
+      }
+      
+      // 4. Save action items
+      if (actionItems.length > 0) {
+        for (const item of actionItems) {
+          const dbActionItem: DBActionItem = {
+            id: item.id,
+            meetingId,
+            text: item.text,
+            completed: item.completed,
+            type: 'actionItem'
+          };
+          await DatabaseService.saveActionItem(dbActionItem);
+        }
+      }
+      
+      // 5. Save notes
+      const dbNotes: DBNotes = {
+        meetingId,
+        content: notes,
+        updatedAt: new Date().toISOString(),
+        type: 'notes'
+      };
+      await DatabaseService.saveNotes(dbNotes);
+      
+      // 6. Save context
+      const dbContext: DBContext = {
+        meetingId,
+        name: context.name,
+        files: context.files,
+        overrideGlobal: context.overrideGlobal,
+        type: 'context'
+      };
+      await DatabaseService.saveContext(dbContext);
+      
+      // 7. If we have an audio file, ensure the path is saved
+      if (recordedAudioUrl) {
+        // If this is a blob URL created in the browser, we need to save the actual file
+        if (recordedAudioUrl.startsWith('blob:')) {
+          const win = window as any;
+          
+          if (win?.electronAPI?.saveAudioFile) {
+            try {
+              // Fetch the blob data
+              const response = await fetch(recordedAudioUrl);
+              const blob = await response.blob();
+              const buffer = await blob.arrayBuffer();
+              
+              // Save via Electron
+              const result = await win.electronAPI.saveAudioFile(
+                buffer, 
+                `recording_${meetingId}.wav`,
+                ['wav', 'mp3']
+              );
+              
+              if (result.success && result.filePath) {
+                // Update the meeting with the actual file path
+                const updatedMeeting: Meeting = {
+                  ...meetingData,
+                  recordingPath: result.filePath
+                };
+                await DatabaseService.updateMeeting(updatedMeeting);
+              }
+            } catch (error) {
+              console.error('Error saving audio file:', error);
+              toast.error('Failed to save audio file');
+            }
+          }
+        }
+      }
+      
+      // Close the loading toast and show success
+      toast.dismiss(loadingToast);
+      toast.success("Meeting saved successfully");
+      
+    } catch (error) {
+      console.error('Error saving meeting:', error);
+      toast.error('Failed to save meeting data');
+    }
+  }, [
+    meetingId, 
+    title, 
+    description, 
+    tags, 
+    recordedAudioUrl, 
+    recordingDuration,
+    isLiveTranscript,
+    transcriptLines,
+    speakers,
+    actionItems,
+    notes,
+    context,
+    meetingState?.createdAt
+  ]);
   
   // Toggle panel visibility
   const toggleLeftPanel = () => {
