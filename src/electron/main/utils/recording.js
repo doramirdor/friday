@@ -14,6 +14,13 @@ let useSoftwareRecordingMode = true;
 
 const initRecording = (filepath, filename, source = 'system') => {
   return new Promise(async (resolve) => {
+    // Always use Documents/Friday Recordings/ directory regardless of passed filepath
+    const documentsPath = app.getPath("documents");
+    const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings");
+    
+    // Override filepath with our standard path
+    filepath = fridayRecordingsPath;
+    
     // Ensure the filepath exists and is writable
     if (!fs.existsSync(filepath)) {
       try {
@@ -232,7 +239,7 @@ export async function startRecording({ filepath, filename, source = 'system' }) 
   }
 
   // Process the filename to ensure it has the right extension
-  let filenameWithoutExt = (filename || "recording").replace(/\.\w+$/, '');
+  let filenameWithoutExt = (filename || `recording_${Date.now()}`).replace(/\.\w+$/, '');
   
   // Add suffix based on source for clearer identification
   if (source === 'both') {
@@ -246,7 +253,24 @@ export async function startRecording({ filepath, filename, source = 'system' }) 
   // Validate filename to avoid characters that might cause issues
   filenameWithoutExt = filenameWithoutExt.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   
-  // First check if the file exists
+  // Always use Documents/Friday Recordings/ directory
+  const documentsPath = app.getPath("documents");
+  const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings");
+  
+  // Create the directory if it doesn't exist
+  if (!fs.existsSync(fridayRecordingsPath)) {
+    try {
+      fs.mkdirSync(fridayRecordingsPath, { recursive: true });
+      console.log(`Created recordings directory at ${fridayRecordingsPath}`);
+    } catch (error) {
+      console.error(`Failed to create recordings directory: ${error.message}`);
+    }
+  }
+  
+  // Override filepath with our standard path
+  filepath = fridayRecordingsPath;
+  
+  // Always use MP3 format
   const fullPath = path.join(filepath, `${filenameWithoutExt}.mp3`);
   if (fs.existsSync(fullPath)) {
     dialog.showMessageBox({
@@ -296,9 +320,22 @@ export function stopRecording() {
       ? path.join(process.cwd(), 'src', 'assets') 
       : path.join(process.resourcesPath, 'assets');
     
-    // Create the destination directory if it doesn't exist
-    const downloadsPath = app.getPath("downloads");
-    const outputPath = path.join(downloadsPath, `recording_${timestamp}.mp3`);
+    // Save to Documents/Friday Recordings/ directory
+    const documentsPath = app.getPath("documents");
+    const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings");
+    
+    // Create the directory if it doesn't exist
+    if (!fs.existsSync(fridayRecordingsPath)) {
+      try {
+        fs.mkdirSync(fridayRecordingsPath, { recursive: true });
+        console.log(`Created recordings directory at ${fridayRecordingsPath}`);
+      } catch (error) {
+        console.error(`Failed to create recordings directory: ${error.message}`);
+      }
+    }
+    
+    // Use MP3 format as requested
+    const outputPath = path.join(fridayRecordingsPath, `recording_${timestamp}.mp3`);
     
     try {
       // Check if we have a silence MP3 file

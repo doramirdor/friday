@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
 - Enhanced debug logging for recording processes and audio file handling
 - Added "Send to Transcript" button to manually trigger audio transcription
 - Added "Open in Native Player" button for when browser audio playback fails
+- Standardized recording file location to Documents/Friday Recordings/ directory
+- Standardized recording file format to MP3
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
