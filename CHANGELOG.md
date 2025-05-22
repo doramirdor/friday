@@ -38,6 +38,9 @@ All notable changes to this project will be documented in this file.
 - Implemented singleton pattern for database initialization to prevent duplicate setup and improve performance
 
 ### Fixed
+- Fixed audio playback issues with MP3 data URLs by adding automatic conversion to WAV format for better browser compatibility
+- Added native player fallback for audio playback when browser can't play certain audio formats
+- Added visual indication when audio can't be played in browser with option to use native player
 - Fixed audio player not showing by improving the display condition to always show player when audio is available, regardless of meeting state
 - Fixed audio player not being displayed in TranscriptDetails component when audio is successfully loaded
 - Fixed preload script module not found error by implementing more robust module loading with fallbacks
