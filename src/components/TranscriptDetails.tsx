@@ -879,6 +879,13 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     setIsPlaying(!isPlaying);
   }, [isPlaying, recordedAudioUrl]);
 
+  // Add a useEffect to debug audio URL state
+  useEffect(() => {
+    console.log('Debug - recordedAudioUrl:', recordedAudioUrl);
+    console.log('Debug - isNewMeeting:', isNewMeeting);
+    console.log('Debug - transcriptLines.length:', transcriptLines.length);
+  }, [recordedAudioUrl, isNewMeeting, transcriptLines.length]);
+
   // Render the component
   return (
     <div className="min-h-screen flex flex-col">
@@ -938,7 +945,66 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
               
               {/* Recording controls for new meeting or Waveform player for existing */}
               <div className="p-6 border-b">
-                {isNewMeeting || transcriptLines.length === 0 ? (
+                {/* Show AudioPlayer when we have an audio URL, regardless of meeting state */}
+                {recordedAudioUrl ? (
+                  <div className="flex flex-col gap-4 mb-4">
+                    <div className="p-2 border border-blue-300 rounded-md bg-blue-50 mb-2">
+                      <p className="text-sm text-blue-700">Audio file loaded: {recordedAudioUrl.substring(0, 50)}...</p>
+                    </div>
+                    
+                    <AudioPlayer 
+                      audioUrl={recordedAudioUrl}
+                      autoPlay={false}
+                      showWaveform={true}
+                    />
+                    
+                    {/* Button to start a new recording */}
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-2"
+                        onClick={handleStartStopRecording}
+                      >
+                        {isRecording ? "Stop Recording" : "Record New Audio"}
+                      </Button>
+
+                      {/* Recording source selector for existing recording */}
+                      <div className="flex items-center gap-2 mt-2 p-1 rounded-md border border-input">
+                        <Button
+                          variant={recordingSource === 'system' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('system')}
+                          className="flex gap-1 items-center h-8"
+                          disabled={!isSystemAvailable}
+                        >
+                          <Laptop className="h-3 w-3" />
+                          <span className="text-xs">System</span>
+                        </Button>
+                        <Button
+                          variant={recordingSource === 'mic' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('mic')}
+                          className="flex gap-1 items-center h-8"
+                          disabled={!isMicAvailable}
+                        >
+                          <Mic className="h-3 w-3" />
+                          <span className="text-xs">Mic</span>
+                        </Button>
+                        <Button
+                          variant={recordingSource === 'both' ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => handleRecordingSourceChange('both')}
+                          className="flex gap-1 items-center h-8"
+                          disabled={!isCombinedAvailable}
+                        >
+                          <Headphones className="h-3 w-3" />
+                          <span className="text-xs">Both</span>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
                   <div className="flex flex-col items-center gap-4 py-8">
                     {/* Recording source selector */}
                     <div className="flex items-center justify-center mb-4 space-x-4">
@@ -1012,67 +1078,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                         <span className="text-sm font-medium">
                           {isLiveTranscript ? "Live Transcript: On" : "Live Transcript: Off"}
                         </span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  // Audio player controls - Replace this section with the AudioPlayer component
-                  <div className="flex flex-col gap-4 mb-4">
-                    {recordedAudioUrl ? (
-                      <AudioPlayer 
-                        audioUrl={recordedAudioUrl}
-                        autoPlay={false}
-                        showWaveform={true}
-                      />
-                    ) : (
-                      <div className="text-center py-4 text-muted-foreground">
-                        <p>No audio recording available</p>
-                      </div>
-                    )}
-                    
-                    {/* Button to start a new recording */}
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="mt-2"
-                        onClick={handleStartStopRecording}
-                      >
-                        {isRecording ? "Stop Recording" : "Record New Audio"}
-                      </Button>
-
-                      {/* Recording source selector for existing recording */}
-                      <div className="flex items-center gap-2 mt-2 p-1 rounded-md border border-input">
-                        <Button
-                          variant={recordingSource === 'system' ? "secondary" : "ghost"}
-                          size="sm"
-                          onClick={() => handleRecordingSourceChange('system')}
-                          className="flex gap-1 items-center h-8"
-                          disabled={!isSystemAvailable}
-                        >
-                          <Laptop className="h-3 w-3" />
-                          <span className="text-xs">System</span>
-                        </Button>
-                        <Button
-                          variant={recordingSource === 'mic' ? "secondary" : "ghost"}
-                          size="sm"
-                          onClick={() => handleRecordingSourceChange('mic')}
-                          className="flex gap-1 items-center h-8"
-                          disabled={!isMicAvailable}
-                        >
-                          <Mic className="h-3 w-3" />
-                          <span className="text-xs">Mic</span>
-                        </Button>
-                        <Button
-                          variant={recordingSource === 'both' ? "secondary" : "ghost"}
-                          size="sm"
-                          onClick={() => handleRecordingSourceChange('both')}
-                          className="flex gap-1 items-center h-8"
-                          disabled={!isCombinedAvailable}
-                        >
-                          <Headphones className="h-3 w-3" />
-                          <span className="text-xs">Both</span>
-                        </Button>
                       </div>
                     </div>
                   </div>
