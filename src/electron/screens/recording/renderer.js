@@ -378,6 +378,34 @@ const createAudioPlayer = (filePath) => {
     player.className = "w-full";
     player.src = `file://${filePath}`;
     
+    // Add error handling for audio playback
+    player.onerror = (e) => {
+      console.error(`Error playing audio: ${e}`);
+      
+      if (player.error) {
+        console.error(`Audio error code: ${player.error.code}, message: ${player.error.message}`);
+      }
+      
+      // Try an alternative approach for playback
+      playerContainer.innerHTML = `
+        <div class="mt-2 p-2 bg-yellow-100 text-yellow-700 rounded-md">
+          <p>Could not play audio directly. The file may still be valid.</p>
+          <button id="open-external" class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-1 px-2 rounded-md text-sm mt-2">
+            Open in System Player
+          </button>
+        </div>
+      `;
+      
+      document.getElementById("open-external").addEventListener("click", () => {
+        shell.openPath(filePath);
+      });
+    };
+
+    // Add loaded handler to confirm successful loading
+    player.onloadeddata = () => {
+      console.log(`Audio loaded successfully: ${filePath}`);
+    };
+    
     playerContainer.appendChild(audioTitle);
     playerContainer.appendChild(player);
   }

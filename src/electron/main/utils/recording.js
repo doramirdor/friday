@@ -9,8 +9,16 @@ const execAsync = promisify(exec);
 let recordingProcess = null;
 
 // Change the useSoftwareRecordingMode flag to false to use the native Swift recorder
-// Start with software recording mode set to false
+// Start with software recording mode set to false and ensure it stays false
 let useSoftwareRecordingMode = false;
+
+// Force to false in case it's being set elsewhere
+setTimeout(() => {
+  if (useSoftwareRecordingMode === true) {
+    console.log("⚠️ Warning: useSoftwareRecordingMode was set to true, forcing to false");
+    useSoftwareRecordingMode = false;
+  }
+}, 1000);
 
 const initRecording = (filepath, filename, source = 'system') => {
   return new Promise(async (resolve) => {
