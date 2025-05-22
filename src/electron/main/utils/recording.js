@@ -370,6 +370,16 @@ export function stopRecording() {
           // Get file size to verify it's not empty
           const stats = fs.statSync(silencePath);
           if (stats.size > 0) {
+            // Check if the file is actually a binary file (not HTML)
+            const fileStart = fs.readFileSync(silencePath, { encoding: null }).slice(0, 20);
+            const isTextFile = Buffer.from(fileStart).toString().includes('<!DOCTYPE') || 
+                              Buffer.from(fileStart).toString().includes('<html');
+            
+            if (isTextFile) {
+              console.error('Silence file contains HTML, not MP3 data');
+              throw new Error('Invalid silence file format');
+            }
+            
             // Copy the silence file
             fs.copyFileSync(silencePath, outputPath);
             
@@ -420,74 +430,6 @@ export function stopRecording() {
           console.log(`Software recording: created enhanced MP3 file at ${outputPath} (${fs.statSync(outputPath).size} bytes)`);
         } else {
           throw new Error("Failed to create synthetic MP3 file");
-        }
-        
-        // Try to download a proper silence file for next time (simplified)
-        try {
-          const https = require('https');
-          const silenceUrl = 'https://github.com/anars/blank-audio/raw/master/3-seconds-of-silence.mp3';
-          const targetSilencePath = assetsPaths[0];
-          
-          // Create directory if needed
-          if (!fs.existsSync(path.dirname(targetSilencePath))) {
-            fs.mkdirSync(path.dirname(targetSilencePath), { recursive: true });
-          }
-          
-          // Use a temporary file for the download to avoid partial downloads
-          const tempDownloadPath = `${targetSilencePath}.download`;
-          console.log(`Downloading silence MP3 from ${silenceUrl} to ${tempDownloadPath}`);
-          
-          // Start the download
-          const file = fs.createWriteStream(tempDownloadPath);
-          https.get(silenceUrl, (response) => {
-            if (response.statusCode !== 200) {
-              console.log(`Download failed with status code: ${response.statusCode}`);
-              file.close();
-              // Clean up partial file
-              try { fs.unlinkSync(tempDownloadPath); } catch (e) {}
-              return;
-            }
-            
-            // Collect the data
-            let downloadedData = [];
-            let downloadSize = 0;
-            
-            response.on('data', (chunk) => {
-              downloadedData.push(chunk);
-              downloadSize += chunk.length;
-            });
-            
-            response.on('end', () => {
-              file.end();
-              file.on('finish', () => {
-                file.close(() => {
-                  console.log(`Download completed: ${downloadSize} bytes`);
-                  
-                  // Verify download was successful
-                  try {
-                    const stats = fs.statSync(tempDownloadPath);
-                    if (stats.size > 0) {
-                      // Move temp file to target
-                      fs.renameSync(tempDownloadPath, targetSilencePath);
-                      console.log(`Successfully saved silence MP3 to ${targetSilencePath}`);
-                    } else {
-                      console.error("Downloaded file is empty, discarding");
-                      fs.unlinkSync(tempDownloadPath);
-                    }
-                  } catch (e) {
-                    console.error(`Error verifying download: ${e.message}`);
-                    try { fs.unlinkSync(tempDownloadPath); } catch (e) {}
-                  }
-                });
-              });
-            });
-          }).on('error', (err) => {
-            file.close();
-            try { fs.unlinkSync(tempDownloadPath); } catch (e) {}
-            console.error(`Failed to download silence MP3: ${err.message}`);
-          });
-        } catch (downloadError) {
-          console.error(`Error setting up silence MP3 download: ${downloadError.message}`);
         }
       }
       
