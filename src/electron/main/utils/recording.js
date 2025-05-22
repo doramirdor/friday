@@ -309,10 +309,15 @@ export async function startRecording({ filepath, filename, source = 'system' }) 
   }
 }
 
-export function stopRecording() {
+export async function stopRecording() {
   if (useSoftwareRecordingMode) {
     // For software mode, just send the stop signal directly
     const timestamp = Date.now();
+    
+    // Use the pre-generated silence MP3 file
+    const resourcesPath = process.env.NODE_ENV === 'development' 
+      ? path.join(process.cwd(), 'src', 'assets') 
+      : path.join(process.resourcesPath, 'assets');
     
     // Save to Documents/Friday Recordings/ directory
     const documentsPath = app.getPath("documents");
@@ -332,42 +337,119 @@ export function stopRecording() {
     const outputPath = path.join(fridayRecordingsPath, `recording_${timestamp}.mp3`);
     
     try {
-      console.log(`Creating synthetic MP3 file at: ${outputPath}`);
+      console.log(`Creating recording file at: ${outputPath}`);
       
-      // Create a valid MP3 file with multiple frames
-      // This is the most reliable approach to ensure a valid MP3 file
-      const silenceData = Buffer.alloc(10240); // 10KB buffer for a small but valid MP3
+      // Look for silence.mp3 in various locations
+      const silencePaths = [
+        path.join(resourcesPath, 'silence.mp3'),
+        path.join(process.cwd(), 'src', 'assets', 'silence.mp3'),
+        path.join(process.resourcesPath || '', 'assets', 'silence.mp3'),
+        path.join(app.getAppPath(), 'src', 'assets', 'silence.mp3')
+      ];
       
-      // Fill with repeating MP3 frame headers and empty frames
-      // MP3 frame header: 0xFF 0xFB followed by bitrate and other info
-      for (let i = 0; i < silenceData.length; i += 32) {
-        if (i + 32 <= silenceData.length) {
-          // Frame header
-          silenceData[i] = 0xFF;
-          silenceData[i+1] = 0xFB;
-          silenceData[i+2] = 0x90; // Bitrate info
-          silenceData[i+3] = 0x44; // Frequency info
-          // Rest of frame is silence data
+      let silencePath = null;
+      for (const tryPath of silencePaths) {
+        if (fs.existsSync(tryPath)) {
+          try {
+            // Verify it's a real MP3 file, not HTML
+            const buffer = fs.readFileSync(tryPath, { encoding: null }).slice(0, 50);
+            const asText = buffer.toString('utf8');
+            
+            if (!asText.includes('<!DOCTYPE') && !asText.includes('<html')) {
+              silencePath = tryPath;
+              console.log(`Found valid silence MP3 at: ${silencePath}`);
+              break;
+            } else {
+              console.log(`Found HTML file instead of MP3 at: ${tryPath}`);
+            }
+          } catch (err) {
+            console.error(`Error checking file at ${tryPath}: ${err.message}`);
+          }
         }
       }
       
-      fs.writeFileSync(outputPath, silenceData);
-      
-      // Verify file was created successfully
-      if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-        console.log(`Software recording: created MP3 file at ${outputPath} (${fs.statSync(outputPath).size} bytes)`);
+      if (silencePath) {
+        // Copy the silence file
+        fs.copyFileSync(silencePath, outputPath);
+        console.log(`Copied silence MP3 to ${outputPath}`);
         
-        // Verify it's actually an MP3 file
-        const fileStart = fs.readFileSync(outputPath, { encoding: null }).slice(0, 10);
-        const isMP3 = fileStart[0] === 0xFF && fileStart[1] === 0xFB;
+        // Verify the copy was successful
+        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+          console.log(`Copy successful: ${fs.statSync(outputPath).size} bytes`);
+          global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
+        } else {
+          throw new Error("Copy failed or resulted in empty file");
+        }
+      } else {
+        // If no silence file is found, use ffmpeg to generate one
+        console.log("No silence.mp3 found, generating one with ffmpeg");
         
-        if (!isMP3) {
-          throw new Error("Created file is not a valid MP3");
+        // Make sure directory exists
+        if (!fs.existsSync(path.dirname(resourcesPath))) {
+          fs.mkdirSync(path.dirname(resourcesPath), { recursive: true });
         }
         
-        global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
-      } else {
-        throw new Error("Failed to create MP3 file");
+        // Path to generate the silence file
+        const generatedSilencePath = path.join(resourcesPath, 'silence.mp3');
+        
+        try {
+          // Use ffmpeg to generate a silence file
+          // This is more reliable than manually creating MP3 frames
+          const { spawn } = await import('child_process');
+          
+          const ffmpegProcess = spawn('ffmpeg', [
+            '-f', 'lavfi',
+            '-i', 'anullsrc=r=44100:cl=stereo',
+            '-t', '3',
+            '-q:a', '2',
+            outputPath
+          ]);
+          
+          await new Promise((resolve, reject) => {
+            ffmpegProcess.on('close', (code) => {
+              if (code === 0) {
+                console.log(`Successfully generated silence MP3 at ${outputPath}`);
+                
+                // Also create one in the assets directory for future use
+                try {
+                  fs.copyFileSync(outputPath, generatedSilencePath);
+                  console.log(`Copied silence MP3 to assets directory: ${generatedSilencePath}`);
+                } catch (err) {
+                  console.error(`Failed to save silence MP3 to assets: ${err.message}`);
+                }
+                
+                resolve();
+              } else {
+                reject(new Error(`ffmpeg exited with code ${code}`));
+              }
+            });
+            
+            ffmpegProcess.on('error', (err) => {
+              reject(err);
+            });
+          });
+          
+          global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
+        } catch (ffmpegError) {
+          console.error(`Failed to generate silence with ffmpeg: ${ffmpegError.message}`);
+          
+          // Last resort - use a different approach with ffmpeg
+          try {
+            await import('child_process').then(({ execSync }) => {
+              execSync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 3 -q:a 2 "${outputPath}"`);
+            });
+            
+            if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+              console.log(`Successfully created silence MP3 with execSync: ${fs.statSync(outputPath).size} bytes`);
+              global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
+            } else {
+              throw new Error("Failed to create silence MP3 with execSync");
+            }
+          } catch (execSyncError) {
+            console.error(`Final ffmpeg attempt failed: ${execSyncError.message}`);
+            throw new Error("All methods to create valid MP3 file failed");
+          }
+        }
       }
     } catch (error) {
       console.error(`Error creating audio file: ${error.message}`);
