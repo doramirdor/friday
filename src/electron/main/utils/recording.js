@@ -290,7 +290,7 @@ export function stopRecording() {
     // For software mode, just send the stop signal directly
     const timestamp = Date.now();
     
-    // Use a placeholder WAV file instead of an empty MP3 file
+    // Use a pre-downloaded silent MP3 file instead of generating one
     // This ensures we have a valid audio file for the player
     const resourcesPath = process.env.NODE_ENV === 'development' 
       ? path.join(process.cwd(), 'src', 'assets') 
@@ -298,43 +298,51 @@ export function stopRecording() {
     
     // Create the destination directory if it doesn't exist
     const downloadsPath = app.getPath("downloads");
-    const outputPath = path.join(downloadsPath, `recording_${timestamp}.wav`);
+    const outputPath = path.join(downloadsPath, `recording_${timestamp}.mp3`);
     
     try {
-      // Check if we have a placeholder file
-      const placeholderPath = path.join(resourcesPath, 'placeholder-audio.wav');
+      // Check if we have a silence MP3 file
+      const silencePath = path.join(resourcesPath, 'silence.mp3');
       
-      if (fs.existsSync(placeholderPath)) {
-        // Copy the placeholder file instead of creating an empty one
-        fs.copyFileSync(placeholderPath, outputPath);
-        console.log(`Software recording: copied placeholder audio to ${outputPath}`);
+      if (fs.existsSync(silencePath)) {
+        // Copy the silence file
+        fs.copyFileSync(silencePath, outputPath);
+        console.log(`Software recording: copied silence MP3 to ${outputPath}`);
       } else {
-        // Create a new minimal valid WAV file (1 second of silence)
-        // This is a very basic 44.1kHz, 16-bit, mono WAV file with 1 second of silence
-        const sampleRate = 44100;
-        const seconds = 1;
-        const numSamples = sampleRate * seconds;
-        const buffer = Buffer.alloc(44 + numSamples * 2);
+        // If we don't have a silence file, create a minimal file
+        // This is not ideal but better than an empty file
+        const silenceData = Buffer.from([
+          0xFF, 0xFB, 0x90, 0x44, 0x00, 0x00, 0x00, 0x00, 
+          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+          // Minimal MP3 header + frame
+          0xFF, 0xFB, 0x90, 0x44, 0x00, 0x00, 0x00, 0x00,
+          0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ]);
         
-        // WAV header
-        buffer.write('RIFF', 0);
-        buffer.writeUInt32LE(36 + numSamples * 2, 4); // File size - 8
-        buffer.write('WAVE', 8);
-        buffer.write('fmt ', 12);
-        buffer.writeUInt32LE(16, 16); // Format chunk size
-        buffer.writeUInt16LE(1, 20); // Audio format (PCM)
-        buffer.writeUInt16LE(1, 22); // Number of channels
-        buffer.writeUInt32LE(sampleRate, 24); // Sample rate
-        buffer.writeUInt32LE(sampleRate * 2, 28); // Byte rate
-        buffer.writeUInt16LE(2, 32); // Block align
-        buffer.writeUInt16LE(16, 34); // Bits per sample
-        buffer.write('data', 36);
-        buffer.writeUInt32LE(numSamples * 2, 40); // Data chunk size
+        fs.writeFileSync(outputPath, silenceData);
+        console.log(`Software recording: created minimal MP3 file at ${outputPath}`);
         
-        // Fill with silence (all zeros, already done by Buffer.alloc)
-        
-        fs.writeFileSync(outputPath, buffer);
-        console.log(`Software recording: created silent WAV file at ${outputPath}`);
+        // Also download the proper silence file for next time
+        try {
+          const https = require('https');
+          const silenceUrl = 'https://github.com/anars/blank-audio/raw/master/1-second-of-silence.mp3';
+          
+          console.log(`Downloading silence MP3 from ${silenceUrl}`);
+          const file = fs.createWriteStream(silencePath);
+          
+          https.get(silenceUrl, (response) => {
+            response.pipe(file);
+            file.on('finish', () => {
+              file.close();
+              console.log(`Downloaded silence MP3 to ${silencePath}`);
+            });
+          }).on('error', (err) => {
+            fs.unlink(silencePath);
+            console.error(`Failed to download silence MP3: ${err.message}`);
+          });
+        } catch (downloadError) {
+          console.error(`Error downloading silence MP3: ${downloadError.message}`);
+        }
       }
       
       global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);

@@ -89,6 +89,12 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
           }
         }
         
+        // If it's a file:// URL, convert it back to a regular path
+        if (filePath.startsWith('file://')) {
+          filePath = filePath.replace('file://', '');
+          console.log('Converted file URL back to path:', filePath);
+        }
+        
         // Only try native player if we have a file path (not a data URL)
         if (!filePath.startsWith('data:') && !filePath.startsWith('blob:')) {
           console.log('AudioPlayer: Trying native player with path:', filePath);
@@ -96,11 +102,19 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
           if (result.success) {
             toast.success("Playing with native audio player");
             return true;
+          } else if (result.error) {
+            console.error('Error from native player:', result.error);
+            toast.error(`Native player error: ${result.error}`);
           }
+        } else {
+          toast.error("Cannot play this audio format with native player");
         }
       } catch (error) {
         console.error('Error playing with native player:', error);
+        toast.error("Failed to use native player");
       }
+    } else {
+      toast.error("Native player not available");
     }
     return false;
   };
@@ -170,9 +184,15 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
         isLoading = false;
         if (timeoutId) clearTimeout(timeoutId);
         
-        // No longer auto-trying native player on error
-        // Just show the error message and let the user decide
-        toast.error("Audio can't be played in browser. Try using the native player button.");
+        // Check if it's a format error
+        const error = audioRef.current?.error;
+        if (error && error.code === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED = 4
+          console.warn("AudioPlayer: Media format not supported in browser");
+          // Only show toast if this is the first error
+          toast.error("Audio format not supported in browser. Try using the native player button.");
+        } else {
+          toast.error("Audio can't be played in browser. Try using the native player button.");
+        }
       };
       
       // Add abort handler for clean cancellation

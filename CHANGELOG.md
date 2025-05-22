@@ -73,6 +73,7 @@ All notable changes to this project will be documented in this file.
 - Fixed "Invalid hook call" error in TranscriptDetails by correctly using the useSettings hook
 - Fixed Swift Recorder issues by enabling software recording mode by default
 - Fixed audio player loading loop by generating valid WAV files in software recording mode instead of empty MP3 files
+- Fixed audio format errors by using pre-recorded silence MP3 file and better handling file:// URLs
 
 ## [0.3.1] - 2024-05-21
 

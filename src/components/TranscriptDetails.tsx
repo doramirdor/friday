@@ -628,7 +628,24 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   useEffect(() => {
     if (audioRef.current && recordedAudioUrl) {
       console.log('Updating audio source to:', recordedAudioUrl);
-      audioRef.current.src = recordedAudioUrl;
+      
+      // Make sure we're using file protocol for local files if needed
+      let audioSrc = recordedAudioUrl;
+      
+      // If it's a local file path and doesn't have a protocol, add file:// protocol
+      if (!audioSrc.startsWith('data:') && 
+          !audioSrc.startsWith('http:') && 
+          !audioSrc.startsWith('https:') && 
+          !audioSrc.startsWith('file:') && 
+          !audioSrc.startsWith('blob:')) {
+        // Check if it's a macOS absolute path
+        if (audioSrc.startsWith('/')) {
+          audioSrc = `file://${audioSrc}`;
+          console.log('Converted to file URL:', audioSrc);
+        }
+      }
+      
+      audioRef.current.src = audioSrc;
       audioRef.current.load();
     }
   }, [recordedAudioUrl]);
