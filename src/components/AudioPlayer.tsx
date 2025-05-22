@@ -222,12 +222,19 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
                 setIsPlaying(true);
                 toast.success("Playing recorded audio");
               })
-              .catch((error) => {
-                console.error("Error playing audio:", error);
-                toast.error("Failed to play audio automatically");
+              .catch(async (error) => {
+                console.error("Error playing audio automatically:", error);
+                
+                // Try native player if browser playback fails during autoplay
+                if (await playWithNativePlayer(true)) {
+                  setIsPlaying(true);
+                  toast.success("Playing in native player");
+                } else {
+                  toast.error("Failed to play audio automatically");
+                }
               });
           }
-        }, 1000); // Increased timeout for better reliability
+        }, 1500); // Increased timeout for better reliability
       }
       
       // Clean up function
@@ -277,7 +284,7 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
         console.error("Error playing audio:", error);
         
         // Try using native player as fallback
-        if (await playWithNativePlayer()) {
+        if (await playWithNativePlayer(true)) {
           // Native player is working, we can update the UI
           setIsPlaying(true);
         } else {
@@ -347,15 +354,20 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
       {audioError && (
         <div className="p-2 mb-2 bg-amber-50 border border-amber-200 rounded-md">
           <div className="flex justify-between items-center">
-            <p className="text-sm text-amber-700">
-              Audio playback in browser failed.
-            </p>
+            <div>
+              <p className="text-sm font-medium text-amber-800">
+                Audio playback in browser failed
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Browser couldn't play this audio format. Use the native player instead.
+              </p>
+            </div>
             <Button 
               size="sm" 
               variant="outline" 
               onClick={() => playWithNativePlayer(true)}
               disabled={!audioUrl}
-              className="ml-2"
+              className="ml-2 whitespace-nowrap"
             >
               Open in Native Player
             </Button>
