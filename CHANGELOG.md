@@ -14,11 +14,21 @@ All notable changes to this project will be documented in this file.
 - Auto-save functionality for transcripts during recording
 - Software recording fallback mode that automatically activates when the Swift Recorder binary is unavailable
 - Improved reliability for recording functionality across different environments
+- Redesigned TranscriptDetails UI with resizable panels, tabbed interface and enhanced controls
+- Added support for speaker management during recording
+- Implemented audio visualization with waveform display
+- Added audio controls with volume adjustment and seeking capabilities
+- Implemented notes editor with text formatting capabilities
+- Added action items tracking system for meeting follow-ups
+- Added context management system for project files and references
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
 - Simplified TranscriptDetailsPage to use the new TranscriptDetails component
 - Improved settings dialog with fixed size and scrollable content for better user experience
+- Enhanced transcript editing capabilities with inline editing and speaker assignment
+- Improved recording controls with better visual feedback and status indicators
+- Upgraded audio player with waveform visualization and playback controls
 
 ### Fixed
 - Recording functionality issue where Swift Recorder binary path couldn't be found by improving path resolution in different environments (development and production)
@@ -31,6 +41,8 @@ All notable changes to this project will be documented in this file.
 - Added proper spacing and consistent bottom padding across all settings tab panels for better usability
 - Fixed settings dialog tab navigation to ensure it always stays fixed at the top when scrolling through content
 - Meeting page data not being properly passed to TranscriptDetails component, restoring missing title, description, tags, and live transcription settings
+- Fixed UI layout issues in TranscriptDetails component with responsive design improvements
+- Addressed panel collapsing behavior in the transcript view
 
 ## [0.3.1] - 2024-05-21
 

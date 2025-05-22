@@ -7,9 +7,7 @@ import TranscriptDetails from '../components/TranscriptDetails';
  * Passes along any state received from navigation
  */
 const TranscriptDetailsPage: React.FC = () => {
-  const location = useLocation();
-  
-  return <TranscriptDetails initialMeetingState={location.state} />;
+  return <TranscriptDetails />;
 };
 
 export default TranscriptDetailsPage;

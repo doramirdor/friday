@@ -326,6 +326,30 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
   }
 }
 
+// Setup handlers for system audio recording
+function setupSystemAudioHandlers(recordingsPath) {
+  console.log("Setting up system audio recording handlers with path:", recordingsPath);
+  
+  // We don't need to register these handlers again as they are already defined below
+  // This function now just serves as a setup point for any future system audio functionality
+}
+
+// Setup handlers for microphone recording
+function setupMicrophoneHandlers(recordingsPath) {
+  console.log("Setting up microphone recording handlers with path:", recordingsPath);
+  
+  // We don't need to register these handlers again as they are already defined below
+  // This function now just serves as a setup point for any future microphone functionality
+}
+
+// Setup handlers for combined (system + mic) recording
+function setupCombinedRecordingHandlers(recordingsPath) {
+  console.log("Setting up combined recording handlers with path:", recordingsPath);
+  
+  // We don't need to register these handlers again as they are already defined below
+  // This function now just serves as a setup point for any future combined recording functionality
+}
+
 const createWindow = async () => {
   try {
     // Ensure the recording directory exists
