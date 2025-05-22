@@ -14,6 +14,11 @@ import {
 } from '../models/types';
 import checkAndUpgradePouchDB from './pouchdb-upgrade';
 
+// Singleton flag to track initialization status
+let isInitialized = false;
+let isInitializing = false;
+let initializationPromise: Promise<boolean> | null = null;
+
 // Database instances - will be initialized in setupDatabases
 let meetingsDb: any;
 let transcriptsDb: any;
@@ -27,6 +32,12 @@ let globalContextDb: any;
 
 // Setup database instances
 const setupDatabases = async () => {
+  // Check if already initialized
+  if (meetingsDb) {
+    console.log('Database instances already created, skipping setup');
+    return;
+  }
+  
   console.log('Setting up database instances...');
   
   // Create database instances for different data types
@@ -80,23 +91,53 @@ const setupIndexes = async () => {
 
 // Initialize the database
 const initDatabase = async () => {
-  try {
-    console.log('Initializing database...');
-    // First, check for and fix any PouchDB version compatibility issues
-    await checkAndUpgradePouchDB();
-    
-    // Set up database instances
-    await setupDatabases();
-    
-    // Then set up database indexes
-    await setupIndexes();
-    
-    console.log('Database initialized successfully');
+  // Singleton pattern: if already initialized, return immediately
+  if (isInitialized) {
+    console.log('Database already initialized, skipping initialization');
     return true;
-  } catch (error) {
-    console.error('Error initializing database:', error);
-    // Re-throw to allow the error to be handled by the caller
-    throw error;
+  }
+  
+  // If initialization is in progress, return the existing promise
+  if (isInitializing && initializationPromise) {
+    console.log('Database initialization already in progress, returning existing promise');
+    return initializationPromise;
+  }
+  
+  // Set flag and create promise
+  isInitializing = true;
+  initializationPromise = (async () => {
+    try {
+      console.log('Initializing database...');
+      // First, check for and fix any PouchDB version compatibility issues
+      await checkAndUpgradePouchDB();
+      
+      // Set up database instances
+      await setupDatabases();
+      
+      // Then set up database indexes
+      await setupIndexes();
+      
+      console.log('Database initialized successfully');
+      isInitialized = true;
+      return true;
+    } catch (error) {
+      console.error('Error initializing database:', error);
+      isInitializing = false;
+      initializationPromise = null;
+      // Re-throw to allow the error to be handled by the caller
+      throw error;
+    } finally {
+      isInitializing = false;
+    }
+  })();
+  
+  return initializationPromise;
+};
+
+// Ensure database is initialized
+const ensureDatabaseInitialized = async () => {
+  if (!isInitialized) {
+    await initDatabase();
   }
 };
 
@@ -552,14 +593,6 @@ const getMeetingDetails = async (meetingId: string): Promise<MeetingDetails | nu
   } catch (error) {
     console.error('Error getting meeting details:', error);
     throw error;
-  }
-};
-
-// Ensure database is initialized
-const ensureDatabaseInitialized = async () => {
-  if (!meetingsDb) {
-    await setupDatabases();
-    await setupIndexes();
   }
 };
 
