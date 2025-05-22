@@ -57,7 +57,13 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
   }, []);
   
   // Helper function to play audio with native player when browser playback fails
-  const playWithNativePlayer = async () => {
+  const playWithNativePlayer = async (forceUse = false) => {
+    // If not forcing native player, return false - we want to disable automatic native player
+    if (!forceUse) {
+      console.log('AudioPlayer: Native player disabled unless manually requested');
+      return false;
+    }
+    
     const win = window as any;
     if (win?.electronAPI?.playAudioFile && audioUrl) {
       try {
@@ -134,13 +140,9 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
         console.error("AudioPlayer: Error details:", audioRef.current?.error);
         setAudioError(true);
         
-        // Try using native player as fallback
-        if (await playWithNativePlayer()) {
-          // Native player is working, we can update the UI
-          setIsPlaying(true);
-        } else {
-          toast.error("Failed to play audio");
-        }
+        // No longer auto-trying native player on error
+        // Just show the error message and let the user decide
+        toast.error("Audio can't be played in browser. Try using the native player button.");
       };
       
       // Add listeners
@@ -290,9 +292,20 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
     <div className={`flex flex-col gap-4 ${isHighlighted ? 'animate-pulse' : ''}`}>
       {audioError && (
         <div className="p-2 mb-2 bg-amber-50 border border-amber-200 rounded-md">
-          <p className="text-sm text-amber-700">
-            Audio playback in browser failed. Use the play button to try native player.
-          </p>
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-amber-700">
+              Audio playback in browser failed.
+            </p>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => playWithNativePlayer(true)}
+              disabled={!audioUrl}
+              className="ml-2"
+            >
+              Open in Native Player
+            </Button>
+          </div>
           <div className="hidden debug-info-path">{audioUrl}</div>
         </div>
       )}

@@ -144,8 +144,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   // Track the current speaker for new transcripts
   const [currentSpeakerId, setCurrentSpeakerId] = useState("s1");
 
-  // Add state for live transcript toggle
-  const [isLiveTranscript, setIsLiveTranscript] = useState(meetingState?.liveTranscript || false);
+  // Add state for live transcript toggle - default to false
+  const [isLiveTranscript, setIsLiveTranscript] = useState(false);
   
   // Audio recording and playback references and states
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -492,6 +492,46 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       toast.success('Transcript saved successfully');
     // }
   }, []);
+
+  // Manually transcribe the current audio file
+  const handleTranscribeAudio = useCallback(async () => {
+    if (!recordedAudioUrl) {
+      toast.error('No audio file available to transcribe');
+      return;
+    }
+
+    try {
+      toast.loading('Transcribing audio...', { id: 'transcribing' });
+      
+      // Get the file path from the recordedAudioUrl
+      const filePath = recordedAudioUrl;
+      
+      // Use the electron API to send to main process for transcription
+      const win = window as any;
+      if (win?.electronAPI?.testSpeechWithFile) {
+        const result = await win.electronAPI.testSpeechWithFile(filePath);
+        
+        if (result.transcription) {
+          // Add the transcript to our lines
+          const newLine = {
+            id: `l${Date.now()}`,
+            text: result.transcription,
+            speakerId: currentSpeakerId,
+          };
+          
+          setTranscriptLines(prev => [...prev, newLine]);
+          toast.success('Transcription completed', { id: 'transcribing' });
+        } else if (result.error) {
+          toast.error(`Transcription failed: ${result.error}`, { id: 'transcribing' });
+        }
+      } else {
+        toast.error('Transcription API not available', { id: 'transcribing' });
+      }
+    } catch (error) {
+      console.error('Error transcribing audio:', error);
+      toast.error('Failed to transcribe audio', { id: 'transcribing' });
+    }
+  }, [recordedAudioUrl, currentSpeakerId]);
 
   // Start timer for recording duration
   const startRecordingTimer = () => {
@@ -966,6 +1006,14 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                         onClick={handleStartStopRecording}
                       >
                         {isRecording ? "Stop Recording" : "Record New Audio"}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-2"
+                        onClick={handleTranscribeAudio}
+                      >
+                        Send to Transcript
                       </Button>
 
                       {/* Recording source selector for existing recording */}

@@ -24,6 +24,8 @@ All notable changes to this project will be documented in this file.
 - Implemented comprehensive save functionality that preserves all meeting data in the database
 - Added recording source selection (system, mic, both) in the TranscriptDetails component
 - Enhanced debug logging for recording processes and audio file handling
+- Added "Send to Transcript" button to manually trigger audio transcription
+- Added "Open in Native Player" button for when browser audio playback fails
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
@@ -36,6 +38,8 @@ All notable changes to this project will be documented in this file.
 - Enhanced save functionality to store all meeting data including details, action items, notes, context, transcript, and audio recording path
 - Improved recording source selection with visual indicators for active source
 - Implemented singleton pattern for database initialization to prevent duplicate setup and improve performance
+- Changed default setting for live transcription to off
+- Modified native player behavior to no longer auto-open on audio errors
 
 ### Fixed
 - Fixed audio playback issues with MP3 data URLs by adding automatic conversion to WAV format for better browser compatibility
