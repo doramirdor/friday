@@ -51,6 +51,9 @@ All notable changes to this project will be documented in this file.
 - Enhanced silence MP3 file generation for software recording mode with more robust file structure
 - Improved browser audio error handling with automatic fallback to native player for format errors
 - Fixed MediaError format errors when playing MP3 files in browser
+- Fixed local AudioPlayer native player fallback during autoplay
+- Enhanced error messaging for audio playback failures with clearer instructions
+- Increased audio loading timeout for better reliability on slower systems
 - Added native player fallback for audio playback when browser can't play certain audio formats
 - Added visual indication when audio can't be played in browser with option to use native player
 - Fixed audio player not showing by improving the display condition to always show player when audio is available, regardless of meeting state
