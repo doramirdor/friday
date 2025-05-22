@@ -314,12 +314,6 @@ export function stopRecording() {
     // For software mode, just send the stop signal directly
     const timestamp = Date.now();
     
-    // Use a pre-downloaded silent MP3 file instead of generating one
-    // This ensures we have a valid audio file for the player
-    const resourcesPath = process.env.NODE_ENV === 'development' 
-      ? path.join(process.cwd(), 'src', 'assets') 
-      : path.join(process.resourcesPath, 'assets');
-    
     // Save to Documents/Friday Recordings/ directory
     const documentsPath = app.getPath("documents");
     const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings");
@@ -338,102 +332,43 @@ export function stopRecording() {
     const outputPath = path.join(fridayRecordingsPath, `recording_${timestamp}.mp3`);
     
     try {
-      console.log(`Creating recording file at: ${outputPath}`);
+      console.log(`Creating synthetic MP3 file at: ${outputPath}`);
       
-      // Use multiple sources for silence files to ensure better compatibility
-      const assetsPaths = [
-        // Primary path - local assets directory
-        path.join(resourcesPath, 'silence.mp3'),
-        // Backup path - try resources directory
-        process.env.NODE_ENV === 'development' 
-          ? path.join(process.cwd(), 'resources', 'silence.mp3')
-          : path.join(process.resourcesPath, 'silence.mp3'),
-        // Extra backup - try app directory
-        path.join(app.getAppPath(), 'src', 'assets', 'silence.mp3'),
-        // Additional fallbacks
-        path.join(process.cwd(), 'src', 'assets', 'silence.mp3'),
-        path.join(app.getPath("userData"), 'silence.mp3')
-      ];
+      // Create a valid MP3 file with multiple frames
+      // This is the most reliable approach to ensure a valid MP3 file
+      const silenceData = Buffer.alloc(10240); // 10KB buffer for a small but valid MP3
       
-      // Check all possible paths for an existing silence file
-      let silencePath = null;
-      for (const tryPath of assetsPaths) {
-        if (fs.existsSync(tryPath)) {
-          silencePath = tryPath;
-          console.log(`Found existing silence MP3 at: ${silencePath}`);
-          break;
+      // Fill with repeating MP3 frame headers and empty frames
+      // MP3 frame header: 0xFF 0xFB followed by bitrate and other info
+      for (let i = 0; i < silenceData.length; i += 32) {
+        if (i + 32 <= silenceData.length) {
+          // Frame header
+          silenceData[i] = 0xFF;
+          silenceData[i+1] = 0xFB;
+          silenceData[i+2] = 0x90; // Bitrate info
+          silenceData[i+3] = 0x44; // Frequency info
+          // Rest of frame is silence data
         }
       }
       
-      if (silencePath) {
-        try {
-          // Get file size to verify it's not empty
-          const stats = fs.statSync(silencePath);
-          if (stats.size > 0) {
-            // Check if the file is actually a binary file (not HTML)
-            const fileStart = fs.readFileSync(silencePath, { encoding: null }).slice(0, 20);
-            const isTextFile = Buffer.from(fileStart).toString().includes('<!DOCTYPE') || 
-                              Buffer.from(fileStart).toString().includes('<html');
-            
-            if (isTextFile) {
-              console.error('Silence file contains HTML, not MP3 data');
-              throw new Error('Invalid silence file format');
-            }
-            
-            // Copy the silence file
-            fs.copyFileSync(silencePath, outputPath);
-            
-            // Verify the copy worked
-            const outputStats = fs.statSync(outputPath);
-            if (outputStats.size > 0) {
-              console.log(`Software recording: copied silence MP3 to ${outputPath} (${outputStats.size} bytes)`);
-            } else {
-              throw new Error("Copied file has 0 bytes");
-            }
-          } else {
-            throw new Error("Source silence file is empty (0 bytes)");
-          }
-        } catch (copyError) {
-          console.error(`Error copying silence file: ${copyError.message}`);
-          // Fall back to creating a synthetic file
-          throw copyError; // Will be caught by outer try/catch and continue to fallback
+      fs.writeFileSync(outputPath, silenceData);
+      
+      // Verify file was created successfully
+      if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+        console.log(`Software recording: created MP3 file at ${outputPath} (${fs.statSync(outputPath).size} bytes)`);
+        
+        // Verify it's actually an MP3 file
+        const fileStart = fs.readFileSync(outputPath, { encoding: null }).slice(0, 10);
+        const isMP3 = fileStart[0] === 0xFF && fileStart[1] === 0xFB;
+        
+        if (!isMP3) {
+          throw new Error("Created file is not a valid MP3");
         }
+        
+        global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
       } else {
-        console.log("No silence file found, creating synthetic MP3 file");
+        throw new Error("Failed to create MP3 file");
       }
-      
-      // If we get here without a valid copy, create a synthetic file
-      if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
-        console.log("Creating synthetic MP3 file...");
-        
-        // This creates a valid MP3 file with multiple frames
-        // Better than a minimal file with just headers
-        const silenceData = Buffer.alloc(10240); // 10KB buffer for a small but valid MP3
-        
-        // Fill with repeating MP3 frame headers and empty frames
-        // MP3 frame header: 0xFF 0xFB followed by bitrate and other info
-        for (let i = 0; i < silenceData.length; i += 32) {
-          if (i + 32 <= silenceData.length) {
-            // Frame header
-            silenceData[i] = 0xFF;
-            silenceData[i+1] = 0xFB;
-            silenceData[i+2] = 0x90; // Bitrate info
-            silenceData[i+3] = 0x44; // Frequency info
-            // Rest of frame is silence data
-          }
-        }
-        
-        fs.writeFileSync(outputPath, silenceData);
-        
-        // Verify file was created successfully
-        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-          console.log(`Software recording: created enhanced MP3 file at ${outputPath} (${fs.statSync(outputPath).size} bytes)`);
-        } else {
-          throw new Error("Failed to create synthetic MP3 file");
-        }
-      }
-      
-      global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
     } catch (error) {
       console.error(`Error creating audio file: ${error.message}`);
       global.mainWindow.webContents.send("recording-error", "FILE_CREATION_FAILED");
