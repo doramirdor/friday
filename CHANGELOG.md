@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Enhanced audio file handling with automatic MP3 to WAV conversion for better browser compatibility
+- Improved software recording mode with better MP3 file generation
 - Refactored TranscriptDetails component into a layered architecture with:
   - Main process layer: transcript-handler.js for file operations and IPC handling
   - Preload layer: transcript-bridge.js to safely expose main process functionality
@@ -45,6 +47,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed audio playback issues with MP3 data URLs by adding automatic conversion to WAV format for better browser compatibility
+- Fixed "The element has no supported sources" errors by implementing more robust MP3 to WAV conversion
+- Enhanced silence MP3 file generation for software recording mode with more robust file structure
+- Improved browser audio error handling with automatic fallback to native player for format errors
+- Fixed MediaError format errors when playing MP3 files in browser
 - Added native player fallback for audio playback when browser can't play certain audio formats
 - Added visual indication when audio can't be played in browser with option to use native player
 - Fixed audio player not showing by improving the display condition to always show player when audio is available, regardless of meeting state
