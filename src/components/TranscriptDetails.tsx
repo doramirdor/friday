@@ -165,7 +165,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const recordingTimerRef = useRef<number | null>(null);
   
   // Setup hooks
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const [recordingSource, setRecordingSource] = useState<RecordingSource>(
     settings?.recordingSource || 'system'
   );
@@ -437,13 +437,12 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     setRecordingSource(source);
     
     // Save to settings if available
-    if (settings) {
-      const { updateSettings } = useSettings();
+    if (settings && updateSettings) {
       updateSettings({ recordingSource: source });
     }
     
     toast.success(`Recording source changed to ${source === 'both' ? 'system audio + microphone' : source}`);
-  }, [settings]);
+  }, [settings, updateSettings]);
   
   // Format time for display
   const formatTime = (seconds: number) => {

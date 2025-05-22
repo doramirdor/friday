@@ -66,6 +66,7 @@ All notable changes to this project will be documented in this file.
 - Fixed database being initialized multiple times, causing duplicate setup and potential performance issues
 - Fixed module import error by adding .js extension to @google-cloud/speech/build/protos/protos import
 - Fixed CommonJS module import error by using default import for google from @google-cloud/speech/build/protos/protos.js
+- Fixed "Invalid hook call" error in TranscriptDetails by correctly using the useSettings hook
 
 ## [0.3.1] - 2024-05-21
 
