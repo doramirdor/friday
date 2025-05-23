@@ -361,7 +361,7 @@ const getAudioDevices = async () => {
   }
 };
 
-export async function startRecording({ filepath, filename, source = 'system' }) {
+async function startRecording({ filepath, filename, source = 'system' }) {
   // For microphone recording, we don't need screen capture permission
   // For combined recording, we do need screen capture permission
   const isPermissionNeeded = source === 'system' || source === 'both';
@@ -447,7 +447,7 @@ export async function startRecording({ filepath, filename, source = 'system' }) 
   }
 }
 
-export async function stopRecording() {
+async function stopRecording() {
   if (useSoftwareRecordingMode) {
     // For software mode, just send the stop signal directly
     const timestamp = Date.now();
