@@ -264,14 +264,30 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           // Set the URL directly without re-triggering the loadAudioFile
           setRecordedAudioUrl(result.dataUrl);
           toast.success('Audio loaded successfully');
+        } else if (result.useNativePlayer) {
+          console.log('Using native player for:', filePath);
+          toast.info('Opening file in native audio player');
+          
+          // Try to open with native player
+          if (win?.electronAPI?.playAudioFile) {
+            win.electronAPI.playAudioFile(filePath);
+          }
+          
+          // Still set the path as the URL for UI purposes
+          setRecordedAudioUrl(filePath);
         } else {
-          console.error('Error loading audio:', result.error);
-          toast.error(`Failed to load audio: ${result.error}`);
+          console.error('Error loading audio:', result.error || 'Unknown error');
+          toast.error(`Audio playback issue: ${result.error || 'Unknown error'}`);
           
           // Use the raw file path as fallback for the player to try
-          if (filePath && filePath.trim() !== '') {
-            console.log('Using raw file path as fallback');
-            setRecordedAudioUrl(filePath);
+          console.log('Using raw file path as fallback');
+          setRecordedAudioUrl(filePath);
+          
+          // Also try native player as last resort
+          if (win?.electronAPI?.playAudioFile) {
+            setTimeout(() => {
+              win.electronAPI.playAudioFile(filePath);
+            }, 500);
           }
         }
       } catch (error) {
@@ -282,6 +298,13 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         if (filePath && filePath.trim() !== '') {
           console.log('Using raw file path as fallback after error');
           setRecordedAudioUrl(filePath);
+          
+          // Try native player as last resort
+          if (win?.electronAPI?.playAudioFile) {
+            setTimeout(() => {
+              win.electronAPI.playAudioFile(filePath);
+            }, 500);
+          }
         }
       }
     } else {

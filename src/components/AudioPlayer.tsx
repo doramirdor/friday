@@ -186,16 +186,31 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
         if (error && error.code === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED = 4
           console.warn("AudioPlayer: Media format not supported in browser");
           
-          // Try the native player automatically if it's a format error
+          // Always try the native player automatically for format errors
           if (await playWithNativePlayer(true)) {
-            // If successful, just inform but don't show error
+            // If successful, just inform but don't show error UI
             toast.info("Opening audio in native player due to format incompatibility");
+            return; // Exit early as we're using native player
           } else {
-            // Only show error toast if native player also failed
-            toast.error("Audio format not supported. Try using the native player button.");
+            // Show specific error for native player failure
+            toast.error("Audio format not supported and native player failed");
           }
         } else {
-          toast.error("Audio can't be played in browser. Try using the native player button.");
+          // For any other errors, also try native player
+          if (await playWithNativePlayer(true)) {
+            toast.info("Using native player due to browser playback issues");
+            return; // Exit early
+          } else {
+            toast.error("Audio playback failed in both browser and native player");
+          }
+        }
+        
+        // If we get here, both browser and native player failed
+        // Check if the URL is a file path that we can show in finder/explorer
+        const win = window as any;
+        if (win?.electronAPI?.showItemInFolder && audioUrl && !audioUrl.startsWith('data:')) {
+          toast.info("Opening folder containing the audio file");
+          win.electronAPI.showItemInFolder(audioUrl);
         }
       };
       

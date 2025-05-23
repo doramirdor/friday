@@ -987,84 +987,84 @@ ipcMain.handle("load-audio-file", async (event, filepath) => {
       };
     }
     
-    // Read the file as buffer
-    const buffer = fs.readFileSync(filepath);
-    console.log(`✅ main.js: Read audio file: ${filepath}, size: ${buffer.length} bytes`);
-    
-    // Determine MIME type based on file extension
+    // Always convert MP3 to WAV for browser playback
+    // This ensures better cross-browser compatibility
     const ext = path.extname(filepath).toLowerCase();
-    let mimeType = "audio/wav"; // Default
-    if (ext === ".mp3") mimeType = "audio/mpeg";
-    else if (ext === ".ogg") mimeType = "audio/ogg";
-    else if (ext === ".flac") mimeType = "audio/flac";
-    else if (ext === ".m4a" || ext === ".aac") mimeType = "audio/aac";
     
-    console.log(`🎵 main.js: Determined MIME type: ${mimeType} for file extension ${ext}`);
-    
-    // Create a data URL, appending the original path for better error recovery
-    // We'll encode the path at the end with a custom parameter
-    const base64Data = buffer.toString("base64");
-    const dataUrl = `data:${mimeType};base64,${base64Data}?path=${encodeURIComponent(filepath)}`;
-    console.log(`✅ main.js: Created data URL for ${filepath}, length: ${dataUrl.length} characters`);
-    
-    // Always convert MP3 files to WAV for browser compatibility
-    // This ensures better cross-browser playback reliability
-    if (ext === ".mp3" && fileSizeMB < 20) { // Handle reasonably sized files (up to 20MB)
+    // For MP3 files, always try to convert to WAV
+    if (ext === ".mp3") {
       try {
         console.log(`🔄 main.js: Converting MP3 to WAV for browser compatibility`);
         const tempDir = app.getPath('temp');
-        const tempWavFile = path.join(tempDir, `${path.basename(filepath, ext)}.wav`);
+        const tempWavFile = path.join(tempDir, `playback_${Date.now()}.wav`);
         
-        // Check if ffmpeg is available
+        // Convert MP3 to WAV using ffmpeg (prioritize reliability over quality)
+        await exec(`ffmpeg -i "${filepath}" -acodec pcm_s16le -ar 44100 -ac 2 "${tempWavFile}" -y`);
+        console.log(`✅ main.js: Converted MP3 to WAV: ${tempWavFile}`);
+        
+        // Read the WAV file and create data URL
+        const wavBuffer = fs.readFileSync(tempWavFile);
+        console.log(`✅ main.js: Read WAV file (${wavBuffer.length} bytes)`);
+        
+        // Create a data URL with the WAV data
+        const wavDataUrl = `data:audio/wav;base64,${wavBuffer.toString("base64")}`;
+        
+        // Clean up the temp file
         try {
-          await exec('ffmpeg -version');
-        } catch (ffmpegError) {
-          console.error(`❌ main.js: ffmpeg not available:`, ffmpegError);
-          throw new Error('ffmpeg not available for conversion');
+          fs.unlinkSync(tempWavFile);
+        } catch (cleanupError) {
+          console.warn(`⚠️ main.js: Could not delete temp WAV file: ${cleanupError.message}`);
         }
         
-        // Convert the MP3 to WAV using ffmpeg
-        console.log(`🔄 main.js: Running ffmpeg to convert MP3 to WAV`);
-        await exec(`ffmpeg -i "${filepath}" -acodec pcm_s16le -ar 44100 -ac 2 "${tempWavFile}" -y`);
-        console.log(`✅ main.js: Converted MP3 to WAV for better browser compatibility: ${tempWavFile}`);
-        
-        // Read the converted WAV file
-        const wavBuffer = fs.readFileSync(tempWavFile);
-        console.log(`✅ main.js: Read WAV file, size: ${wavBuffer.length} bytes`);
-        
-        // Clean up the temporary file
-        fs.unlinkSync(tempWavFile);
-        
-        // Create a data URL for the WAV file
-        const wavDataUrl = `data:audio/wav;base64,${wavBuffer.toString("base64")}?path=${encodeURIComponent(filepath)}`;
-        console.log(`✅ main.js: Created WAV data URL, length: ${wavDataUrl.length} characters`);
-        
-        return { 
-          success: true, 
-          dataUrl: wavDataUrl, // Primary URL (more compatible)
-          originalDataUrl: dataUrl, // Original data URL as fallback
+        return {
+          success: true,
+          dataUrl: wavDataUrl,
           originalPath: filepath,
-          mimeType: "audio/wav", // Now it's WAV
-          fileSizeMB,
-          isConverted: true
+          mimeType: "audio/wav",
+          fileSizeMB
         };
-      } catch (error) {
-        console.error(`❌ main.js: Error converting MP3 to WAV:`, error);
-        console.log(`⚠️ main.js: Falling back to original data URL`);
-        // Continue with original data URL if conversion fails
+      } catch (convError) {
+        console.error(`❌ main.js: Error converting MP3 to WAV: ${convError.message}`);
+        console.log(`⚠️ main.js: Falling back to native player`);
+        
+        // Fallback to native player if conversion fails
+        return {
+          success: true,
+          originalPath: filepath,
+          fileSizeMB,
+          useNativePlayer: true,
+          error: convError.message,
+          message: "Conversion failed, use native player instead"
+        };
       }
     }
     
-    return { 
-      success: true, 
+    // For non-MP3 files, use standard approach
+    const buffer = fs.readFileSync(filepath);
+    console.log(`✅ main.js: Read audio file: ${buffer.length} bytes`);
+    
+    // Determine MIME type based on file extension
+    let mimeType = "audio/wav"; // Default
+    if (ext === ".ogg") mimeType = "audio/ogg";
+    else if (ext === ".flac") mimeType = "audio/flac";
+    else if (ext === ".m4a" || ext === ".aac") mimeType = "audio/aac";
+    
+    // Create data URL
+    const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+    
+    return {
+      success: true,
       dataUrl,
       originalPath: filepath,
       mimeType,
       fileSizeMB
     };
   } catch (error) {
-    console.error("❌ main.js: Error loading audio file:", error);
-    return { error: error.message };
+    console.error(`❌ main.js: Error loading audio file: ${error.message}`);
+    return { 
+      error: error.message,
+      useNativePlayer: true  // Fallback to native player on any error
+    };
   }
 });
 
@@ -1110,6 +1110,28 @@ ipcMain.handle("show-item-in-folder", async (event, filepath) => {
   } catch (error) {
     console.error("❌ main.js: Error showing item in folder:", error);
     return { error: error.message };
+  }
+});
+
+// Add a handler to check if a file exists and has content
+ipcMain.handle("check-file-exists", async (event, filepath) => {
+  try {
+    console.log(`🔄 main.js: Checking if file exists: ${filepath}`);
+    
+    if (!fs.existsSync(filepath)) {
+      console.log(`❌ main.js: File does not exist: ${filepath}`);
+      return false;
+    }
+    
+    // Check if the file has content
+    const stats = fs.statSync(filepath);
+    const hasContent = stats.size > 0;
+    
+    console.log(`✅ main.js: File exists: ${filepath}, size: ${stats.size} bytes`);
+    return hasContent;
+  } catch (error) {
+    console.error(`❌ main.js: Error checking file: ${error.message}`);
+    return false;
   }
 });
 
