@@ -166,6 +166,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("recording-transcription", (_, data) => {
       callback(data);
     });
+  },
+
+  // Add support for receiving recording warnings
+  // Find where the recording events are defined and add a new one for warnings
+  // Add this near other recording-related code
+  onRecordingWarning: (callback) => {
+    ipcRenderer.on('recording-warning', (_, warningCode, warningMessage) => {
+      callback(warningCode, warningMessage);
+    });
   }
 }); 
 

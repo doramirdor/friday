@@ -161,15 +161,43 @@ const initRecording = (filepath, filename, source = 'system') => {
       
       // Set up longer timeout for startup
       const startupTimeout = setTimeout(() => {
-        console.error("Recorder startup timed out after 10 seconds");
+        console.error("Recorder startup timed out after 30 seconds");
         resolve(false);
-      }, 10000);
+      }, 30000);
       
       // Process stdout for response messages
       recordingProcess.stdout.on("data", (data) => {
         try {
           const responseText = data.toString();
-          console.log(`Recorder output: ${responseText}`);
+          console.log(`Recorder stdout: ${responseText}`);
+          
+          // Check for indicators that the recorder is initializing properly
+          // This helps detect if the recorder is actually working even before it sends JSON
+          if (responseText.includes("Microphone component started successfully") ||
+              responseText.includes("Combined recording setup successful") ||
+              responseText.includes("Recording started")) {
+            console.log("✅ Detected recorder initialization progress, extending timeout");
+            // Extend timeout since we know the recorder is starting up
+            if (startupTimeout) {
+              clearTimeout(startupTimeout);
+              startupTimeout = setTimeout(() => {
+                console.error("Recorder startup timed out after extended period (60 seconds)");
+                resolve(false);
+              }, 60000); // 60 seconds
+            }
+          }
+          
+          // Check for low microphone volume warnings
+          if (responseText.includes("Microphone level is low") || 
+              responseText.includes("Microphone input volume:") && responseText.includes("%")) {
+            // Try to extract microphone level
+            const match = responseText.match(/Microphone input volume: (\d+(\.\d+)?)%/);
+            if (match && parseFloat(match[1]) < 20) {
+              console.warn(`⚠️ Low microphone volume detected: ${match[1]}%. Recording may be silent.`);
+              global.mainWindow.webContents.send("recording-warning", "LOW_MIC_VOLUME", 
+                `Your microphone volume is only ${match[1]}%. Recording may be silent. Please increase your microphone volume in System Settings.`);
+            }
+          }
           
           // Parse JSON responses (one per line)
           const jsonResponses = responseText
@@ -256,7 +284,16 @@ const initRecording = (filepath, filename, source = 'system') => {
       });
       
       recordingProcess.stderr.on("data", (data) => {
-        console.error(`Recorder stderr: ${data.toString()}`);
+        const errorText = data.toString();
+        console.error(`Recorder stderr: ${errorText}`);
+        
+        // Check if the error contains useful debug information
+        if (errorText.includes("Permission") || errorText.includes("denied")) {
+          console.error("Possible permission issue with the recorder");
+        }
+        if (errorText.includes("Could not") || errorText.includes("failed to")) {
+          console.error("Recorder encountered an initialization error");
+        }
       });
       
       recordingProcess.on("error", (error) => {
@@ -477,14 +514,40 @@ export async function stopRecording() {
   
   if (recordingProcess !== null) {
     try {
-      console.log("Stopping recording process...");
-      recordingProcess.kill("SIGINT");
-      return { success: true };
+      console.log("Stopping recording process by sending SIGINT signal...");
+      
+      // Create a promise that will resolve when the recording stops
+      const stopPromise = new Promise((resolve) => {
+        // Set up a timeout in case the process doesn't exit
+        const killTimeout = setTimeout(() => {
+          console.error("Recording process did not exit within 10 seconds, forcing termination");
+          try {
+            recordingProcess.kill('SIGKILL'); // Force kill if needed
+          } catch (e) {
+            console.error(`Error force killing process: ${e.message}`);
+          }
+          resolve({ success: false, error: "Recording process timed out" });
+        }, 10000);
+        
+        // Listen for process exit
+        recordingProcess.once('exit', (code) => {
+          console.log(`Recording process exited with code ${code}`);
+          clearTimeout(killTimeout);
+          resolve({ success: true });
+        });
+        
+        // Send the SIGINT signal, which the Swift process is designed to handle
+        recordingProcess.kill("SIGINT");
+      });
+      
+      // Wait for the recording to stop
+      const result = await stopPromise;
+      recordingProcess = null;
+      return result;
     } catch (error) {
       console.error(`Error stopping recording: ${error.message}`);
-      return { success: false, error: error.message };
-    } finally {
       recordingProcess = null;
+      return { success: false, error: error.message };
     }
   } else {
     console.warn("No recording process to stop");
