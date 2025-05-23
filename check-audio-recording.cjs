@@ -52,6 +52,20 @@ try {
   console.log(`Could not determine file type: ${err.message}`);
 }
 
+// Check if the file is actually an HTML file with wrong extension
+try {
+  const buffer = fs.readFileSync(filePath, { encoding: 'utf8', flag: 'r', start: 0, end: 1000 });
+  if (buffer.includes('<!DOCTYPE html>') || buffer.includes('<html')) {
+    console.warn('\n⚠️ WARNING: This appears to be an HTML file with an MP3 extension!');
+    console.warn('   - This is likely due to a recording error or network issue');
+    console.warn('   - The file WILL NOT play correctly as an audio file');
+    console.warn('   - Check the recording process and ensure proper error handling\n');
+  }
+} catch (err) {
+  // The read might fail if it's a binary file, which is expected for MP3s
+  console.log('File appears to be binary (normal for audio files)');
+}
+
 // Try to get audio info using ffprobe
 try {
   console.log('\nAudio File Information:');
@@ -178,4 +192,12 @@ console.log('2. Verify that your microphone is selected and working in System So
 console.log('3. Try a microphone-only recording to isolate potential issues');
 console.log('4. If waveform shows no audio spikes, your microphone may not be recording correctly');
 console.log('5. Review the Swift recorder logs for "Microphone level is low" warnings');
-console.log('6. Ensure your microphone is not muted and input volume is turned up'); 
+console.log('6. Ensure your microphone is not muted and input volume is turned up');
+
+console.log('\nRecording Status Check:');
+console.log('-'.repeat(50));
+console.log('1. Is this a valid audio file?', !fileType.includes('HTML') && !fileType.includes('text'));
+console.log('2. Is this file empty or suspiciously small?', stats.size < 1024);
+console.log(`3. What recording mode was used? ${fileType.includes('HTML') ? 'Software mode (incorrect)' : 'Likely Swift recorder'}`);
+console.log('4. Recommended fix: Make sure useSoftwareRecordingMode=false in src/electron/main/utils/recording.js');
+console.log('   - If you\'re seeing HTML files, this indicates a fallback issue where the software recording mode is generating invalid files') 
