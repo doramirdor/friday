@@ -97,6 +97,8 @@ All notable changes to this project will be documented in this file.
 - Fixed combined recording mode missing JSON status responses by implementing manual status updates
 - Fixed recording process becoming stuck by adding a restart mechanism
 - Fixed permission handling for both microphone and screen recording on macOS
+- Fixed "ReferenceError: module is not defined in ES module scope" error in recording.js by converting CommonJS exports to ES module syntax
+- Added missing getAudioDevices function in recording.js to ensure proper audio device detection
 
 ## [0.3.1] - 2024-05-21
 
