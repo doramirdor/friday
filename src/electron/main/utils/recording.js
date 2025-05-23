@@ -328,6 +328,39 @@ const initRecording = (filepath, filename, source = 'system') => {
   });
 };
 
+// Function to get available audio devices
+const getAudioDevices = async () => {
+  try {
+    if (useSoftwareRecordingMode) {
+      // In software mode, just return a default device
+      return [{ name: "Default Microphone", id: "default" }];
+    }
+
+    // Use the recorder binary with special flag to list audio devices
+    const recorderPath = checkRecorderBinary();
+    if (!recorderPath) {
+      console.error("Cannot list audio devices - recorder binary not found");
+      return [];
+    }
+
+    // Run the command and capture output
+    const { stdout } = await execAsync(`"${recorderPath}" --list-devices`);
+    
+    try {
+      // Parse JSON output from the command
+      const devices = JSON.parse(stdout.trim());
+      return Array.isArray(devices) ? devices : [];
+    } catch (parseError) {
+      console.error(`Error parsing audio devices: ${parseError.message}`);
+      console.log(`Raw stdout: ${stdout}`);
+      return [];
+    }
+  } catch (error) {
+    console.error(`Error getting audio devices: ${error.message}`);
+    return [];
+  }
+};
+
 export async function startRecording({ filepath, filename, source = 'system' }) {
   // For microphone recording, we don't need screen capture permission
   // For combined recording, we do need screen capture permission
@@ -606,7 +639,7 @@ const restartRecorder = () => {
   return true;
 };
 
-module.exports = {
+export {
   initRecording,
   startRecording, 
   stopRecording,
