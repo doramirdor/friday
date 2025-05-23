@@ -623,6 +623,81 @@ function splitAudioBuffer(buffer, format, chunkDurationMs = 58000) { // 58 secon
 async function handleLongAudioTranscription(audioBuffer, encoding, options = {}) {
   console.log(`🔄 Processing long audio file (${audioBuffer.length} bytes) with ${encoding} encoding`);
   
+  // Handle MP3 format differently - we need to convert it to WAV first
+  if (encoding === 'MP3') {
+    console.log('🔄 Converting MP3 to WAV for chunked processing...');
+    try {
+      // Create temporary files for this operation
+      const tempDir = path.join(os.tmpdir(), 'friday-speech');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+      
+      // Save the MP3 to temp file
+      const inputFile = path.join(tempDir, `input-${Date.now()}.mp3`);
+      fs.writeFileSync(inputFile, audioBuffer);
+      
+      // Output WAV file
+      const outputFile = path.join(tempDir, `output-${Date.now()}.wav`);
+      
+      // Use ffmpeg to convert MP3 to WAV (16bit, 16kHz, mono)
+      const { spawn } = await import('child_process');
+      
+      // Create promise for process completion
+      await new Promise((resolve, reject) => {
+        const ffmpegProcess = spawn('ffmpeg', [
+          '-i', inputFile,             // Input file
+          '-ar', '16000',              // Sample rate
+          '-ac', '1',                  // Mono
+          '-acodec', 'pcm_s16le',      // 16-bit PCM
+          '-y',                        // Overwrite output
+          outputFile                   // Output file
+        ]);
+        
+        let ffmpegError = '';
+        
+        ffmpegProcess.stderr.on('data', (data) => {
+          // ffmpeg logs to stderr by default
+          ffmpegError += data.toString();
+        });
+        
+        ffmpegProcess.on('close', (code) => {
+          if (code === 0) {
+            console.log('✅ Successfully converted MP3 to WAV');
+            resolve();
+          } else {
+            reject(new Error(`ffmpeg exited with code ${code}: ${ffmpegError}`));
+          }
+        });
+        
+        ffmpegProcess.on('error', (err) => {
+          reject(err);
+        });
+      });
+      
+      // Now read the WAV file and use it instead
+      audioBuffer = fs.readFileSync(outputFile);
+      encoding = 'LINEAR16';
+      
+      console.log(`✅ Converted MP3 to WAV, new size: ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB`);
+      
+      // Adjust options for WAV format
+      options.encoding = 'LINEAR16';
+      options.sampleRateHertz = 16000;
+      
+      // Clean up temp files
+      try {
+        fs.unlinkSync(inputFile);
+        fs.unlinkSync(outputFile);
+      } catch (cleanupErr) {
+        console.warn('⚠️ Warning: Could not clean up temp files:', cleanupErr);
+      }
+    } catch (conversionError) {
+      console.error('❌ Error converting MP3 to WAV:', conversionError);
+      throw new Error(`Failed to convert MP3 to WAV: ${conversionError.message}`);
+    }
+  }
+  
   // Split the audio into manageable chunks
   const chunks = splitAudioBuffer(audioBuffer, encoding);
   console.log(`🧩 Split audio into ${chunks.length} chunks`);
@@ -789,16 +864,22 @@ ipcMain.handle('test-speech-with-file', async (event, options) => {
     }
 
     // Check file size to determine if we need to use the long audio handler
-    const isLongAudio = audioBuffer.length > 900 * 1024; // Approx. 900KB is around 1 minute
-    
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB (Cloud Speech API limit)
+    const isLongAudio = audioBuffer.length > MAX_SIZE;
+
     let transcription;
     if (isLongAudio) {
-      console.log(`📊 main.js: Large audio file detected (${audioBuffer.length} bytes), using chunked processing`);
-      transcription = await handleLongAudioTranscription(audioBuffer, encoding, {
-        sampleRateHertz: 16000,
-        languageCode: 'en-US',
-        apiKey: apiKey
-      });
+      console.log(`📊 main.js: Large audio file detected (${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB), using chunked processing`);
+      try {
+        transcription = await handleLongAudioTranscription(audioBuffer, encoding, {
+          sampleRateHertz: 16000,
+          languageCode: 'en-US',
+          apiKey: apiKey
+        });
+      } catch (chunkError) {
+        console.error('❌ main.js: Error in chunked processing:', chunkError);
+        return { error: `File too large (${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB). The maximum size is 10MB. Please use a shorter recording.` };
+      }
     } else {
       // Call the existing function to process the audio
       transcription = await handleGoogleSpeechAPI(audioBuffer, {

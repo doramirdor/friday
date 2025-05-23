@@ -573,7 +573,10 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     }
 
     try {
-      toast.loading('Transcribing audio...', { id: 'transcribing' });
+      toast.loading('Transcribing audio file. This may take a while for longer recordings...', { 
+        id: 'transcribing',
+        duration: 60000 // Show for up to 60 seconds
+      });
       
       // Get the file path from the recordedAudioUrl
       const filePath = recordedAudioUrl;
@@ -581,6 +584,12 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       // Use the electron API to send to main process for transcription
       const win = window as any;
       if (win?.electronAPI?.testSpeechWithFile) {
+        // Improve UX by showing a more detailed message for large files
+        toast.loading('Processing audio. Large files may take several minutes...', { 
+          id: 'transcribing', 
+          duration: 60000 // Show for up to 60 seconds
+        });
+        
         const result = await win.electronAPI.testSpeechWithFile(filePath);
         
         if (result.transcription) {
@@ -594,7 +603,12 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           setTranscriptLines(prev => [...prev, newLine]);
           toast.success('Transcription completed', { id: 'transcribing' });
         } else if (result.error) {
-          toast.error(`Transcription failed: ${result.error}`, { id: 'transcribing' });
+          console.error('Transcription error:', result.error);
+          if (result.error.includes('payload size exceeds')) {
+            toast.error('Audio file is too large. Please record a shorter segment or trim the audio file.', { id: 'transcribing' });
+          } else {
+            toast.error(`Transcription failed: ${result.error}`, { id: 'transcribing' });
+          }
         }
       } else {
         toast.error('Transcription API not available', { id: 'transcribing' });
