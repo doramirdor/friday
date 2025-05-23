@@ -44,10 +44,12 @@ try {
   console.error(`Error getting file stats: ${err.message}`);
 }
 
+let fileTypeString = "Unknown"; // Initialize file type string variable
+
 // Check file type using file command if available
 try {
-  const fileType = execSync(`file "${filePath}"`).toString().trim();
-  console.log(`File type: ${fileType}`);
+  fileTypeString = execSync(`file "${filePath}"`).toString().trim();
+  console.log(`File type: ${fileTypeString}`);
 } catch (err) {
   console.log(`Could not determine file type: ${err.message}`);
 }
@@ -196,8 +198,8 @@ console.log('6. Ensure your microphone is not muted and input volume is turned u
 
 console.log('\nRecording Status Check:');
 console.log('-'.repeat(50));
-console.log('1. Is this a valid audio file?', !fileType.includes('HTML') && !fileType.includes('text'));
+console.log('1. Is this a valid audio file?', !fileTypeString.includes('HTML') && !fileTypeString.includes('text'));
 console.log('2. Is this file empty or suspiciously small?', stats.size < 1024);
-console.log(`3. What recording mode was used? ${fileType.includes('HTML') ? 'Software mode (incorrect)' : 'Likely Swift recorder'}`);
+console.log(`3. What recording mode was used? ${fileTypeString.includes('HTML') ? 'Software mode (incorrect)' : 'Likely Swift recorder'}`);
 console.log('4. Recommended fix: Make sure useSoftwareRecordingMode=false in src/electron/main/utils/recording.js');
 console.log('   - If you\'re seeing HTML files, this indicates a fallback issue where the software recording mode is generating invalid files') 
