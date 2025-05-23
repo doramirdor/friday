@@ -8,4 +8,6 @@ print("DEBUG: Creating RecorderCLI instance")
 let recorder = RecorderCLI()
 print("DEBUG: Executing recording process")
 recorder.executeRecordingProcess()
-print("DEBUG: Recording process finished") 
+print("DEBUG: Recording process finished")
+
+// Just read the file content 

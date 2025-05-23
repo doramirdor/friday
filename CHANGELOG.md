@@ -30,6 +30,9 @@ All notable changes to this project will be documented in this file.
 - Added "Open in Native Player" button for when browser audio playback fails
 - Standardized recording file location to Documents/Friday Recordings/ directory
 - Standardized recording file format to MP3
+- Added specialized test scripts for microphone-only recording to help diagnose issues
+- Added permission request utility that opens system settings directly for microphone and screen recording
+- Added recorder restart functionality to recover from stuck recording processes
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
@@ -44,6 +47,8 @@ All notable changes to this project will be documented in this file.
 - Implemented singleton pattern for database initialization to prevent duplicate setup and improve performance
 - Changed default setting for live transcription to off
 - Modified native player behavior to no longer auto-open on audio errors
+- Improved recording status detection with better tracking of startup progress
+- Enhanced combined recording mode with smarter status reporting for better reliability
 
 ### Fixed
 - Fixed audio playback issues with MP3 data URLs by adding automatic conversion to WAV format for better browser compatibility
@@ -88,6 +93,10 @@ All notable changes to this project will be documented in this file.
 - Fixed Swift Recorder issues by enabling software recording mode by default
 - Fixed audio player loading loop by generating valid WAV files in software recording mode instead of empty MP3 files
 - Fixed audio format errors by using pre-recorded silence MP3 file and better handling file:// URLs
+- Fixed recording not starting issue by implementing better status detection and automatic recovery
+- Fixed combined recording mode missing JSON status responses by implementing manual status updates
+- Fixed recording process becoming stuck by adding a restart mechanism
+- Fixed permission handling for both microphone and screen recording on macOS
 
 ## [0.3.1] - 2024-05-21
 

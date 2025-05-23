@@ -85,6 +85,10 @@ function checkRecorderBinary() {
 // Call this function during initialization
 const swiftRecorderPath = checkRecorderBinary();
 
+// In the initRecording function, add a variable to track informal status messages about recording
+let recordingInProgress = false;
+let startupTimeout = null;
+
 const initRecording = (filepath, filename, source = 'system') => {
   // Force native mode here too in case it was changed
   useSoftwareRecordingMode = false;
@@ -174,16 +178,33 @@ const initRecording = (filepath, filename, source = 'system') => {
           // Check for indicators that the recorder is initializing properly
           // This helps detect if the recorder is actually working even before it sends JSON
           if (responseText.includes("Microphone component started successfully") ||
-              responseText.includes("Combined recording setup successful") ||
-              responseText.includes("Recording started")) {
+              responseText.includes("Combined recording setup successful")) {
             console.log("✅ Detected recorder initialization progress, extending timeout");
-            // Extend timeout since we know the recorder is starting up
-            if (startupTimeout) {
+            
+            // For combined recording, we may not get a JSON response immediately
+            // but we know the recording is working if we see these messages
+            if (source === 'both' && !recordingInProgress) {
+              console.log("⭐ Combined recording appears to be working despite no JSON response");
+              recordingInProgress = true;
+              
+              // Send a manual status update to simulate the recording having started
+              const timestamp = Date.now();
+              const simulatedPath = path.join(filepath, `${filename}.mp3`);
+              global.mainWindow.webContents.send("recording-status", "START_RECORDING", timestamp, simulatedPath, true);
+              
+              // We consider this good enough to proceed
               clearTimeout(startupTimeout);
-              startupTimeout = setTimeout(() => {
-                console.error("Recorder startup timed out after extended period (60 seconds)");
-                resolve(false);
-              }, 60000); // 60 seconds
+              startupTimeout = null;
+              resolve(true);
+            } else {
+              // Extend timeout since we know the recorder is starting up
+              if (startupTimeout) {
+                clearTimeout(startupTimeout);
+                startupTimeout = setTimeout(() => {
+                  console.error("Recorder startup timed out after extended period (60 seconds)");
+                  resolve(false);
+                }, 60000); // 60 seconds
+              }
             }
           }
           
@@ -553,4 +574,43 @@ export async function stopRecording() {
     console.warn("No recording process to stop");
     return { success: false, error: "No active recording" };
   }
-} 
+}
+
+const restartRecorder = () => {
+  console.log("🔄 Attempting to restart recording subsystem");
+  
+  // First ensure we stop any existing recording
+  if (recordingProcess) {
+    try {
+      // Force kill the process if it's unresponsive
+      console.log("Terminating existing recorder process");
+      recordingProcess.kill('SIGKILL');
+    } catch (e) {
+      console.error("Error killing recorder process:", e);
+    }
+    
+    recordingProcess = null;
+    recordingInProgress = false;
+  }
+  
+  // Reset internal state
+  if (startupTimeout) {
+    clearTimeout(startupTimeout);
+    startupTimeout = null;
+  }
+  
+  // Notify UI that recording was stopped in case it thinks it's still running
+  global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", Date.now(), null, false);
+  
+  console.log("Recording subsystem reset complete");
+  return true;
+};
+
+module.exports = {
+  initRecording,
+  startRecording, 
+  stopRecording,
+  checkRecorderBinary,
+  restartRecorder,
+  getAudioDevices
+}; 
