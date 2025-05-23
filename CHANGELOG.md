@@ -99,6 +99,7 @@ All notable changes to this project will be documented in this file.
 - Fixed permission handling for both microphone and screen recording on macOS
 - Fixed "ReferenceError: module is not defined in ES module scope" error in recording.js by converting CommonJS exports to ES module syntax
 - Added missing getAudioDevices function in recording.js to ensure proper audio device detection
+- Fixed "SyntaxError: Duplicate export of 'stopRecording'" by removing duplicate export declarations
 
 ## [0.3.1] - 2024-05-21
 
