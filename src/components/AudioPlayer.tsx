@@ -185,32 +185,11 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
         const error = audioRef.current?.error;
         if (error && error.code === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED = 4
           console.warn("AudioPlayer: Media format not supported in browser");
-          
-          // Always try the native player automatically for format errors
-          if (await playWithNativePlayer(true)) {
-            // If successful, just inform but don't show error UI
-            toast.info("Opening audio in native player due to format incompatibility");
-            return; // Exit early as we're using native player
-          } else {
-            // Show specific error for native player failure
-            toast.error("Audio format not supported and native player failed");
-          }
+          // Don't automatically use native player - let user choose from the UI
+          toast.error("Audio format not supported in browser. Try using the native player.");
         } else {
-          // For any other errors, also try native player
-          if (await playWithNativePlayer(true)) {
-            toast.info("Using native player due to browser playback issues");
-            return; // Exit early
-          } else {
-            toast.error("Audio playback failed in both browser and native player");
-          }
-        }
-        
-        // If we get here, both browser and native player failed
-        // Check if the URL is a file path that we can show in finder/explorer
-        const win = window as any;
-        if (win?.electronAPI?.showItemInFolder && audioUrl && !audioUrl.startsWith('data:')) {
-          toast.info("Opening folder containing the audio file");
-          win.electronAPI.showItemInFolder(audioUrl);
+          // For any other errors, also show error UI
+          toast.error("Audio playback failed. Try using the native player.");
         }
       };
       
@@ -237,16 +216,11 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
                 setIsPlaying(true);
                 toast.success("Playing recorded audio");
               })
-              .catch(async (error) => {
+              .catch((error) => {
                 console.error("Error playing audio automatically:", error);
-                
-                // Try native player if browser playback fails during autoplay
-                if (await playWithNativePlayer(true)) {
-                  setIsPlaying(true);
-                  toast.success("Playing in native player");
-                } else {
-                  toast.error("Failed to play audio automatically");
-                }
+                // Don't automatically use native player - show error instead
+                setAudioError(true);
+                toast.error("Failed to play audio automatically. Try using the native player.");
               });
           }
         }, 1500); // Increased timeout for better reliability
@@ -298,13 +272,9 @@ const AudioPlayer = ({ audioUrl, autoPlay = true, showWaveform = true }: AudioPl
       } catch (error) {
         console.error("Error playing audio:", error);
         
-        // Try using native player as fallback
-        if (await playWithNativePlayer(true)) {
-          // Native player is working, we can update the UI
-          setIsPlaying(true);
-        } else {
-          toast.error("Failed to play audio");
-        }
+        // Don't auto fallback to native player
+        setAudioError(true);
+        toast.error("Failed to play audio. Try using the native player.");
       }
     }
   };

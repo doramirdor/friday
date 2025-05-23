@@ -12,15 +12,83 @@ let recordingProcess = null;
 // Start with software recording mode set to false and ensure it stays false
 let useSoftwareRecordingMode = false;
 
-// Force to false in case it's being set elsewhere
-setTimeout(() => {
+// Force mode to false and check periodically to make sure it stays false
+function forceNativeRecordingMode() {
+  // If software mode is true for any reason, force it back to false
   if (useSoftwareRecordingMode === true) {
     console.log("⚠️ Warning: useSoftwareRecordingMode was set to true, forcing to false");
     useSoftwareRecordingMode = false;
   }
-}, 1000);
+}
+
+// Run immediately
+forceNativeRecordingMode();
+
+// Check periodically to ensure it stays false
+setInterval(forceNativeRecordingMode, 1000);
+
+// Check if the Swift recorder binary exists and log detailed information
+function checkRecorderBinary() {
+  const isDevMode = process.env.NODE_ENV === 'development';
+  const possiblePaths = [
+    path.join(process.cwd(), "src", "swift", "Recorder"),
+    path.join(app.getAppPath(), "src", "swift", "Recorder"),
+    path.join(process.resourcesPath || '', "src", "swift", "Recorder"),
+    path.join(app.getAppPath(), "..", "src", "swift", "Recorder"),
+    path.join(app.getPath("exe"), "..", "Resources", "src", "swift", "Recorder")
+  ];
+  
+  console.log("🔍 Checking for Swift recorder binary at possible locations:");
+  
+  let foundPath = null;
+  
+  for (const pathToCheck of possiblePaths) {
+    try {
+      if (fs.existsSync(pathToCheck)) {
+        const stats = fs.statSync(pathToCheck);
+        const permissions = stats.mode.toString(8).slice(-3);
+        console.log(`✅ Found recorder at: ${pathToCheck}`);
+        console.log(`   - Size: ${(stats.size / 1024).toFixed(2)} KB`);
+        console.log(`   - Permissions: ${permissions}`);
+        console.log(`   - Last modified: ${stats.mtime}`);
+        
+        // Check if the file is executable
+        if (!(stats.mode & 0o111)) {
+          console.warn(`⚠️ WARNING: The recorder binary is not executable! Permissions: ${permissions}`);
+          console.log(`   - Attempting to make executable with chmod +x`);
+          try {
+            fs.chmodSync(pathToCheck, '755');
+            console.log(`   - Updated permissions to 755`);
+          } catch (chmodErr) {
+            console.error(`   - Failed to update permissions: ${chmodErr.message}`);
+          }
+        }
+        
+        foundPath = pathToCheck;
+        break;
+      } else {
+        console.log(`❌ Not found at: ${pathToCheck}`);
+      }
+    } catch (err) {
+      console.error(`Error checking path ${pathToCheck}: ${err.message}`);
+    }
+  }
+  
+  if (!foundPath) {
+    console.error("❌ ERROR: Swift recorder binary not found! System audio recording will not work.");
+    console.error("   - Check that the binary is properly installed and executable");
+  }
+
+  return foundPath;
+}
+
+// Call this function during initialization
+const swiftRecorderPath = checkRecorderBinary();
 
 const initRecording = (filepath, filename, source = 'system') => {
+  // Force native mode here too in case it was changed
+  useSoftwareRecordingMode = false;
+  
   return new Promise(async (resolve) => {
     // Always use Documents/Friday Recordings/ directory regardless of passed filepath
     const documentsPath = app.getPath("documents");
@@ -61,44 +129,20 @@ const initRecording = (filepath, filename, source = 'system') => {
     if (filename) args.push("--filename", filename);
     args.push("--source", source);
 
-    // Get the correct path to the Recorder binary based on whether we're in development or production
-    const isDevMode = process.env.NODE_ENV === 'development';
-    let recorderPath;
+    // Use the recorder path we found during initialization
+    let recorderPath = swiftRecorderPath;
     
-    if (isDevMode) {
-      // In development mode, the binary is directly in the src/swift directory
-      recorderPath = path.join(process.cwd(), "src", "swift", "Recorder");
-    } else {
-      // In production, the binary should be in the app's resources directory
-      recorderPath = path.join(app.getAppPath(), "src", "swift", "Recorder");
-      
-      // Alternative paths to try if the first one fails
-      const alternativePaths = [
-        path.join(process.resourcesPath, "src", "swift", "Recorder"),
-        path.join(app.getAppPath(), "..", "src", "swift", "Recorder"),
-        path.join(app.getPath("exe"), "..", "Resources", "src", "swift", "Recorder")
-      ];
-      
-      if (!fs.existsSync(recorderPath)) {
-        console.log(`Recorder not found at primary path: ${recorderPath}, trying alternatives...`);
-        for (const altPath of alternativePaths) {
-          if (fs.existsSync(altPath)) {
-            recorderPath = altPath;
-            console.log(`Found Recorder at alternative path: ${recorderPath}`);
-            break;
-          } else {
-            console.log(`Recorder not found at alternative path: ${altPath}`);
-          }
-        }
-      }
+    // If we didn't find the recorder during initialization, try one more time
+    if (!recorderPath) {
+      console.log("⚠️ Swift recorder path not found during initialization, trying again...");
+      recorderPath = checkRecorderBinary();
     }
     
     // Log the final path for debugging
     console.log(`Using Recorder binary at: ${recorderPath}`);
-    if (!fs.existsSync(recorderPath)) {
-      console.error(`ERROR: Recorder binary not found at ${recorderPath}`);
-      
-      // Display an error and return false instead of switching to software mode
+    if (!recorderPath || !fs.existsSync(recorderPath)) {
+      console.error(`ERROR: Swift recorder binary not found! Cannot start recording.`);
+      global.mainWindow.webContents.send("recording-error", "RECORDER_NOT_FOUND");
       resolve(false);
       return;
     }
@@ -317,11 +361,6 @@ export async function stopRecording() {
     // For software mode, just send the stop signal directly
     const timestamp = Date.now();
     
-    // Use the pre-generated silence MP3 file
-    const resourcesPath = process.env.NODE_ENV === 'development' 
-      ? path.join(process.cwd(), 'src', 'assets') 
-      : path.join(process.resourcesPath, 'assets');
-    
     // Save to Documents/Friday Recordings/ directory
     const documentsPath = app.getPath("documents");
     const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings");
@@ -340,126 +379,100 @@ export async function stopRecording() {
     const outputPath = path.join(fridayRecordingsPath, `recording_${timestamp}.mp3`);
     
     try {
-      console.log(`Creating recording file at: ${outputPath}`);
+      console.log(`Creating silence MP3 file at: ${outputPath}`);
       
-      // Look for silence.mp3 in various locations
-      const silencePaths = [
-        path.join(resourcesPath, 'silence.mp3'),
-        path.join(process.cwd(), 'src', 'assets', 'silence.mp3'),
-        path.join(process.resourcesPath || '', 'assets', 'silence.mp3'),
-        path.join(app.getAppPath(), 'src', 'assets', 'silence.mp3')
-      ];
-      
-      let silencePath = null;
-      for (const tryPath of silencePaths) {
-        if (fs.existsSync(tryPath)) {
-          try {
-            // Verify it's a real MP3 file, not HTML
-            const buffer = fs.readFileSync(tryPath, { encoding: null }).slice(0, 50);
-            const asText = buffer.toString('utf8');
-            
-            if (!asText.includes('<!DOCTYPE') && !asText.includes('<html')) {
-              silencePath = tryPath;
-              console.log(`Found valid silence MP3 at: ${silencePath}`);
-              break;
+      // Generate a proper silence MP3 using ffmpeg (directly with specific parameters)
+      try {
+        // Import child_process dynamically to avoid issues
+        const { spawn } = await import('child_process');
+        
+        // Use spawn for better error handling and progress tracking
+        const ffmpegProcess = spawn('ffmpeg', [
+          '-f', 'lavfi',              // Use libavfilter virtual input
+          '-i', 'anullsrc=r=44100:cl=stereo',  // Generate silence with 44.1kHz sample rate, stereo
+          '-t', '60',                 // 60 seconds duration
+          '-c:a', 'libmp3lame',       // Use mp3 codec
+          '-b:a', '128k',             // 128k bitrate for better quality
+          '-y',                       // Overwrite output file if exists
+          outputPath                  // Output file path
+        ]);
+        
+        // Process output and errors
+        let ffmpegOutput = '';
+        let ffmpegError = '';
+        
+        ffmpegProcess.stdout.on('data', (data) => {
+          ffmpegOutput += data.toString();
+        });
+        
+        ffmpegProcess.stderr.on('data', (data) => {
+          const msg = data.toString();
+          ffmpegError += msg;
+          // Log but don't treat as error - ffmpeg sends progress to stderr
+          console.log(`ffmpeg: ${msg}`);
+        });
+        
+        // Wait for process to complete
+        await new Promise((resolve, reject) => {
+          ffmpegProcess.on('close', (code) => {
+            if (code === 0) {
+              console.log(`Successfully generated 60-second silence MP3 at ${outputPath}`);
+              resolve();
             } else {
-              console.log(`Found HTML file instead of MP3 at: ${tryPath}`);
+              console.error(`ffmpeg exited with code ${code}, stderr: ${ffmpegError}`);
+              reject(new Error(`ffmpeg exited with code ${code}`));
             }
-          } catch (err) {
-            console.error(`Error checking file at ${tryPath}: ${err.message}`);
-          }
-        }
-      }
-      
-      if (silencePath) {
-        // Copy the silence file
-        fs.copyFileSync(silencePath, outputPath);
-        console.log(`Copied silence MP3 to ${outputPath}`);
-        
-        // Verify the copy was successful
-        if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-          console.log(`Copy successful: ${fs.statSync(outputPath).size} bytes`);
-          global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
-        } else {
-          throw new Error("Copy failed or resulted in empty file");
-        }
-      } else {
-        // If no silence file is found, use ffmpeg to generate one
-        console.log("No silence.mp3 found, generating one with ffmpeg");
-        
-        // Make sure directory exists
-        if (!fs.existsSync(path.dirname(resourcesPath))) {
-          fs.mkdirSync(path.dirname(resourcesPath), { recursive: true });
-        }
-        
-        // Path to generate the silence file
-        const generatedSilencePath = path.join(resourcesPath, 'silence.mp3');
-        
-        try {
-          // Use ffmpeg to generate a silence file
-          // This is more reliable than manually creating MP3 frames
-          const { spawn } = await import('child_process');
-          
-          const ffmpegProcess = spawn('ffmpeg', [
-            '-f', 'lavfi',
-            '-i', 'anullsrc=r=44100:cl=stereo',
-            '-t', '60',
-            '-q:a', '2',
-            outputPath
-          ]);
-          
-          await new Promise((resolve, reject) => {
-            ffmpegProcess.on('close', (code) => {
-              if (code === 0) {
-                console.log(`Successfully generated silence MP3 at ${outputPath}`);
-                
-                // Also create one in the assets directory for future use
-                try {
-                  fs.copyFileSync(outputPath, generatedSilencePath);
-                  console.log(`Copied silence MP3 to assets directory: ${generatedSilencePath}`);
-                } catch (err) {
-                  console.error(`Failed to save silence MP3 to assets: ${err.message}`);
-                }
-                
-                resolve();
-              } else {
-                reject(new Error(`ffmpeg exited with code ${code}`));
-              }
-            });
-            
-            ffmpegProcess.on('error', (err) => {
-              reject(err);
-            });
           });
           
-          global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
-        } catch (ffmpegError) {
-          console.error(`Failed to generate silence with ffmpeg: ${ffmpegError.message}`);
-          
-          // Last resort - use a different approach with ffmpeg
-          try {
-            await import('child_process').then(({ execSync }) => {
-              execSync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 60 -q:a 2 "${outputPath}"`);
-            });
-            
-            if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-              console.log(`Successfully created silence MP3 with execSync: ${fs.statSync(outputPath).size} bytes`);
-              global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
-            } else {
-              throw new Error("Failed to create silence MP3 with execSync");
-            }
-          } catch (execSyncError) {
-            console.error(`Final ffmpeg attempt failed: ${execSyncError.message}`);
-            throw new Error("All methods to create valid MP3 file failed");
+          ffmpegProcess.on('error', (err) => {
+            console.error(`Error starting ffmpeg: ${err.message}`);
+            reject(err);
+          });
+        });
+        
+        // Verify the file exists and has content
+        if (fs.existsSync(outputPath)) {
+          const stats = fs.statSync(outputPath);
+          if (stats.size > 0) {
+            console.log(`Generated silence MP3 file: ${stats.size} bytes`);
+            global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
+            return { success: true, path: outputPath };
+          } else {
+            throw new Error("Generated file has zero size");
           }
+        } else {
+          throw new Error("Failed to create silence MP3 file");
+        }
+      } catch (ffmpegError) {
+        console.error(`Failed to generate silence with ffmpeg: ${ffmpegError.message}`);
+        
+        // Try alternative approach as fallback
+        try {
+          // Use execSync as a last resort
+          const { execSync } = await import('child_process');
+          execSync(`ffmpeg -f lavfi -i anullsrc=r=44100:cl=stereo -t 60 -c:a libmp3lame -b:a 128k "${outputPath}" -y`);
+          
+          // Verify the file exists and has content
+          if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
+            console.log(`Successfully created silence MP3 with execSync: ${fs.statSync(outputPath).size} bytes`);
+            global.mainWindow.webContents.send("recording-status", "STOP_RECORDING", timestamp, outputPath, false);
+            return { success: true, path: outputPath };
+          } else {
+            throw new Error("Generated file has zero size or doesn't exist");
+          }
+        } catch (execSyncError) {
+          console.error(`Alternative approach failed: ${execSyncError.message}`);
+          
+          // If all else fails, create a simple MP3 file directly
+          global.mainWindow.webContents.send("recording-error", "FILE_CREATION_FAILED");
+          return { success: false, error: "Failed to create valid MP3 file" };
         }
       }
     } catch (error) {
       console.error(`Error creating audio file: ${error.message}`);
       global.mainWindow.webContents.send("recording-error", "FILE_CREATION_FAILED");
+      return { success: false, error: error.message };
     }
-    
-    return { success: true };
   }
   
   if (recordingProcess !== null) {
