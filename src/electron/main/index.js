@@ -25,6 +25,26 @@ const { startRecording, stopRecording } = await import("./utils/recording.js");
 
 const exec = promisify(execCallback);
 
+// Helper function to safely extract transcript text from either string or object responses
+const getTranscriptText = (transcription) => {
+  if (typeof transcription === 'string') {
+    return transcription;
+  } else if (transcription && typeof transcription === 'object' && transcription.transcript) {
+    return transcription.transcript;
+  } else if (transcription && typeof transcription === 'object' && transcription.transcription) {
+    return transcription.transcription;
+  } else {
+    return String(transcription || 'No transcription available');
+  }
+};
+
+// Helper function to safely log transcript with substring
+const logTranscript = (label, transcription, maxLength = 50) => {
+  const text = getTranscriptText(transcription);
+  const truncated = text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  console.log(`${label}:`, truncated);
+};
+
 // Create or ensure the Recordings directory exists
 const ensureRecordingsDirectory = () => {
   const recordingsPath = path.join(app.getPath("documents"), "Friday Recordings");
@@ -230,7 +250,7 @@ async function callGoogleSpeechAPIDirectly(audioBase64, options = {}) {
             .join('\n')
             .trim();
           
-          console.log('🎯 main.js: Single-speaker transcript:', transcription.substring(0, 50) + '...');
+          logTranscript('🎯 main.js: Single-speaker transcript', transcription);
           return resolve({ 
             transcript: transcription,
             speakers: [{ id: "1", name: "Speaker 1", color: "#28C76F" }]
@@ -415,7 +435,7 @@ async function handleGoogleSpeechAPI(audioBuffer, options = {}) {
           .map(result => result.alternatives[0].transcript)
           .join('\n');
           
-        console.log('🎯 main.js: Transcription received:', transcription.substring(0, 50) + '...');
+        logTranscript('🎯 main.js: Transcription received', transcription);
       }
     } catch (clientError) {
       console.error('❌ main.js: Error using client library for speech recognition:', clientError);
@@ -1031,7 +1051,7 @@ ipcMain.handle('test-speech-with-file', async (event, options) => {
       });
     }
 
-    console.log('📝 main.js: Transcription result:', transcription.substring(0, 100) + (transcription.length > 100 ? '...' : ''));
+    logTranscript('📝 main.js: Transcription result', transcription, 100);
     return { transcription };
   } catch (error) {
     console.error('❌ main.js: Error testing speech with file:', error);
@@ -1085,16 +1105,17 @@ async function transcribeRecordingFile(filePath) {
       });
     }
     
-    console.log('📝 main.js: Auto-transcription result:', transcription.substring(0, 100) + '...');
+    logTranscript('📝 main.js: Auto-transcription result', transcription, 100);
     
-    // Send the transcript to the renderer
+    // Send the transcript to the renderer - extract text if it's an object
+    const transcriptText = getTranscriptText(transcription);
     global.mainWindow.webContents.send('recording-transcription', {
       filePath,
-      transcription,
+      transcription: transcriptText,
       timestamp: new Date().toISOString()
     });
     
-    return { success: true, transcription };
+    return { success: true, transcription: transcriptText };
   } catch (error) {
     console.error('❌ main.js: Error auto-transcribing recording:', error);
     global.mainWindow.webContents.send('recording-transcription', {
