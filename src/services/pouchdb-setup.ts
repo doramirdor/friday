@@ -4,11 +4,27 @@
 // Types for TypeScript
 interface DatabaseResponse<T> {
   success: boolean;
-  error?: string;
+  error?: any; // Changed to any to accommodate full error objects
   result?: T;
   info?: any; // PouchDB info object structure can be complex
   doc?: T;
 }
+
+/**
+ * Helper function to reconstruct error objects from IPC
+ */
+const reconstructError = (errorData: any): Error => {
+  const error = new Error(errorData.message || 'Database operation failed');
+  
+  // Copy over PouchDB-specific properties
+  if (errorData.status !== undefined) (error as any).status = errorData.status;
+  if (errorData.statusCode !== undefined) (error as any).statusCode = errorData.statusCode;
+  if (errorData.name !== undefined) error.name = errorData.name;
+  if (errorData.error !== undefined) (error as any).error = errorData.error;
+  if (errorData.reason !== undefined) (error as any).reason = errorData.reason;
+  
+  return error;
+};
 
 // Define a more specific type for PouchDB-like operations via IPC
 // This helps in providing intellisense for the available methods.
@@ -40,7 +56,8 @@ export const createDatabase = async <T = any>(name: string): Promise<IpcPouchDB<
     
     if (!response.success) {
       console.error(`Failed to create/initialize database '${name}' via IPC:`, response.error);
-      throw new Error(response.error || `Failed to create/initialize database '${name}'.`);
+      const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || `Failed to create/initialize database '${name}'.`);
+      throw error;
     }
     console.log(`✅ Database '${name}' ready via IPC. Info:`, response.info);
 
@@ -50,44 +67,65 @@ export const createDatabase = async <T = any>(name: string): Promise<IpcPouchDB<
     return {
       async get(id: string): Promise<T> {
         const response: DatabaseResponse<T> = await electronAPI.database.get(name, id);
-        if (!response.success || response.doc === undefined) throw new Error(response.error || 'Document not found or error in get');
+        if (!response.success || response.doc === undefined) {
+          const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Document not found or error in get');
+          throw error;
+        }
         return response.doc;
       },
 
       async put(doc: T): Promise<any> {
         const response: DatabaseResponse<any> = await electronAPI.database.put(name, doc);
-        if (!response.success) throw new Error(response.error || 'Error in put operation');
+        if (!response.success) {
+          const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Error in put operation');
+          throw error;
+        }
         return response.result;
       },
 
       async remove(doc: T): Promise<any> {
         const response: DatabaseResponse<any> = await electronAPI.database.remove(name, doc);
-        if (!response.success) throw new Error(response.error || 'Error in remove operation');
+        if (!response.success) {
+          const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Error in remove operation');
+          throw error;
+        }
         return response.result;
       },
 
       async find(options: any): Promise<any> {
         // Ensure `pouchdb-find` plugin is registered on PouchDB instances in the main process.
         const response: DatabaseResponse<any> = await electronAPI.database.query(name, options);
-        if (!response.success) throw new Error(response.error || 'Error in find/query operation');
+        if (!response.success) {
+          const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Error in find/query operation');
+          throw error;
+        }
         return response.result;
       },
 
       async info(): Promise<any> {
         const response: DatabaseResponse<any> = await electronAPI.database.info(name);
-        if (!response.success) throw new Error(response.error || 'Error fetching database info');
+        if (!response.success) {
+          const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Error fetching database info');
+          throw error;
+        }
         return response.info;
       },
 
       async createIndex(indexOptions: any): Promise<any> {
         const response: DatabaseResponse<any> = await electronAPI.database.createIndex(name, indexOptions);
-        if (!response.success) throw new Error(response.error || 'Error creating index');
+        if (!response.success) {
+          const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Error creating index');
+          throw error;
+        }
         return response.result;
       },
 
       async getIndexes(): Promise<any> {
         const response: DatabaseResponse<any> = await electronAPI.database.getIndexes(name);
-        if (!response.success) throw new Error(response.error || 'Error getting indexes');
+        if (!response.success) {
+          const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Error getting indexes');
+          throw error;
+        }
         return response.result;
       }
     };

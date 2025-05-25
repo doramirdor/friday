@@ -46,6 +46,21 @@ const getDatabase = async (nameSuffix) => {
 };
 
 /**
+ * Helper function to serialize error objects for IPC
+ */
+const serializeError = (error) => {
+  return {
+    message: error.message,
+    name: error.name,
+    status: error.status,
+    statusCode: error.statusCode,
+    error: error.error,
+    reason: error.reason,
+    stack: error.stack
+  };
+};
+
+/**
  * Set up database handlers
  */
 export function setupDatabaseHandlers(ipcMain) {
@@ -58,7 +73,7 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, info };
     } catch (error) {
       console.error(`Error in db:create for '${name}':`, error);
-      return { success: false, error: error.message || 'Unknown error during db:create' };
+      return { success: false, error: serializeError(error) };
     }
   });
 
@@ -70,7 +85,7 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, doc };
     } catch (error) {
       console.error(`Error in db:get for '${dbName}', docId '${docId}':`, error);
-      return { success: false, error: error.message };
+      return { success: false, error: serializeError(error) };
     }
   });
 
@@ -82,7 +97,7 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, result };
     } catch (error) {
       console.error(`Error in db:put for '${dbName}':`, error);
-      return { success: false, error: error.message };
+      return { success: false, error: serializeError(error) };
     }
   });
 
@@ -94,7 +109,7 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, result };
     } catch (error) {
       console.error(`Error in db:remove for '${dbName}':`, error);
-      return { success: false, error: error.message };
+      return { success: false, error: serializeError(error) };
     }
   });
 
@@ -108,7 +123,7 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, result };
     } catch (error) {
       console.error(`Error in db:query for '${dbName}' with options:`, options, error);
-      return { success: false, error: error.message };
+      return { success: false, error: serializeError(error) };
     }
   });
 
@@ -120,7 +135,7 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, info };
     } catch (error) {
       console.error(`Error in db:info for '${dbName}':`, error);
-      return { success: false, error: error.message };
+      return { success: false, error: serializeError(error) };
     }
   });
 
@@ -133,7 +148,7 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, result };
     } catch (error) {
       console.error(`Error in db:createIndex for '${dbName}' with options:`, indexOptions, error);
-      return { success: false, error: error.message };
+      return { success: false, error: serializeError(error) };
     }
   });
 
@@ -145,7 +160,7 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, result };
     } catch (error) {
       console.error(`Error in db:getIndexes for '${dbName}':`, error);
-      return { success: false, error: error.message };
+      return { success: false, error: serializeError(error) };
     }
   });
 } 
