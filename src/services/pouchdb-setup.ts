@@ -18,6 +18,8 @@ export interface IpcPouchDB<T = any> {
   remove: (doc: T) => Promise<any>; // Response from remove can vary
   find: (options: any) => Promise<any>; // PouchDB-find options and result
   info: () => Promise<any>; // PouchDB info object
+  createIndex: (indexOptions: any) => Promise<any>; // Create index
+  getIndexes: () => Promise<any>; // Get all indexes
 }
 
 /**
@@ -75,6 +77,18 @@ export const createDatabase = async <T = any>(name: string): Promise<IpcPouchDB<
         const response: DatabaseResponse<any> = await electronAPI.database.info(name);
         if (!response.success) throw new Error(response.error || 'Error fetching database info');
         return response.info;
+      },
+
+      async createIndex(indexOptions: any): Promise<any> {
+        const response: DatabaseResponse<any> = await electronAPI.database.createIndex(name, indexOptions);
+        if (!response.success) throw new Error(response.error || 'Error creating index');
+        return response.result;
+      },
+
+      async getIndexes(): Promise<any> {
+        const response: DatabaseResponse<any> = await electronAPI.database.getIndexes(name);
+        if (!response.success) throw new Error(response.error || 'Error getting indexes');
+        return response.result;
       }
     };
   } catch (error) {

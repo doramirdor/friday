@@ -123,4 +123,29 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: false, error: error.message };
     }
   });
+
+  // Create index. 'dbName' received is the suffix.
+  ipcMain.handle('db:createIndex', async (event, { dbName, indexOptions }) => {
+    try {
+      const db = await getDatabase(dbName);
+      const result = await db.createIndex(indexOptions);
+      console.log(`Index created for '${dbName}':`, result);
+      return { success: true, result };
+    } catch (error) {
+      console.error(`Error in db:createIndex for '${dbName}' with options:`, indexOptions, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get indexes. 'dbName' received is the suffix.
+  ipcMain.handle('db:getIndexes', async (event, { dbName }) => {
+    try {
+      const db = await getDatabase(dbName);
+      const result = await db.getIndexes();
+      return { success: true, result };
+    } catch (error) {
+      console.error(`Error in db:getIndexes for '${dbName}':`, error);
+      return { success: false, error: error.message };
+    }
+  });
 } 
