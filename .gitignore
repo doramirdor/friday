@@ -29,3 +29,6 @@ electron/google-credentials.json
 # Local environment files
 .env.local
 set-env.bat
+
+# Database files
+/data/

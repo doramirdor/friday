@@ -43,6 +43,7 @@ export interface ActionItem extends PouchDocument {
   text: string;
   completed: boolean;
   type: 'actionItem'; // Document type for querying
+  updatedAt: string;
 }
 
 // Interface for Notes related to a meeting
@@ -60,6 +61,7 @@ export interface Context extends PouchDocument {
   files: string[];
   overrideGlobal: boolean;
   type: 'context'; // Document type for querying
+  updatedAt: string;
 }
 
 // Interface for Context File
@@ -74,6 +76,7 @@ export interface ContextFile extends PouchDocument {
   addedAt: string; // ISO date string
   updatedAt?: string; // ISO date string
   dbType: 'contextFile'; // Document type for querying
+  createdAt: string;
 }
 
 // Interface for Global Context
@@ -83,6 +86,8 @@ export interface GlobalContext extends PouchDocument {
   files: string[]; // IDs of ContextFile documents
   updatedAt: string; // ISO date string
   type: 'globalContext'; // Document type for querying
+  _id?: string;
+  _rev?: string;
 }
 
 // Full meeting data including related items

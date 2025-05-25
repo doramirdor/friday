@@ -1,62 +1,40 @@
 // An upgrade service to handle PouchDB version migrations and compatibility fixes
 import { getPouchDB } from './pouchdb-setup';
 
+// Current schema version - increment this when making breaking changes
+const CURRENT_SCHEMA_VERSION = '1.0.0';
+
 /**
  * Check if PouchDB storage format needs to be upgraded
  * This handles cases where PouchDB schema/storage changes between versions
- * causing the "Class extends value [object Object] is not a constructor or null" error
  */
 export const checkAndUpgradePouchDB = async (): Promise<void> => {
   try {
-    // Try to clear any corrupted data in localStorage that could be causing issues
-    const keys = Object.keys(localStorage);
-    const pouchdbKeys = keys.filter(key => key.startsWith('_pouch_') || key.startsWith('friday-app-'));
+    const currentVersion = localStorage.getItem('pouchdb_version');
     
-    if (pouchdbKeys.length > 0) {
-      console.log(`Found ${pouchdbKeys.length} PouchDB related localStorage items`);
+    // Only clear data if version mismatch or no version found
+    if (!currentVersion || currentVersion !== CURRENT_SCHEMA_VERSION) {
+      console.log('PouchDB version mismatch detected, performing upgrade...');
+      console.log(`Current version: ${currentVersion}, Required version: ${CURRENT_SCHEMA_VERSION}`);
       
-      try {
-        // Get the PouchDB constructor - this is no longer async with the direct approach
-        const PouchDB = getPouchDB();
+      const keys = Object.keys(localStorage);
+      const pouchdbKeys = keys.filter(key => key.startsWith('_pouch_') || key.startsWith('friday-app-'));
+      
+      if (pouchdbKeys.length > 0) {
+        console.log(`Found ${pouchdbKeys.length} PouchDB related localStorage items`);
         
-        // Attempt to access each database to check for corruption
+        // Clear all PouchDB data to ensure clean state
         for (const key of pouchdbKeys) {
-          const dbName = key.replace('_pouch_', '').replace('friday-app-', '');
-          if (dbName) {
-            const testDb = new PouchDB(`test-${dbName}-access`);
-            // If we can create a test DB instance, the database should be ok
-            await testDb.info();
-            await testDb.destroy(); // Clean up test DB
-          }
-        }
-      } catch (error) {
-        console.error('Error accessing PouchDB, storage may be corrupted:', error);
-        
-        // If we got an initialization error, clear PouchDB data
-        if (error instanceof Error && 
-            (error.message.includes('constructor') || 
-             error.message.includes('not a function') ||
-             error.message.includes('is not a constructor'))) {
-          
-          console.warn('Detected PouchDB initialization issue - clearing localStorage data');
-          
-          // Clear PouchDB related localStorage entries to fix the issue
-          for (const key of pouchdbKeys) {
-            console.log(`Removing potentially corrupted PouchDB data: ${key}`);
-            localStorage.removeItem(key);
-          }
-          
-          // Reload the page to start fresh
-          if (pouchdbKeys.length > 0) {
-            console.log('PouchDB data cleared. Page will reload to reset storage.');
-            
-            // Optional: reload page after clearing storage
-            setTimeout(() => {
-              window.location.reload();
-            }, 1000);
-          }
+          console.log(`Removing PouchDB data: ${key}`);
+          localStorage.removeItem(key);
         }
       }
+      
+      // Set new version
+      localStorage.setItem('pouchdb_version', CURRENT_SCHEMA_VERSION);
+      console.log('PouchDB upgrade completed successfully');
+    } else {
+      console.log('PouchDB version check passed, no upgrade needed');
     }
   } catch (err) {
     console.error('Error during PouchDB upgrade check:', err);

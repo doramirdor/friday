@@ -1,81 +1,120 @@
 // PouchDB setup that uses global/window PouchDB to avoid module loading issues
 // This approach bypasses the ESM/CommonJS compatibility problems
+import PouchDB from 'pouchdb';
 
 // Types for TypeScript only (not for runtime imports)
 type PouchDBType = any;
 type PouchDBOptions = any;
 
-// DB namespace
+// DB namespace and configuration
 const DB_NAME = 'friday-app';
 
+// Types for TypeScript
+interface DatabaseResponse<T> {
+  success: boolean;
+  error?: string;
+  result?: T;
+  info?: any;
+  doc?: T;
+}
+
 /**
- * Get PouchDB from the global/window object
- * This bypasses ESM/CommonJS module issues
+ * Get database options based on environment
  */
-const getGlobalPouchDB = (): any => {
-  // Check if we're in a browser environment
-  if (typeof window !== 'undefined') {
-    // Use direct global PouchDB (fixed by our patch script) or fallback
-    const pouchdb = (window as any).PouchDB || (window as any).PouchDBFallback;
-    
-    if (pouchdb) {
-      console.log('✅ Using global PouchDB');
-      return pouchdb;
+const getDBOptions = () => {
+  // Check if we're running in Electron
+  const isElectron = !!(window as any).electronAPI?.isElectron;
+  const dbPath = (window as any).dbPath;
+
+  if (isElectron && dbPath) {
+    // In Electron, use leveldb adapter with app data path
+    return {
+      auto_compaction: true,
+      revs_limit: 50,
+      adapter: 'leveldb',
+      prefix: dbPath + '/',
+    };
+  } else {
+    // In web browser, use IndexedDB
+    return {
+      auto_compaction: true,
+      revs_limit: 50,
+      adapter: 'idb',
+    };
+  }
+};
+
+// Store database instances
+const databaseInstances: { [key: string]: any } = {};
+
+/**
+ * Get PouchDB instance with correct adapter
+ */
+const getPouchDBInstance = (): typeof PouchDB => {
+  // Check if we're running in Electron
+  const isElectron = !!(window as any).electronAPI?.isElectron;
+
+  if (isElectron) {
+    // In Electron environment, use the exposed PouchDB
+    const ElectronPouchDB = (window as any).PouchDB;
+    if (ElectronPouchDB && typeof ElectronPouchDB === 'function') {
+      return ElectronPouchDB;
     }
-    
-    console.error('❌ Global PouchDB not found!');
   }
-  
-  // For Node/SSR, try a direct require
-  try {
-    // Use Function constructor to avoid static analysis by bundlers
-    // This trick prevents the bundler from trying to bundle it
-    const dynamicRequire = new Function('modulePath', 'return require(modulePath)');
-    return dynamicRequire('pouchdb');
-  } catch (error) {
-    console.error('❌ Failed to load PouchDB in non-browser environment', error);
-  }
-  
-  throw new Error('PouchDB not available in this environment');
+
+  // Fallback to imported PouchDB
+  return PouchDB;
 };
 
 /**
- * Create a database instance
+ * Create a database instance with persistence
  */
 export const createDatabase = async <T = any>(name: string): Promise<any> => {
   try {
-    // Get the PouchDB constructor from the global object
-    const PouchDB = getGlobalPouchDB();
-    
-    if (typeof PouchDB !== 'function') {
-      console.error('❌ PouchDB is not a constructor!', typeof PouchDB);
-      throw new Error(`PouchDB is not a constructor: ${typeof PouchDB}`);
+    // Check if we're running in Electron
+    const electronAPI = (window as any).electronAPI;
+    if (!electronAPI?.isElectron) {
+      throw new Error('This application requires Electron to run');
     }
-    
-    // Create a new database instance
-    const dbName = `${DB_NAME}-${name}`;
-    console.log(`🔄 Creating database: ${dbName}`);
-    const db = new PouchDB(dbName);
-    
-    // Add the find plugin if it's not already included
-    if (PouchDB.plugin && !db.find) {
-      try {
-        // Try to load the find plugin directly from window
-        const PouchDBFind = (window as any).PouchDBFind;
-        if (PouchDBFind) {
-          PouchDB.plugin(PouchDBFind);
-        } else {
-          // For environments without the global plugin
-          const dynamicRequire = new Function('modulePath', 'return require(modulePath)');
-          const findPlugin = dynamicRequire('pouchdb-find');
-          PouchDB.plugin(findPlugin);
-        }
-      } catch (e) {
-        console.warn('⚠️ Could not load PouchDB find plugin', e);
+
+    // Create database through IPC
+    const response = await electronAPI.database.create(name, {});
+    if (!response.success) {
+      throw new Error(response.error);
+    }
+
+    // Return a proxy object that implements the database interface
+    return {
+      async get(id: string): Promise<T> {
+        const response: DatabaseResponse<T> = await electronAPI.database.get(name, id);
+        if (!response.success) throw new Error(response.error);
+        return response.doc!;
+      },
+
+      async put(doc: T): Promise<any> {
+        const response: DatabaseResponse<any> = await electronAPI.database.put(name, doc);
+        if (!response.success) throw new Error(response.error);
+        return response.result;
+      },
+
+      async remove(doc: T): Promise<any> {
+        const response: DatabaseResponse<any> = await electronAPI.database.remove(name, doc);
+        if (!response.success) throw new Error(response.error);
+        return response.result;
+      },
+
+      async find(options: any): Promise<any> {
+        const response: DatabaseResponse<any> = await electronAPI.database.query(name, options);
+        if (!response.success) throw new Error(response.error);
+        return response.result;
+      },
+
+      async info(): Promise<any> {
+        const response: DatabaseResponse<any> = await electronAPI.database.info(name);
+        if (!response.success) throw new Error(response.error);
+        return response.info;
       }
-    }
-    
-    return db;
+    };
   } catch (error) {
     console.error(`❌ Error creating database ${name}:`, error);
     throw error;
@@ -86,10 +125,12 @@ export const createDatabase = async <T = any>(name: string): Promise<any> => {
  * Get the PouchDB constructor
  */
 export const getPouchDB = (): any => {
-  return getGlobalPouchDB();
+  return getPouchDBInstance();
 };
 
 /**
- * Default export is the PouchDB constructor
+ * Default export is a dummy function since we don't need direct PouchDB access anymore
  */
-export default getGlobalPouchDB; 
+export default () => {
+  throw new Error('Direct PouchDB access is not supported. Use createDatabase() instead.');
+}; 

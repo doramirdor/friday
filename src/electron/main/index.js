@@ -11,8 +11,9 @@ import isDev from "electron-is-dev";
 import pkg from "@google-cloud/speech/build/protos/protos.js";
 const { google } = pkg;
 
-// Import our new transcript handler
+// Import our handlers
 import { setupTranscriptHandlers } from "./transcript-handler.js";
+import { setupDatabaseHandlers } from "./database-handler.js";
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -47,22 +48,31 @@ async function callGoogleSpeechAPIDirectly(audioBase64, options = {}) {
     
     console.log('🌐 main.js: Making direct API call to Google Speech API');
     
+    // Update API endpoint for long-running operations
+    const apiUrl = `https://speech.googleapis.com/v1/speech:longrunningrecognize?key=${apiKey}`;
+    
     const requestData = JSON.stringify({
       config: {
-        encoding: options.encoding || 'LINEAR16',
+        encoding: options.encoding || 'MP3',
         sampleRateHertz: options.sampleRateHertz || 16000,
         languageCode: options.languageCode || 'en-US',
-        model: options.model || 'command_and_search',
+        model: 'latest_long',  // Use latest_long model for better diarization
         enableAutomaticPunctuation: true,
-        useEnhanced: true
+        useEnhanced: true,
+        diarizationConfig: {
+          enableSpeakerDiarization: true,
+          minSpeakerCount: 1,
+          maxSpeakerCount: 10
+        },
+        // Enable word-level confidence and timestamps for better speaker tracking
+        enableWordConfidence: true,
+        enableWordTimeOffsets: true
       },
       audio: {
         content: audioBase64
       }
     });
-    
-    const apiUrl = `https://speech.googleapis.com/v1/speech:recognize?key=${apiKey}`;
-    
+
     const requestOptions = {
       method: 'POST',
       headers: {
@@ -70,36 +80,162 @@ async function callGoogleSpeechAPIDirectly(audioBase64, options = {}) {
         'Content-Length': Buffer.byteLength(requestData)
       }
     };
-    
-    const req = https.request(apiUrl, requestOptions, (res) => {
+
+    const req = https.request(apiUrl, requestOptions, async (res) => {
       const chunks = [];
       
       res.on('data', (chunk) => {
         chunks.push(chunk);
       });
       
-      res.on('end', () => {
+      res.on('end', async () => {
         try {
           const responseBody = Buffer.concat(chunks).toString();
-          console.log('🌐 main.js: Direct API response:', responseBody.substring(0, 500) + '...');
+          console.log('🌐 main.js: Initial API response:', responseBody.substring(0, 500) + '...');
           
           if (res.statusCode !== 200) {
             return reject(new Error(`API request failed with status ${res.statusCode}: ${responseBody}`));
           }
           
-          const jsonResponse = JSON.parse(responseBody);
+          const operationResponse = JSON.parse(responseBody);
+          const operationName = operationResponse.name;
           
-          if (!jsonResponse.results || jsonResponse.results.length === 0) {
-            console.log('⚠️ main.js: No transcription results from direct API call');
+          if (!operationName) {
+            return reject(new Error('No operation name received from API'));
+          }
+          
+          // Poll for operation completion
+          let result;
+          let attempts = 0;
+          const maxAttempts = 30; // Maximum 5 minutes (30 * 10 seconds)
+          
+          while (attempts < maxAttempts) {
+            attempts++;
+            
+            // Wait 10 seconds between polls
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            
+            // Check operation status
+            const checkUrl = `https://speech.googleapis.com/v1/operations/${operationName}?key=${apiKey}`;
+            
+            try {
+              const checkResponse = await new Promise((resolveCheck, rejectCheck) => {
+                https.get(checkUrl, (checkRes) => {
+                  const checkChunks = [];
+                  
+                  checkRes.on('data', (chunk) => checkChunks.push(chunk));
+                  
+                  checkRes.on('end', () => {
+                    const checkBody = Buffer.concat(checkChunks).toString();
+                    resolveCheck(JSON.parse(checkBody));
+                  });
+                  
+                  checkRes.on('error', rejectCheck);
+                });
+              });
+              
+              console.log(`🔄 Checking operation status (attempt ${attempts}):`, checkResponse.done ? 'DONE' : 'IN_PROGRESS');
+              
+              if (checkResponse.done) {
+                result = checkResponse.response;
+                break;
+              }
+            } catch (checkError) {
+              console.error('Error checking operation status:', checkError);
+              // Continue polling despite error
+            }
+          }
+          
+          if (!result) {
+            return reject(new Error('Operation timed out or failed to complete'));
+          }
+          
+          if (!result.results || result.results.length === 0) {
+            console.log('⚠️ main.js: No transcription results from API');
             return resolve('No speech detected');
           }
           
-          const transcription = jsonResponse.results
-            .map(result => result.alternatives[0].transcript)
-            .join('\n');
+          // Process speaker diarization results
+          const words = result.results
+            .flatMap(r => {
+              console.log('Debug - Result:', r);
+              console.log('Debug - Result alternatives:', r.alternatives);
+              console.log('Debug - Result alternatives[0]:', r.alternatives[0]);
+              console.log('Debug - Result alternatives[0] words:', r.alternatives[0].words);
+              if (!r.alternatives || !r.alternatives[0]) return [];
+              const alternative = r.alternatives[0];
+              // Only return words that have speakerTag
+              return (alternative.words || []).filter(word => word.speakerTag !== undefined);
+            });
+          
+          console.log('Debug - Words array length:', words.length);
+          console.log('Debug - First few words:', JSON.stringify(words.slice(0, 5), null, 2));
+          
+          if (words.length > 0 && words.some(word => word.speakerTag !== undefined)) {
+            // Get unique speaker tags and map them to sequential IDs
+            const uniqueSpeakers = [...new Set(words.map(word => word.speakerTag))].sort();
+            const speakerMap = new Map(uniqueSpeakers.map((tag, index) => [tag, (index + 1).toString()]));
             
-          console.log('🎯 main.js: Direct API transcription received:', transcription.substring(0, 50) + '...');
-          return resolve(transcription);
+            console.log('Debug - Speaker mapping:', Object.fromEntries(speakerMap));
+            
+            // Group contiguous words by speaker
+            let currentSpeaker = words[0].speakerTag;
+            let segments = [];
+            let currentText = '';
+            
+            words.forEach(({ word, speakerTag }, index) => {
+              // Map the speaker tag to our sequential ID format
+              const mappedSpeakerId = speakerMap.get(speakerTag);
+              
+              if (speakerTag !== currentSpeaker || index === 0) {
+                // Add the accumulated text for the current speaker
+                if (currentText && index !== 0) {
+                  const prevMappedId = speakerMap.get(currentSpeaker);
+                  segments.push(`Speaker ${prevMappedId}: ${currentText.trim()}`);
+                }
+                // Start new speaker segment
+                currentSpeaker = speakerTag;
+                currentText = word;
+              } else {
+                currentText += ` ${word}`;
+              }
+            });
+            
+            // Add the last segment
+            if (currentText) {
+              const finalMappedId = speakerMap.get(currentSpeaker);
+              segments.push(`Speaker ${finalMappedId}: ${currentText.trim()}`);
+            }
+            
+            const diarizedTranscript = segments.join('\n');
+            console.log('🎯 main.js: Diarized transcript:', diarizedTranscript);
+            
+            // Return both the transcript and speaker information
+            const response = {
+              transcript: diarizedTranscript,
+              speakers: Array.from(speakerMap.values()).map(id => ({
+                id,
+                name: `Speaker ${id}`,
+                color: ["#28C76F", "#7367F0", "#FF9F43"][parseInt(id) - 1] || "#666666"
+              }))
+            };
+            
+            console.log('🎯 main.js: Response with speakers:', response);
+            return resolve(response);
+          }
+          
+          // Fallback to single-speaker transcript
+          const transcription = result.results
+            .map(result => result.alternatives[0].transcript)
+            .join('\n')
+            .trim();
+          
+          console.log('🎯 main.js: Single-speaker transcript:', transcription.substring(0, 50) + '...');
+          return resolve({ 
+            transcript: transcription,
+            speakers: [{ id: "1", name: "Speaker 1", color: "#28C76F" }]
+          });
+          
         } catch (error) {
           return reject(new Error(`Error processing API response: ${error.message}`));
         }
@@ -362,9 +498,8 @@ const createWindow = async () => {
     setupSystemAudioHandlers(recordingsPath);
     setupMicrophoneHandlers(recordingsPath);
     setupCombinedRecordingHandlers(recordingsPath);
-    
-    // Set up transcript handlers 
     setupTranscriptHandlers();
+    setupDatabaseHandlers(ipcMain);
     
     // Create the browser window
     global.mainWindow = new BrowserWindow({
@@ -481,85 +616,90 @@ ipcMain.handle('invoke-google-speech', async (event, audioBuffer, options = {}) 
   return await handleGoogleSpeechAPI(audioBuffer, options);
 });
 
-// Handle saving audio files
-ipcMain.handle('save-audio-file', async (event, { buffer, filename, formats = ['wav'] }) => {
+// Handle saving audio file
+ipcMain.handle("save-audio-file", async (event, buffer, filename, formats = ['mp3']) => {
   try {
-    console.log(`🔄 main.js: Saving audio file ${filename}, formats:`, formats);
+    console.log(`🔄 main.js: Saving audio file: ${filename} with formats:`, formats);
     
-    const recordingsDir = ensureRecordingsDirectory();
-    const timePrefix = new Date().toISOString().replace(/:/g, '-');
-    const baseFilename = `${timePrefix}-${filename}`;
-    
-    // Save all requested formats
-    const results = {};
-    
-    // Save WAV if requested
-    if (formats.includes('wav')) {
-      const wavPath = path.join(recordingsDir, `${baseFilename}.wav`);
-      fs.writeFileSync(wavPath, Buffer.from(buffer));
-      console.log(`✅ main.js: Saved WAV file: ${wavPath}`);
-      results.wav = wavPath;
+    // Create output directory if it doesn't exist
+    const outputDir = path.join(app.getPath('userData'), 'recordings');
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
     }
     
-    // Save MP3 if requested
-    if (formats.includes('mp3')) {
+    // Generate timestamp for unique filenames
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    
+    // Save files in requested formats
+    const savedFiles = [];
+    
+    for (const format of formats) {
       try {
-        const mp3Path = path.join(recordingsDir, `${baseFilename}.mp3`);
+        // Generate output path
+        const outputPath = path.join(outputDir, `${filename}_${timestamp}.${format}`);
         
-        // Check if input is FLAC format
-        const isFLAC = filename.toLowerCase().endsWith('.flac') || 
-                      (buffer.length > 4 && 
-                       buffer[0] === 0x66 && // 'f'
-                       buffer[1] === 0x4C && // 'L'
-                       buffer[2] === 0x61 && // 'a'
-                       buffer[3] === 0x43);  // 'C'
-        
-        if (isFLAC) {
-          console.log('🎵 main.js: Converting FLAC to MP3');
-          // Save FLAC first
-          const flacPath = path.join(recordingsDir, `${baseFilename}.flac`);
-          fs.writeFileSync(flacPath, Buffer.from(buffer));
-          // Convert FLAC to MP3
-          await exec(`ffmpeg -i "${flacPath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
-          // Clean up FLAC file
-          fs.unlinkSync(flacPath);
+        // For MP3 format, use ffmpeg to convert
+        if (format.toLowerCase() === 'mp3') {
+          console.log('🔄 main.js: Converting to MP3');
+          
+          // Create a temporary WAV file first
+          const tempWavPath = path.join(app.getPath('temp'), `temp_${Date.now()}.wav`);
+          fs.writeFileSync(tempWavPath, buffer);
+          
+          // Convert to MP3 using ffmpeg
+          await exec(`ffmpeg -i "${tempWavPath}" -acodec libmp3lame -ab 128k "${outputPath}" -y`);
+          
+          // Clean up temp file
+          try {
+            fs.unlinkSync(tempWavPath);
+          } catch (cleanupError) {
+            console.warn(`⚠️ main.js: Could not delete temp WAV file: ${cleanupError.message}`);
+          }
         } else {
-          // Convert WAV to MP3
-          const wavPath = results.wav || path.join(recordingsDir, `${baseFilename}.wav`);
-          if (!results.wav) {
-            fs.writeFileSync(wavPath, Buffer.from(buffer));
-          }
-          await exec(`ffmpeg -i "${wavPath}" -codec:a libmp3lame -qscale:a 2 "${mp3Path}" -y`);
-          if (!results.wav) {
-            fs.unlinkSync(wavPath);
-          }
+          // For other formats, just write the buffer directly
+          fs.writeFileSync(outputPath, buffer);
         }
         
-        console.log(`✅ main.js: Saved MP3 file: ${mp3Path}`);
-        results.mp3 = mp3Path;
-      } catch (error) {
-        console.error('❌ main.js: Error converting to MP3:', error);
-        results.mp3Error = error.message;
+        // Add to saved files list
+        savedFiles.push({
+          format: format.toLowerCase(),
+          path: outputPath
+        });
+        
+        console.log(`✅ main.js: Saved ${format} file: ${outputPath}`);
+      } catch (formatError) {
+        console.error(`❌ main.js: Error saving ${format} file:`, formatError);
       }
     }
     
-    return { success: true, files: results };
+    if (savedFiles.length === 0) {
+      throw new Error('Failed to save in any format');
+    }
+    
+    return {
+      success: true,
+      files: savedFiles,
+      message: `Saved ${savedFiles.length} files`
+    };
   } catch (error) {
     console.error('❌ main.js: Error saving audio file:', error);
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: error.message,
+      message: 'Failed to save audio file'
+    };
   }
 });
 
 // Add these utility functions for audio processing
-function splitAudioBuffer(buffer, format, chunkDurationMs = 58000) { // 58 seconds to be safe
+function splitAudioBuffer(buffer, format, chunkDurationMs = 60000) { // 60 seconds (1 minute) chunks
   // For MP3 and other compressed formats, we need to use time-based approach
   if (format === 'MP3' || format === 'OGG_OPUS') {
     // We'll use file size as a proxy for duration
     const totalSize = buffer.length;
-    // Google API limit is about 60s for sync API, use 58s to be safe
-    // Let's estimate bytes per second based on typical compression ratios
-    // MP3 at 128kbps = 16KB/s, so 58s would be roughly 928KB
-    const bytesPerChunk = 900 * 1024; // 900KB per chunk is a conservative estimate
+    // Estimate bytes per second based on typical compression ratios
+    // MP3 at 128kbps = 16KB/s, so 60s would be roughly 960KB
+    const bytesPerChunk = 960 * 1024; // 960KB per chunk for 1 minute
     
     const numChunks = Math.ceil(totalSize / bytesPerChunk);
     console.log(`🔪 Splitting ${format} audio (${totalSize} bytes) into ${numChunks} chunks of ~${bytesPerChunk} bytes`);
@@ -572,7 +712,7 @@ function splitAudioBuffer(buffer, format, chunkDurationMs = 58000) { // 58 secon
     }
     
     return chunks;
-  } 
+  }
   // For LINEAR16 (WAV), we can do more precise splitting
   else if (format === 'LINEAR16') {
     // WAV format has 16 bits per sample, 2 channels typically
@@ -585,9 +725,7 @@ function splitAudioBuffer(buffer, format, chunkDurationMs = 58000) { // 58 secon
     const bytesPerChunk = (chunkDurationMs / 1000) * bytesPerSecond;
     
     // Find the header size (typically 44 bytes for WAV)
-    // Skip this for now and just use the raw data
-    // const headerSize = 44;
-    const headerSize = 0; // For simplicity, we'll include headers in each chunk
+    const headerSize = 44; // Include WAV header size
     
     const audioData = buffer.slice(headerSize);
     const totalAudioSize = audioData.length;
@@ -600,15 +738,23 @@ function splitAudioBuffer(buffer, format, chunkDurationMs = 58000) { // 58 secon
       const start = i * bytesPerChunk;
       const end = Math.min(start + bytesPerChunk, totalAudioSize);
       
-      // For the first chunk, include the header, otherwise just the data
-      if (i === 0 && headerSize > 0) {
-        const chunkWithHeader = Buffer.alloc(end - start + headerSize);
-        buffer.copy(chunkWithHeader, 0, 0, headerSize);
-        audioData.copy(chunkWithHeader, headerSize, start, end);
-        chunks.push(chunkWithHeader);
-      } else {
-        chunks.push(audioData.slice(start, end));
-      }
+      // For each chunk, create a new WAV file with header
+      const chunkWithHeader = Buffer.alloc(end - start + headerSize);
+      
+      // Copy WAV header
+      buffer.copy(chunkWithHeader, 0, 0, headerSize);
+      
+      // Update the data size in the header (bytes 4-7)
+      const dataSize = end - start;
+      chunkWithHeader.writeUInt32LE(dataSize, 4);
+      
+      // Update the chunk size in the header (bytes 40-43)
+      chunkWithHeader.writeUInt32LE(dataSize, 40);
+      
+      // Copy the audio data
+      audioData.copy(chunkWithHeader, headerSize, start, end);
+      
+      chunks.push(chunkWithHeader);
     }
     
     return chunks;
@@ -698,19 +844,26 @@ async function handleLongAudioTranscription(audioBuffer, encoding, options = {})
     }
   }
   
-  // Split the audio into manageable chunks
+  // Split the audio into 1-minute chunks
   const chunks = splitAudioBuffer(audioBuffer, encoding);
-  console.log(`🧩 Split audio into ${chunks.length} chunks`);
+  console.log(`🧩 Split audio into ${chunks.length} chunks of 1 minute each`);
   
   // Process each chunk and collect the results
   let combinedTranscription = '';
   let chunkErrors = [];
+  let processedChunks = 0;
   
+  // Process chunks sequentially to avoid overwhelming the API
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     console.log(`🔄 Processing chunk ${i+1}/${chunks.length} (${chunk.length} bytes)`);
     
     try {
+      // Add a small delay between chunks to avoid rate limiting
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
       // Process this chunk using the regular speech API handler
       const transcription = await handleGoogleSpeechAPI(chunk, {
         ...options,
@@ -718,9 +871,27 @@ async function handleLongAudioTranscription(audioBuffer, encoding, options = {})
       });
       
       if (transcription && !transcription.startsWith('Error:') && transcription !== 'No speech detected') {
-        if (combinedTranscription) combinedTranscription += ' ';
-        combinedTranscription += transcription;
+        // Add a timestamp for each chunk
+        const timestamp = new Date().toISOString();
+        const chunkStartTime = new Date(Date.now() - (chunks.length - i - 1) * 60000).toISOString();
+        
+        if (combinedTranscription) {
+          combinedTranscription += '\n\n';
+        }
+        combinedTranscription += `[${chunkStartTime}]\n${transcription}`;
+        
+        processedChunks++;
         console.log(`✅ Chunk ${i+1}: Got transcription of length ${transcription.length}`);
+        
+        // Send progress update to renderer
+        if (global.mainWindow) {
+          global.mainWindow.webContents.send('transcription-progress', {
+            processedChunks,
+            totalChunks: chunks.length,
+            currentChunk: i + 1,
+            timestamp: new Date().toISOString()
+          });
+        }
       } else if (transcription === 'No speech detected') {
         console.log(`⚠️ Chunk ${i+1}: No speech detected`);
       } else {
@@ -752,9 +923,17 @@ ipcMain.handle('test-speech-with-file', async (event, options) => {
     // Handle both old and new format (string vs object)
     const filePath = typeof options === 'string' ? options : options.filePath;
     const apiKey = typeof options === 'object' ? options.apiKey : undefined;
+    const encoding = typeof options === 'object' ? options.encoding : undefined;
+    const sampleRateHertz = typeof options === 'object' ? options.sampleRateHertz : undefined;
+    const languageCode = typeof options === 'object' ? options.languageCode : undefined;
     
     console.log('🧪 main.js: Testing speech recognition with audio file:', filePath);
-    console.log('🔑 main.js: API key provided:', apiKey ? 'Yes' : 'No');
+    console.log('🔧 main.js: Options:', {
+      encoding,
+      sampleRateHertz,
+      languageCode,
+      hasApiKey: !!apiKey
+    });
 
     // Handle relative paths - convert them to absolute
     let resolvedPath = filePath;
@@ -825,44 +1004,6 @@ ipcMain.handle('test-speech-with-file', async (event, options) => {
       return { error: `Failed to read audio file: ${error.message}` };
     }
 
-    // Determine encoding based on file extension
-    const fileExt = path.extname(resolvedPath).toLowerCase();
-    let encoding = 'LINEAR16'; // Default for WAV
-
-    if (fileExt === '.mp3') {
-      encoding = 'MP3';
-      console.log('🎵 main.js: Detected MP3 format, using MP3 encoding');
-    } else if (fileExt === '.ogg') {
-      encoding = 'OGG_OPUS';
-      console.log('🎵 main.js: Detected OGG format, using OGG_OPUS encoding');
-    } else if (fileExt === '.wav') {
-      encoding = 'LINEAR16';
-      console.log('🎵 main.js: Detected WAV format, using LINEAR16 encoding');
-    } else {
-      // If no extension or unknown extension, try to detect format from file header
-      if (audioBuffer && audioBuffer.length > 4) {
-        // Check for MP3 signature
-        if (audioBuffer[0] === 0x49 && audioBuffer[1] === 0x44 && audioBuffer[2] === 0x33 || 
-            (audioBuffer[0] === 0xFF && (audioBuffer[1] & 0xE0) === 0xE0)) {
-          console.log('🎵 main.js: Detected MP3 header signature, using MP3 encoding');
-          encoding = 'MP3';
-        }
-        // Check for WAV signature (RIFF)
-        else if (audioBuffer[0] === 0x52 && audioBuffer[1] === 0x49 && audioBuffer[2] === 0x46 && audioBuffer[3] === 0x46) {
-          console.log('🎵 main.js: Detected WAV/RIFF header signature, using LINEAR16 encoding');
-          encoding = 'LINEAR16';
-        }
-        // Check for OGG signature ("OggS")
-        else if (audioBuffer[0] === 0x4F && audioBuffer[1] === 0x67 && audioBuffer[2] === 0x67 && audioBuffer[3] === 0x53) {
-          console.log('🎵 main.js: Detected OGG header signature, using OGG_OPUS encoding');
-          encoding = 'OGG_OPUS';
-        }
-        else {
-          console.log(`⚠️ main.js: Unknown file format, defaulting to LINEAR16 encoding`);
-        }
-      }
-    }
-
     // Check file size to determine if we need to use the long audio handler
     const MAX_SIZE = 10 * 1024 * 1024; // 10MB (Cloud Speech API limit)
     const isLongAudio = audioBuffer.length > MAX_SIZE;
@@ -871,10 +1012,10 @@ ipcMain.handle('test-speech-with-file', async (event, options) => {
     if (isLongAudio) {
       console.log(`📊 main.js: Large audio file detected (${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB), using chunked processing`);
       try {
-        transcription = await handleLongAudioTranscription(audioBuffer, encoding, {
-          sampleRateHertz: 16000,
-          languageCode: 'en-US',
-          apiKey: apiKey
+        transcription = await handleLongAudioTranscription(audioBuffer, encoding || 'MP3', {
+          sampleRateHertz: sampleRateHertz || 16000,
+          languageCode: languageCode || 'en-US',
+          apiKey
         });
       } catch (chunkError) {
         console.error('❌ main.js: Error in chunked processing:', chunkError);
@@ -883,10 +1024,10 @@ ipcMain.handle('test-speech-with-file', async (event, options) => {
     } else {
       // Call the existing function to process the audio
       transcription = await handleGoogleSpeechAPI(audioBuffer, {
-        encoding,
-        sampleRateHertz: 16000,
-        languageCode: 'en-US',
-        apiKey: apiKey // Pass the API key to the handler function
+        encoding: encoding || 'MP3',
+        sampleRateHertz: sampleRateHertz || 16000,
+        languageCode: languageCode || 'en-US',
+        apiKey
       });
     }
 
@@ -1213,6 +1354,43 @@ ipcMain.handle("check-file-exists", async (event, filepath) => {
   } catch (error) {
     console.error(`❌ main.js: Error checking file: ${error.message}`);
     return false;
+  }
+});
+
+// Test specific file transcription
+async function testSpecificFileTranscription(filePath) {
+  try {
+    console.log('🔄 Testing transcription for specific file:', filePath);
+    
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    const audioBuffer = fs.readFileSync(filePath);
+    console.log(`✅ Read audio file of size ${audioBuffer.length} bytes`);
+    
+    // For MP3 files, we'll use the long audio transcription handler
+    // which includes MP3 to WAV conversion and chunking
+    const transcription = await handleLongAudioTranscription(audioBuffer, 'MP3', {
+      sampleRateHertz: 16000,
+      languageCode: 'en-US'
+    });
+    
+    return transcription;
+  } catch (error) {
+    console.error('❌ Error testing file transcription:', error);
+    throw error;
+  }
+}
+
+// Add IPC handler for testing specific file
+ipcMain.handle('test-specific-file', async (event, filePath) => {
+  try {
+    const transcription = await testSpecificFileTranscription(filePath);
+    return { success: true, transcription };
+  } catch (error) {
+    console.error('Error testing specific file:', error);
+    return { success: false, error: error.message };
   }
 });
 

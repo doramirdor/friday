@@ -20,12 +20,11 @@
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
 
     <!-- Add CSP for Electron -->
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://cdn.gpteng.co; object-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://cdn.gpteng.co https://cdn.jsdelivr.net; object-src 'self'">
     
-    <!-- PouchDB direct fix - MUST BE FIRST SCRIPT -->
-    <script src="/pouchdb-direct-fix.js"></script>
-    <!-- PouchDB constructor patch - fixes Electron/ESM compatibility issues -->
-    <script src="/pouchdb-patch.js"></script>
+    <!-- Load PouchDB and its plugins -->
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pouchdb@8.0.1/dist/pouchdb.find.min.js"></script>
   </head>
 
   <body>

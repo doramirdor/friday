@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const path = require('path');
 
 // Try to load the transcript-bridge module directly
 let transcriptBridge;
@@ -23,6 +24,28 @@ contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
   isElectron: true,
   
+  // Database methods
+  database: {
+    create: async (name, options) => {
+      return await ipcRenderer.invoke('db:create', { name, options });
+    },
+    get: async (dbName, docId) => {
+      return await ipcRenderer.invoke('db:get', { dbName, docId });
+    },
+    put: async (dbName, doc) => {
+      return await ipcRenderer.invoke('db:put', { dbName, doc });
+    },
+    remove: async (dbName, doc) => {
+      return await ipcRenderer.invoke('db:remove', { dbName, doc });
+    },
+    query: async (dbName, options) => {
+      return await ipcRenderer.invoke('db:query', { dbName, options });
+    },
+    info: async (dbName) => {
+      return await ipcRenderer.invoke('db:info', { dbName });
+    }
+  },
+
   // System Audio Recording methods
   systemAudio: {
     // Check if we have permissions to record system audio
@@ -176,7 +199,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(warningCode, warningMessage);
     });
   }
-}); 
+});
 
 // Expose the transcript API to the renderer process
 try {

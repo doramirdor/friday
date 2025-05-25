@@ -1,6 +1,18 @@
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
+import PouchDB from 'pouchdb'
+import leveldb from 'pouchdb-adapter-leveldb'
+import idb from 'pouchdb-adapter-idb'
+
+// Register PouchDB adapters
+PouchDB.plugin(leveldb);
+PouchDB.plugin(idb);
+
+// Make PouchDB available globally for Electron
+if (window.electronAPI?.isElectron) {
+  (window as any).PouchDB = PouchDB;
+}
 
 // Add global error handler for unhandled errors
 window.addEventListener('error', (event) => {
@@ -9,8 +21,7 @@ window.addEventListener('error', (event) => {
   // Check if it's a PouchDB error
   if (event.error?.toString().includes('PouchDB') || 
       event.error?.message?.includes('Class extends value') ||
-      event.error?.message?.includes('not a constructor') ||
-      event.error?.message?.includes('is not a function')) {
+      event.error?.message?.includes('not a constructor')) {
         
     console.error('PouchDB error detected - attempting recovery');
     

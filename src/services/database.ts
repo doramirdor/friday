@@ -15,9 +15,10 @@ import {
 import checkAndUpgradePouchDB from './pouchdb-upgrade';
 
 // Singleton flag to track initialization status
-let isInitialized = false;
+let isInitialized = localStorage.getItem('db_initialized') === 'true';
 let isInitializing = false;
 let initializationPromise: Promise<boolean> | null = null;
+let databasesInitialized = localStorage.getItem('databases_initialized') === 'true';
 
 // Database instances - will be initialized in setupDatabases
 let meetingsDb: any;
@@ -31,27 +32,57 @@ let contextFilesDb: any;
 let globalContextDb: any;
 
 // Setup database instances
-const setupDatabases = async () => {
+const setupDatabases = async (retryCount = 3) => {
   // Check if already initialized
-  if (meetingsDb) {
+  if (databasesInitialized && meetingsDb) {
     console.log('Database instances already created, skipping setup');
     return;
   }
   
   console.log('Setting up database instances...');
   
-  // Create database instances for different data types
-  meetingsDb = await createDatabase<Meeting>('meetings');
-  transcriptsDb = await createDatabase('transcripts');
-  speakersDb = await createDatabase<Speaker>('speakers');
-  actionItemsDb = await createDatabase<ActionItem>('action-items');
-  notesDb = await createDatabase<Notes>('notes');
-  contextsDb = await createDatabase<Context>('contexts');
-  settingsDb = await createDatabase<UserSettings>('settings');
-  contextFilesDb = await createDatabase<ContextFile>('context-files');
-  globalContextDb = await createDatabase<GlobalContext>('global-context');
+  const createWithRetry = async (name: string, attempts = 0) => {
+    try {
+      return await createDatabase(name);
+    } catch (error) {
+      if (attempts < retryCount) {
+        console.warn(`Retrying database creation for ${name}, attempt ${attempts + 1}`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+        return createWithRetry(name, attempts + 1);
+      }
+      throw error;
+    }
+  };
   
-  console.log('Database instances created successfully');
+  try {
+    // Create database instances for different data types with retry
+    const dbSetups = [
+      { name: 'meetings', setter: (db: any) => { meetingsDb = db; } },
+      { name: 'transcripts', setter: (db: any) => { transcriptsDb = db; } },
+      { name: 'speakers', setter: (db: any) => { speakersDb = db; } },
+      { name: 'action-items', setter: (db: any) => { actionItemsDb = db; } },
+      { name: 'notes', setter: (db: any) => { notesDb = db; } },
+      { name: 'contexts', setter: (db: any) => { contextsDb = db; } },
+      { name: 'settings', setter: (db: any) => { settingsDb = db; } },
+      { name: 'context-files', setter: (db: any) => { contextFilesDb = db; } },
+      { name: 'global-context', setter: (db: any) => { globalContextDb = db; } }
+    ];
+
+    // Create databases sequentially to avoid race conditions
+    for (const { name, setter } of dbSetups) {
+      const db = await createWithRetry(name);
+      setter(db);
+    }
+    
+    databasesInitialized = true;
+    localStorage.setItem('databases_initialized', 'true');
+    console.log('Database instances created successfully');
+  } catch (error) {
+    console.error('Error setting up database instances:', error);
+    databasesInitialized = false;
+    localStorage.removeItem('databases_initialized');
+    throw error;
+  }
 };
 
 // Create indexes for efficient querying
@@ -63,36 +94,85 @@ const setupIndexes = async () => {
       await setupDatabases();
     }
     
-    // Meeting index
-    await meetingsDb.createIndex({
-      index: { fields: ['type', 'createdAt'] }
+    // Meeting indexes - create a simpler index first
+    const meetingsIndex = await meetingsDb.createIndex({
+      index: {
+        fields: ['type'],
+        name: 'type-index',
+        ddoc: 'type-index'
+      }
     });
+    console.log('Created meetings type index:', meetingsIndex);
 
-    // ActionItem index
+    // Create the compound index after
+    const meetingsCompoundIndex = await meetingsDb.createIndex({
+      index: {
+        fields: ['type', 'createdAt'],
+        name: 'type-createdAt-index',
+        ddoc: 'type-createdAt-index'
+      }
+    });
+    console.log('Created meetings compound index:', meetingsCompoundIndex);
+
+    // Wait for indexes to be ready
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Verify indexes
+    const indexes = await meetingsDb.getIndexes();
+    console.log('Available indexes:', indexes);
+
+    // Other indexes remain the same...
     await actionItemsDb.createIndex({
-      index: { fields: ['type', 'meetingId', 'completed'] }
+      index: {
+        fields: ['type', 'meetingId'],
+        name: 'type-meetingId-index',
+        ddoc: 'type-meetingId-index'
+      }
     });
 
-    // Notes index
+    await actionItemsDb.createIndex({
+      index: {
+        fields: ['type', 'meetingId', 'completed'],
+        name: 'type-meetingId-completed-index',
+        ddoc: 'type-meetingId-completed-index'
+      }
+    });
+
     await notesDb.createIndex({
-      index: { fields: ['type', 'meetingId'] }
+      index: {
+        fields: ['type', 'meetingId'],
+        name: 'type-meetingId-index',
+        ddoc: 'type-meetingId-index'
+      }
     });
 
-    // Context index
     await contextsDb.createIndex({
-      index: { fields: ['type', 'meetingId'] }
+      index: {
+        fields: ['type', 'meetingId'],
+        name: 'type-meetingId-index',
+        ddoc: 'type-meetingId-index'
+      }
+    });
+
+    await contextFilesDb.createIndex({
+      index: {
+        fields: ['type', 'createdAt'],
+        name: 'type-createdAt-index',
+        ddoc: 'type-createdAt-index'
+      }
     });
 
     console.log('Database indexes created successfully');
   } catch (error) {
     console.error('Error creating database indexes:', error);
+    throw error;
   }
 };
 
 // Initialize the database
 const initDatabase = async () => {
-  // Singleton pattern: if already initialized, return immediately
-  if (isInitialized) {
+  // If already initialized, return immediately
+  if (isInitialized && databasesInitialized) {
     console.log('Database already initialized, skipping initialization');
     return true;
   }
@@ -108,21 +188,49 @@ const initDatabase = async () => {
   initializationPromise = (async () => {
     try {
       console.log('Initializing database...');
+      
       // First, check for and fix any PouchDB version compatibility issues
       await checkAndUpgradePouchDB();
+      console.log('DOR Debug - After checkAndUpgradePouchDB databasesInitialized:', databasesInitialized);
       
-      // Set up database instances
-      await setupDatabases();
+      // Set up database instances if not already set up
+      if (!databasesInitialized) {
+        console.log('DOR Debug - Before setupDatabases');
+        await setupDatabases();
+        databasesInitialized = true;
+        localStorage.setItem('databases_initialized', 'true');
+      }
       
       // Then set up database indexes
       await setupIndexes();
       
-      console.log('Database initialized successfully');
+      // Verify all databases are working
+      await Promise.all([
+        meetingsDb.info(),
+        transcriptsDb.info(),
+        speakersDb.info(),
+        actionItemsDb.info(),
+        notesDb.info(),
+        contextsDb.info(),
+        settingsDb.info(),
+        contextFilesDb.info(),
+        globalContextDb.info()
+      ]);
+      
+      // Set initialized flags before returning
       isInitialized = true;
+      localStorage.setItem('db_initialized', 'true');
+      console.log('Database initialized successfully');
+      
       return true;
     } catch (error) {
       console.error('Error initializing database:', error);
+      // Reset flags on error
       isInitializing = false;
+      isInitialized = false;
+      databasesInitialized = false;
+      localStorage.removeItem('db_initialized');
+      localStorage.removeItem('databases_initialized');
       initializationPromise = null;
       // Re-throw to allow the error to be handled by the caller
       throw error;
@@ -136,24 +244,89 @@ const initDatabase = async () => {
 
 // Ensure database is initialized
 const ensureDatabaseInitialized = async () => {
-  if (!isInitialized) {
+  // If everything is initialized, return immediately
+  if (isInitialized && databasesInitialized && meetingsDb) {
+    return;
+  }
+  
+  // Initialize if not already initialized
+  if (!isInitialized || !databasesInitialized) {
+    await initDatabase();
+    return;
+  }
+  
+  // If databases aren't available but we're marked as initialized,
+  // something went wrong - reinitialize
+  if (!meetingsDb || !transcriptsDb || !speakersDb || !actionItemsDb || 
+      !notesDb || !contextsDb || !settingsDb || !contextFilesDb || !globalContextDb) {
+    console.log('Database instances not found, reinitializing...');
+    isInitialized = false;
+    databasesInitialized = false;
+    localStorage.removeItem('db_initialized');
+    localStorage.removeItem('databases_initialized');
     await initDatabase();
   }
+};
+
+// Helper function to handle document conflicts
+const handleConflicts = async <T extends { _id?: string, _rev?: string }>(
+  db: any,
+  doc: T,
+  maxRetries = 3
+): Promise<T> => {
+  let currentDoc = { ...doc };
+  let attempts = 0;
+
+  while (attempts < maxRetries) {
+    try {
+      // If we have an _id but no _rev, try to get the latest version
+      if (currentDoc._id && !currentDoc._rev) {
+        try {
+          const existing = await db.get(currentDoc._id);
+          currentDoc._rev = existing._rev;
+        } catch (err: any) {
+          if (err.status !== 404) throw err;
+          // If 404, proceed with creation
+        }
+      }
+
+      const response = await db.put(currentDoc);
+      return { ...currentDoc, _rev: response.rev };
+    } catch (err: any) {
+      if (err.status === 409) {
+        // On conflict, get the latest version and try again
+        try {
+          const latest = await db.get(currentDoc._id!);
+          currentDoc = { ...latest, ...currentDoc, _rev: latest._rev };
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, 100 * attempts)); // Exponential backoff
+          continue;
+        } catch (getErr) {
+          console.error('Error getting latest version during conflict resolution:', getErr);
+          throw getErr;
+        }
+      }
+      throw err;
+    }
+  }
+  throw new Error(`Failed to save document after ${maxRetries} attempts`);
 };
 
 // Meeting CRUD Operations
 const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
   try {
+    await ensureDatabaseInitialized();
+    
     const now = new Date().toISOString();
-    const newMeeting: Meeting = {
+    const docToSave: Meeting = {
       ...meeting,
       _id: meeting._id || `meeting_${now}`,
       createdAt: meeting.createdAt || now,
       updatedAt: now,
       type: 'meeting'
     };
-    const response = await meetingsDb.put(newMeeting);
-    return { ...newMeeting, _id: response.id, _rev: response.rev };
+
+    return await handleConflicts(meetingsDb, docToSave);
   } catch (error) {
     console.error('Error creating meeting:', error);
     throw error;
@@ -162,6 +335,7 @@ const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
 
 const getMeeting = async (id: string): Promise<Meeting | null> => {
   try {
+    await ensureDatabaseInitialized();
     return await meetingsDb.get(id);
   } catch (error) {
     if ((error as any).status === 404) {
@@ -174,13 +348,18 @@ const getMeeting = async (id: string): Promise<Meeting | null> => {
 
 const updateMeeting = async (meeting: Meeting): Promise<Meeting> => {
   try {
-    const now = new Date().toISOString();
-    const updatedMeeting: Meeting = {
+    await ensureDatabaseInitialized();
+    
+    if (!meeting._id) {
+      throw new Error('Meeting ID is required for update');
+    }
+
+    const docToSave: Meeting = {
       ...meeting,
-      updatedAt: now
+      updatedAt: new Date().toISOString()
     };
-    const response = await meetingsDb.put(updatedMeeting);
-    return { ...updatedMeeting, _rev: response.rev };
+
+    return await handleConflicts(meetingsDb, docToSave);
   } catch (error) {
     console.error('Error updating meeting:', error);
     throw error;
@@ -207,13 +386,54 @@ const deleteMeeting = async (id: string): Promise<boolean> => {
 
 const getAllMeetings = async (): Promise<Meeting[]> => {
   try {
-    const result = await meetingsDb.find({
-      selector: {
-        type: 'meeting'
-      },
-      sort: [{ createdAt: 'desc' }]
-    });
-    return result.docs;
+    await ensureDatabaseInitialized();
+    
+    // Try different query approaches in sequence
+    try {
+      // First try with simple type index
+      const result = await meetingsDb.find({
+        selector: {
+          type: 'meeting'
+        },
+        use_index: 'type-index'
+      });
+
+      // Sort in memory if needed
+      const sortedDocs = result.docs.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      return sortedDocs;
+    } catch (simpleIndexError) {
+      console.warn('Simple index query failed, trying compound index:', simpleIndexError);
+      
+      try {
+        // Try with compound index
+        const result = await meetingsDb.find({
+          selector: {
+            type: 'meeting',
+            createdAt: { $gt: null }
+          },
+          sort: [{ createdAt: 'desc' }],
+          use_index: 'type-createdAt-index'
+        });
+        return result.docs;
+      } catch (compoundIndexError) {
+        console.warn('Compound index query failed, falling back to allDocs:', compoundIndexError);
+        
+        // Final fallback to allDocs
+        const result = await meetingsDb.allDocs({
+          include_docs: true,
+          startkey: 'meeting_',
+          endkey: 'meeting_\ufff0'
+        });
+        
+        return result.rows
+          .map(row => row.doc)
+          .filter(doc => doc && doc.type === 'meeting')
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }
+    }
   } catch (error) {
     console.error('Error getting all meetings:', error);
     throw error;
@@ -361,16 +581,17 @@ const getSpeakers = async (meetingId: string): Promise<Speaker[]> => {
 // Action Item Operations
 const saveActionItem = async (actionItem: ActionItem): Promise<ActionItem> => {
   try {
+    await ensureDatabaseInitialized();
+    
     const now = new Date().toISOString();
-    const newActionItem: ActionItem = {
+    const docToSave: ActionItem = {
       ...actionItem,
       _id: actionItem._id || `action_${actionItem.meetingId}_${actionItem.id}`,
       updatedAt: now,
       type: 'actionItem'
     };
-    
-    const response = await actionItemsDb.put(newActionItem);
-    return { ...newActionItem, _id: response.id, _rev: response.rev };
+
+    return await handleConflicts(actionItemsDb, docToSave);
   } catch (error) {
     console.error('Error saving action item:', error);
     throw error;
@@ -379,20 +600,16 @@ const saveActionItem = async (actionItem: ActionItem): Promise<ActionItem> => {
 
 const toggleActionItem = async (id: string, completed: boolean): Promise<ActionItem> => {
   try {
-    const actionItem = await actionItemsDb.get(id);
+    await ensureDatabaseInitialized();
     
-    if (!actionItem) {
-      throw new Error(`Action item not found: ${id}`);
-    }
-    
-    const updatedActionItem = {
-      ...actionItem,
+    const doc = await actionItemsDb.get(id);
+    const updatedDoc = {
+      ...doc,
       completed,
       updatedAt: new Date().toISOString()
     };
-    
-    const response = await actionItemsDb.put(updatedActionItem);
-    return { ...updatedActionItem, _rev: response.rev };
+
+    return await handleConflicts(actionItemsDb, updatedDoc);
   } catch (error) {
     console.error('Error toggling action item:', error);
     throw error;
@@ -602,28 +819,52 @@ const saveSettings = async (settings: UserSettings): Promise<UserSettings> => {
     await ensureDatabaseInitialized();
     
     const now = new Date().toISOString();
-    let settingsDoc: UserSettings;
+    let retries = 3;
+    let lastError;
     
-    // Check if settings already exist
-    try {
-      settingsDoc = await settingsDb.get('settings');
-      settingsDoc = {
-        ...settingsDoc,
-        ...settings,
-        updatedAt: now
-      };
-    } catch (error) {
-      // Settings don't exist yet, create new
-      settingsDoc = {
-        ...settings,
-        _id: 'settings',
-        updatedAt: now,
-        type: 'settings'
-      };
+    while (retries > 0) {
+      try {
+        // Get current settings
+        let currentSettings: UserSettings | null = null;
+        try {
+          currentSettings = await settingsDb.get('settings');
+        } catch (error: any) {
+          if (error.status !== 404) {
+            throw error;
+          }
+        }
+
+        // Prepare new settings document
+        const newSettings: UserSettings = {
+          _id: 'settings',
+          ...currentSettings,
+          ...settings,
+          updatedAt: now,
+          type: 'settings'
+        };
+
+        // If we have current settings, use its _rev
+        if (currentSettings?._rev) {
+          newSettings._rev = currentSettings._rev;
+        }
+
+        // Try to save
+        const response = await settingsDb.put(newSettings);
+        return { ...newSettings, _rev: response.rev };
+      } catch (error: any) {
+        lastError = error;
+        if (error.status === 409 && retries > 1) {
+          // Conflict error, retry after a delay
+          console.log('Settings update conflict, retrying...');
+          retries--;
+          await new Promise(resolve => setTimeout(resolve, 500)); // Longer delay
+          continue;
+        }
+        throw error;
+      }
     }
     
-    const response = await settingsDb.put(settingsDoc);
-    return { ...settingsDoc, _id: response.id, _rev: response.rev };
+    throw lastError || new Error('Failed to save settings after retries');
   } catch (error) {
     console.error('Error saving settings:', error);
     throw error;
@@ -634,11 +875,38 @@ const getSettings = async (): Promise<UserSettings | null> => {
   try {
     await ensureDatabaseInitialized();
     
-    return await settingsDb.get('settings');
-  } catch (error) {
-    if ((error as any).status === 404) {
-      return null;
+    try {
+      return await settingsDb.get('settings');
+    } catch (error: any) {
+      if (error.status === 404) {
+        // Create default settings if they don't exist
+        const defaultSettings: UserSettings = {
+          _id: 'settings',
+          liveTranscript: true,
+          theme: 'light',
+          autoLaunch: false,
+          recordingSource: 'system',
+          isVolumeBoostEnabled: false,
+          volumeLevel: 1.0,
+          updatedAt: new Date().toISOString(),
+          type: 'settings'
+        };
+        
+        try {
+          const response = await settingsDb.put(defaultSettings);
+          return { ...defaultSettings, _rev: response.rev };
+        } catch (putError: any) {
+          if (putError.status === 409) {
+            // If we got a conflict, someone else created the settings
+            // Try to get them again
+            return await settingsDb.get('settings');
+          }
+          throw putError;
+        }
+      }
+      throw error;
     }
+  } catch (error) {
     console.error('Error getting settings:', error);
     throw error;
   }
@@ -659,6 +927,7 @@ const getGlobalContext = async (): Promise<GlobalContext | null> => {
         globalContext = {
           _id: 'global_context',
           name: 'Global Context',
+          description: 'Default global context for all meetings',
           files: [],
           updatedAt: new Date().toISOString(),
           type: 'globalContext'
@@ -851,6 +1120,49 @@ const removeFileFromGlobalContext = async (fileId: string): Promise<GlobalContex
   }
 };
 
+// Bulk save helper
+const bulkSave = async <T extends { _id?: string, _rev?: string }>(
+  db: any,
+  docs: T[],
+  options: { new_edits?: boolean } = { new_edits: true }
+): Promise<T[]> => {
+  try {
+    // Get all existing docs first
+    const existingDocs = await Promise.all(
+      docs
+        .filter(doc => doc._id)
+        .map(doc => db.get(doc._id).catch(() => null))
+    );
+
+    // Merge with existing revisions
+    const docsToSave = docs.map((doc, i) => {
+      const existing = existingDocs[i];
+      if (existing) {
+        return { ...doc, _rev: existing._rev };
+      }
+      return doc;
+    });
+
+    const result = await db.bulkDocs(docsToSave, options);
+    
+    // Check for errors
+    const errors = result.filter(r => r.error);
+    if (errors.length > 0) {
+      console.error('Bulk save errors:', errors);
+      throw new Error(`Failed to save ${errors.length} documents`);
+    }
+
+    // Return updated docs with new revisions
+    return docsToSave.map((doc, i) => ({
+      ...doc,
+      _rev: result[i].rev
+    }));
+  } catch (error) {
+    console.error('Error in bulk save:', error);
+    throw error;
+  }
+};
+
 // Export as a namespaced service
 export const DatabaseService = {
   initDatabase,
@@ -907,5 +1219,7 @@ export const DatabaseService = {
   
   // Helper functions
   addFileToGlobalContext,
-  removeFileFromGlobalContext
+  removeFileFromGlobalContext,
+  bulkSave,
+  handleConflicts
 }; 

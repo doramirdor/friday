@@ -113,9 +113,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   });
   
   const [speakers, setSpeakers] = useState<Speaker[]>([
-    { id: "s1", name: "Michael (You)", color: "#28C76F" },
-    { id: "s2", name: "Sarah", color: "#7367F0" },
-    { id: "s3", name: "David", color: "#FF9F43" },
+    { id: "1", name: "Speaker 1", color: "#28C76F" },
+    { id: "2", name: "Speaker 2", color: "#7367F0" },
+    { id: "3", name: "Speaker 3", color: "#FF9F43" },
   ]);
   
   const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
@@ -155,6 +155,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   
   // State for recorded audio, duration and playback position
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
+  const [filePathUrl, setFilePathUrl] = useState<string | null>(null);
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const [currentAudioTime, setCurrentAudioTime] = useState<number>(0);
   const [volume, setVolume] = useState<number>(80);
@@ -246,6 +247,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   // Helper function to load audio file for playback
   const loadAudioFile = useCallback(async (filePath: string) => {
     // Skip if we're already loading this file
+    setFilePathUrl(filePath);
     if (recordedAudioUrl === filePath) {
       console.log('Audio file already loaded:', filePath);
       return;
@@ -462,6 +464,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         stopRecordingTimer();
         
         if (success) {
+          console.log('DOR Debug - success:', success);
           toast.success("Recording stopped");
         } else {
           toast.error("Failed to stop recording");
@@ -565,7 +568,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     // }
   }, []);
 
-  // Manually transcribe the current audio file
+  // Handle transcription of audio file
   const handleTranscribeAudio = useCallback(async () => {
     if (!recordedAudioUrl) {
       toast.error('No audio file available to transcribe');
@@ -575,35 +578,54 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     try {
       toast.loading('Transcribing audio file. This may take a while for longer recordings...', { 
         id: 'transcribing',
-        duration: 60000 // Show for up to 60 seconds
+        duration: 60000
       });
       
-      // Get the file path from the recordedAudioUrl
-      const filePath = recordedAudioUrl;
+      const filePath = filePathUrl || recordedAudioUrl;
+      console.log('filePath', filePath);
       
-      // Use the electron API to send to main process for transcription
       const win = window as any;
       if (win?.electronAPI?.testSpeechWithFile) {
-        // Improve UX by showing a more detailed message for large files
         toast.loading('Processing audio. Large files may take several minutes...', { 
           id: 'transcribing', 
-          duration: 60000 // Show for up to 60 seconds
+          duration: 60000
         });
         
+        console.log('win.electronAPI.testSpeechWithFile filePath', filePath);
         const result = await win.electronAPI.testSpeechWithFile(filePath);
         
         if (result.transcription) {
-          // Add the transcript to our lines
-          const newLine = {
-            id: `l${Date.now()}`,
-            text: result.transcription,
-            speakerId: currentSpeakerId,
-          };
+          // Handle the new response format
+          const transcriptionText = typeof result.transcription === 'string' 
+            ? result.transcription 
+            : result.transcription.transcript;
+            
+          // Update speakers if provided
+          if (result.transcription.speakers) {
+            setSpeakers(result.transcription.speakers);
+          }
           
-          setTranscriptLines(prev => [...prev, newLine]);
+          // Split the transcript into lines by speaker
+          const lines = transcriptionText.split('\n').map(line => {
+            const match = line.match(/^Speaker (\d+): (.+)$/);
+            if (match) {
+              return {
+                id: `l${Date.now()}_${Math.random()}`,
+                speakerId: match[1],
+                text: match[2].trim()
+              };
+            }
+            return {
+              id: `l${Date.now()}_${Math.random()}`,
+              speakerId: "1",
+              text: line.trim()
+            };
+          });
+          
+          setTranscriptLines(prev => [...prev, ...lines]);
           toast.success('Transcription completed', { id: 'transcribing' });
         } else if (result.error) {
-          console.error('Transcription error:', result.error);
+          console.log('result.error');
           if (result.error.includes('payload size exceeds')) {
             toast.error('Audio file is too large. Please record a shorter segment or trim the audio file.', { id: 'transcribing' });
           } else {
@@ -617,7 +639,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       console.error('Error transcribing audio:', error);
       toast.error('Failed to transcribe audio', { id: 'transcribing' });
     }
-  }, [recordedAudioUrl, currentSpeakerId]);
+  }, [recordedAudioUrl, filePathUrl]);
 
   // Start timer for recording duration
   const startRecordingTimer = () => {
@@ -898,7 +920,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
             meetingId,
             text: item.text,
             completed: item.completed,
-            type: 'actionItem'
+            type: 'actionItem',
+            updatedAt: new Date().toISOString()
           };
           await DatabaseService.saveActionItem(dbActionItem);
         }
@@ -919,7 +942,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         name: context.name,
         files: context.files,
         overrideGlobal: context.overrideGlobal,
-        type: 'context'
+        type: 'context',
+        updatedAt: new Date().toISOString()
       };
       await DatabaseService.saveContext(dbContext);
       
@@ -1023,7 +1047,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
 
   // Add a useEffect to debug audio URL state
   useEffect(() => {
-    console.log('Debug - recordedAudioUrl:', recordedAudioUrl);
     console.log('Debug - isNewMeeting:', isNewMeeting);
     console.log('Debug - transcriptLines.length:', transcriptLines.length);
   }, [recordedAudioUrl, isNewMeeting, transcriptLines.length]);
