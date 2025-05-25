@@ -222,6 +222,95 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   }, [// addSpeaker, 
     speakers]);
   
+  // Load existing meeting data if not a new meeting
+  useEffect(() => {
+    const loadMeetingData = async () => {
+      // Only load data for existing meetings (not new ones)
+      if (!id || id === 'new' || meetingState?.isNew) {
+        console.log('Skipping data load for new meeting');
+        return;
+      }
+
+      try {
+        console.log('Loading meeting data for ID:', id);
+        const meetingDetails = await DatabaseService.getMeetingDetails(id);
+        
+        if (meetingDetails) {
+          console.log('Loaded meeting details:', meetingDetails);
+          
+          // Update meeting basic info
+          setTitle(meetingDetails.meeting.title);
+          setDescription(meetingDetails.meeting.description);
+          setTags(meetingDetails.meeting.tags);
+          setIsLiveTranscript(meetingDetails.meeting.liveTranscript);
+          
+          // Update transcript lines
+          if (meetingDetails.transcript && meetingDetails.transcript.length > 0) {
+            const formattedTranscript = meetingDetails.transcript.map(line => ({
+              id: line.id,
+              text: line.text,
+              speakerId: line.speakerId,
+              isEditing: false
+            }));
+            setTranscriptLines(formattedTranscript);
+          }
+          
+          // Update speakers
+          if (meetingDetails.speakers && meetingDetails.speakers.length > 0) {
+            const formattedSpeakers = meetingDetails.speakers.map(speaker => ({
+              id: speaker.id,
+              name: speaker.name,
+              color: speaker.color
+            }));
+            setSpeakers(formattedSpeakers);
+            setCurrentSpeakerId(formattedSpeakers[0].id);
+          }
+          
+          // Update action items
+          if (meetingDetails.actionItems && meetingDetails.actionItems.length > 0) {
+            const formattedActionItems = meetingDetails.actionItems.map(item => ({
+              id: item.id,
+              text: item.text,
+              completed: item.completed
+            }));
+            setActionItems(formattedActionItems);
+          }
+          
+          // Update context
+          if (meetingDetails.context) {
+            setContext({
+              id: meetingDetails.context._id || 'c1',
+              name: meetingDetails.context.name,
+              files: meetingDetails.context.files,
+              overrideGlobal: meetingDetails.context.overrideGlobal
+            });
+          }
+          
+          // Update recording info if available
+          if (meetingDetails.meeting.recordingPath) {
+            setRecordedAudioUrl(meetingDetails.meeting.recordingPath);
+            setFilePathUrl(meetingDetails.meeting.recordingPath);
+          }
+          
+          if (meetingDetails.meeting.recordingDuration) {
+            setRecordingDuration(meetingDetails.meeting.recordingDuration);
+          }
+          
+          // Notes are handled by the useNotes hook
+          
+          console.log('Successfully loaded meeting data');
+        } else {
+          console.log('No meeting details found for ID:', id);
+        }
+      } catch (error) {
+        console.error('Error loading meeting data:', error);
+        toast.error('Failed to load meeting data');
+      }
+    };
+
+    loadMeetingData();
+  }, [id, meetingState?.isNew]);
+  
   // Effect to handle speech recognition results
   useEffect(() => {
     if (isRecording && isLiveTranscript && speech.transcript && currentSpeakerId) {
@@ -914,17 +1003,15 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       
       // 4. Save action items
       if (actionItems.length > 0) {
-        for (const item of actionItems) {
-          const dbActionItem: DBActionItem = {
-            id: item.id,
-            meetingId,
-            text: item.text,
-            completed: item.completed,
-            type: 'actionItem',
-            updatedAt: new Date().toISOString()
-          };
-          await DatabaseService.saveActionItem(dbActionItem);
-        }
+        const formattedActionItems = actionItems.map(item => ({
+          id: item.id,
+          meetingId,
+          text: item.text,
+          completed: item.completed,
+          type: 'actionItem' as const,
+          updatedAt: new Date().toISOString()
+        }));
+        await DatabaseService.saveActionItems(meetingId, formattedActionItems as DBActionItem[]);
       }
       
       // 5. Save notes

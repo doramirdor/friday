@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
 - Added specialized test scripts for microphone-only recording to help diagnose issues
 - Added permission request utility that opens system settings directly for microphone and screen recording
 - Added recorder restart functionality to recover from stuck recording processes
+- Added bulkDocs support to IPC database interface for bulk document operations
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
@@ -100,6 +101,7 @@ All notable changes to this project will be documented in this file.
 - Fixed "ReferenceError: module is not defined in ES module scope" error in recording.js by converting CommonJS exports to ES module syntax
 - Added missing getAudioDevices function in recording.js to ensure proper audio device detection
 - Fixed "SyntaxError: Duplicate export of 'stopRecording'" by removing duplicate export declarations
+- Fixed "speakersDb.bulkDocs is not a function" error by implementing bulkDocs method in IPC database interface
 
 ## [0.3.1] - 2024-05-21
 

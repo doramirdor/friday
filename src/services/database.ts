@@ -460,7 +460,19 @@ const getMeetingsList = async (): Promise<RecordingListItem[]> => {
 // Transcript Operations
 const saveTranscript = async (meetingId: string, transcript: TranscriptLine[]): Promise<boolean> => {
   try {
-    // Store each transcript line as a separate document with the meetingId
+    // First delete existing transcript lines for this meeting
+    const existingTranscript = await transcriptsDb.find({
+      selector: {
+        meetingId,
+        type: 'transcript'
+      }
+    });
+    
+    for (const doc of existingTranscript.docs) {
+      await transcriptsDb.remove(doc);
+    }
+    
+    // Then add the new ones
     await transcriptsDb.bulkDocs(
       transcript.map(line => ({
         ...line,
@@ -594,6 +606,40 @@ const saveActionItem = async (actionItem: ActionItem): Promise<ActionItem> => {
     return await handleConflicts(actionItemsDb, docToSave);
   } catch (error) {
     console.error('Error saving action item:', error);
+    throw error;
+  }
+};
+
+const saveActionItems = async (meetingId: string, actionItems: ActionItem[]): Promise<boolean> => {
+  try {
+    // First delete existing action items for this meeting
+    const existingActionItems = await actionItemsDb.find({
+      selector: {
+        meetingId,
+        type: 'actionItem'
+      }
+    });
+    
+    for (const doc of existingActionItems.docs) {
+      await actionItemsDb.remove(doc);
+    }
+    
+    // Then add the new ones
+    if (actionItems.length > 0) {
+      await actionItemsDb.bulkDocs(
+        actionItems.map(item => ({
+          ...item,
+          _id: `action_${meetingId}_${item.id}`,
+          meetingId,
+          type: 'actionItem',
+          updatedAt: new Date().toISOString()
+        }))
+      );
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error saving action items:', error);
     throw error;
   }
 };
@@ -1186,6 +1232,7 @@ export const DatabaseService = {
   
   // Action item operations
   saveActionItem,
+  saveActionItems,
   toggleActionItem,
   getActionItems,
   deleteActionItems,
