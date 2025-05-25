@@ -1,20 +1,18 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const path = require('path');
+// const path = require('path'); // Removed: 'path' module is not available in preload with nodeIntegration=false
 
 // Try to load the transcript-bridge module directly
 let transcriptBridge;
 try {
-  // First try direct path
+  // Assume transcript-bridge.js is in the same directory or correctly resolved by require
   transcriptBridge = require('./transcript-bridge.js');
 } catch (e) {
-  try {
-    // Then try the full path in case we're in a bundled environment
-    transcriptBridge = require(require('path').join(__dirname, 'transcript-bridge.js'));
-  } catch (err) {
-    console.error('Failed to load transcript-bridge module:', err);
-    // Create a dummy function to prevent errors
-    transcriptBridge = { exposeTranscriptAPI: () => console.warn('Transcript API not available') };
-  }
+  console.error('Failed to load transcript-bridge module with direct path ./transcript-bridge.js:', e);
+  // As a fallback, you might construct a path if __dirname is reliably available and points to the preload script's location
+  // However, avoid using require('path') for this.
+  // For now, we'll rely on the direct require or let it fail clearly if not found.
+  // Create a dummy function to prevent errors if loading fails
+  transcriptBridge = { exposeTranscriptAPI: () => console.warn('Transcript API not available. Module transcript-bridge.js failed to load.') };
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -39,13 +37,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
       return await ipcRenderer.invoke('db:remove', { dbName, doc });
     },
     query: async (dbName, options) => {
+      // In the main process, pouchdb-find is needed for db.find()
+      // Ensure your main process getDatabase(dbName).find(options) is correctly set up.
       return await ipcRenderer.invoke('db:query', { dbName, options });
     },
     info: async (dbName) => {
       return await ipcRenderer.invoke('db:info', { dbName });
     }
   },
-
+  
   // System Audio Recording methods
   systemAudio: {
     // Check if we have permissions to record system audio
@@ -192,8 +192,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   // Add support for receiving recording warnings
-  // Find where the recording events are defined and add a new one for warnings
-  // Add this near other recording-related code
   onRecordingWarning: (callback) => {
     ipcRenderer.on('recording-warning', (_, warningCode, warningMessage) => {
       callback(warningCode, warningMessage);
@@ -203,8 +201,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
 // Expose the transcript API to the renderer process
 try {
-  transcriptBridge.exposeTranscriptAPI();
-  console.log('✅ Transcript API exposed successfully');
+  if (transcriptBridge && typeof transcriptBridge.exposeTranscriptAPI === 'function') {
+    transcriptBridge.exposeTranscriptAPI();
+    console.log('✅ Transcript API exposed successfully via transcript-bridge.js');
+  } else {
+    console.warn('⚠️ Transcript API could not be exposed: exposeTranscriptAPI function not found on transcriptBridge or transcriptBridge is undefined.');
+     if (!transcriptBridge) {
+        console.error('   Reason: transcriptBridge module itself failed to load.');
+    }
+  }
 } catch (err) {
-  console.error('Failed to expose transcript API:', err);
+  console.error('❌ Failed to expose transcript API:', err);
 } 
