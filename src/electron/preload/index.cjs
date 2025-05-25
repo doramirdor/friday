@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     },
     getIndexes: async (dbName) => {
       return await ipcRenderer.invoke('db:getIndexes', { dbName });
+    },
+    bulkDocs: async (dbName, docs, options = {}) => {
+      return await ipcRenderer.invoke('db:bulkDocs', { dbName, docs, options });
     }
   },
   

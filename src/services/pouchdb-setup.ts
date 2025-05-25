@@ -36,6 +36,7 @@ export interface IpcPouchDB<T = any> {
   info: () => Promise<any>; // PouchDB info object
   createIndex: (indexOptions: any) => Promise<any>; // Create index
   getIndexes: () => Promise<any>; // Get all indexes
+  bulkDocs: (docs: T[], options?: any) => Promise<any>; // Bulk document operations
 }
 
 /**
@@ -124,6 +125,15 @@ export const createDatabase = async <T = any>(name: string): Promise<IpcPouchDB<
         const response: DatabaseResponse<any> = await electronAPI.database.getIndexes(name);
         if (!response.success) {
           const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Error getting indexes');
+          throw error;
+        }
+        return response.result;
+      },
+
+      async bulkDocs(docs: T[], options?: any): Promise<any> {
+        const response: DatabaseResponse<any> = await electronAPI.database.bulkDocs(name, docs, options);
+        if (!response.success) {
+          const error = typeof response.error === 'object' ? reconstructError(response.error) : new Error(response.error || 'Error in bulkDocs operation');
           throw error;
         }
         return response.result;

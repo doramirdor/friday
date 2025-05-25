@@ -163,4 +163,16 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: false, error: serializeError(error) };
     }
   });
+
+  // Bulk docs operation. 'dbName' received is the suffix.
+  ipcMain.handle('db:bulkDocs', async (event, { dbName, docs, options = {} }) => {
+    try {
+      const db = await getDatabase(dbName);
+      const result = await db.bulkDocs(docs, options);
+      return { success: true, result };
+    } catch (error) {
+      console.error(`Error in db:bulkDocs for '${dbName}':`, error);
+      return { success: false, error: serializeError(error) };
+    }
+  });
 } 
