@@ -1,6 +1,6 @@
-// PouchDB Setup Test Script
-// This script tests if PouchDB is properly set up and functioning
-import PouchDBGet, { getPouchDB, createDatabase } from './pouchdb-setup';
+// Database Setup Test Script
+// This script tests if the IPC-based database is properly set up and functioning
+import { createDatabase } from './pouchdb-setup';
 import checkAndUpgradePouchDB from './pouchdb-upgrade';
 
 // Types for our test data
@@ -13,22 +13,15 @@ interface TestDocument {
 }
 
 export async function testPouchDBSetup(): Promise<{success: boolean, message: string}> {
-  console.log('🔍 Starting PouchDB setup test...');
+  console.log('🔍 Starting database setup test...');
   
   try {
     // First run the upgrade check to fix any corrupted data
-    console.log('🧹 Checking for and cleaning up any corrupted PouchDB data...');
+    console.log('🧹 Checking for and cleaning up any corrupted database data...');
     await checkAndUpgradePouchDB();
     
-    // Test PouchDB loading - this is now directly from global
-    console.log('🔄 Testing PouchDB constructor loading...');
-    const PouchDB = getPouchDB();
-    console.log('✅ PouchDB constructor loaded successfully');
-    
-    // Verify PouchDB is a constructor
-    if (typeof PouchDB !== 'function') {
-      throw new Error(`PouchDB is not a constructor, but a ${typeof PouchDB}`);
-    }
+    // Test database creation via IPC
+    console.log('🔄 Testing database creation via IPC...');
     
     // Create a test database
     console.log('🏗️ Creating test database...');
@@ -39,6 +32,7 @@ export async function testPouchDBSetup(): Promise<{success: boolean, message: st
     
     // Create a document
     const testDoc: TestDocument = {
+      _id: 'test-doc-' + Date.now(),
       title: 'Test Document',
       createdAt: new Date().toISOString(),
       type: 'test'
@@ -49,7 +43,7 @@ export async function testPouchDBSetup(): Promise<{success: boolean, message: st
     console.log('✅ Document created:', putResult);
     
     // Retrieve the document
-    const retrievedDoc = await testDb.get(putResult.id);
+    const retrievedDoc = await testDb.get(testDoc._id!);
     console.log('✅ Document retrieved:', retrievedDoc);
     
     // Update the document
@@ -58,39 +52,41 @@ export async function testPouchDBSetup(): Promise<{success: boolean, message: st
     console.log('✅ Document updated:', updateResult);
     
     // Delete the document
-    const deletedDoc = await testDb.get(updateResult.id);
+    const deletedDoc = await testDb.get(testDoc._id!);
     const deleteResult = await testDb.remove(deletedDoc);
     console.log('✅ Document deleted:', deleteResult);
     
-    // Clean up - destroy the test database
-    await testDb.destroy();
-    console.log('🧹 Test database destroyed');
+    // Test database info
+    const info = await testDb.info();
+    console.log('✅ Database info retrieved:', info);
     
     // Final success message
-    console.log('🎉 PouchDB setup test completed successfully!');
+    console.log('🎉 Database setup test completed successfully!');
     return {
       success: true,
-      message: 'PouchDB is correctly set up and functioning. All database operations worked as expected.'
+      message: 'Database is correctly set up and functioning via IPC. All database operations worked as expected.'
     };
   } catch (error) {
-    console.error('❌ PouchDB setup test failed:', error);
+    console.error('❌ Database setup test failed:', error);
     let errorMessage = 'Unknown error occurred';
     
     if (error instanceof Error) {
       errorMessage = error.message;
-      // Check if it's a common PouchDB error
+      // Check if it's a common database error
       if (errorMessage.includes('Class extends value')) {
-        errorMessage = 'PouchDB initialization error: Class extends value is not a constructor. ' +
-          'This is likely due to a problem with how PouchDB is imported.';
+        errorMessage = 'Database initialization error: Class extends value is not a constructor. ' +
+          'This is likely due to a problem with how the database is imported.';
       } else if (errorMessage.includes('constructor')) {
-        errorMessage = 'PouchDB initialization error: Constructor issue. ' +
+        errorMessage = 'Database initialization error: Constructor issue. ' +
           'This might be related to module import problems.';
+      } else if (errorMessage.includes('Electron')) {
+        errorMessage = 'Database setup requires Electron environment with proper IPC communication.';
       }
     }
     
     return {
       success: false,
-      message: `PouchDB setup test failed: ${errorMessage}`
+      message: `Database setup test failed: ${errorMessage}`
     };
   }
 }
