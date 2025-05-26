@@ -101,10 +101,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const [title, setTitle] = useState(meetingState?.title || "Weekly Team Standup");
   const [description, setDescription] = useState(meetingState?.description || "Discussion about current project status and next steps.");
   const [tags, setTags] = useState<string[]>(meetingState?.tags || ["meeting", "team"]);
-  const [actionItems, setActionItems] = useState<ActionItem[]>([
-    { id: "a1", text: "Follow up with design team about UI changes", completed: false },
-    { id: "a2", text: "Schedule retrospective for Friday", completed: true },
-  ]);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [newActionItem, setNewActionItem] = useState("");
   
   const [isPlaying, setIsPlaying] = useState(false);
@@ -113,7 +110,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const [context, setContext] = useState<Context>({
     id: "c1",
     name: "",
-    files: ["requirements.pdf", "wireframes.fig"],
+    files: [],
     overrideGlobal: false,
   });
   
@@ -1379,7 +1376,26 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         </Button>
       </header>
       
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Toggle buttons positioned outside panels so they remain visible when collapsed */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleLeftPanel}
+          className="absolute left-2 top-4 z-20 h-8 w-8 p-0 rounded-full bg-accent/50 shadow-md"
+        >
+          {leftPanelCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </Button>
+        
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleRightPanel}
+          className="absolute right-2 top-4 z-20 h-8 w-8 p-0 rounded-full bg-accent/50 shadow-md"
+        >
+          {rightPanelCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </Button>
+        
         <ResizablePanelGroup 
           direction="horizontal" 
           className="w-full"
@@ -1389,26 +1405,15 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         >
           {/* Left panel (Transcript) */}
           <ResizablePanel 
-            defaultSize={50} 
+            defaultSize={leftPanelCollapsed ? 0 : 50} 
             minSize={15}
             maxSize={85}
             collapsible={true}
             collapsedSize={0}
             onCollapse={() => setLeftPanelCollapsed(true)}
             onExpand={() => setLeftPanelCollapsed(false)}
-            className={leftPanelCollapsed ? "hidden" : ""}
           >
             <div className="flex flex-col h-full overflow-hidden">
-              {/* Toggle button for left panel */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleLeftPanel}
-                className="absolute left-2 top-20 z-10 h-8 w-8 p-0 rounded-full bg-accent/50"
-              >
-                {leftPanelCollapsed ? <ChevronRight className="h-4 w-4" /> : <Minimize className="h-4 w-4" />}
-              </Button>
-              
               {/* Recording controls for new meeting or Waveform player for existing */}
               <div className="p-6 border-b">
                 {/* Show AudioPlayer when we have an audio URL, regardless of meeting state */}
@@ -1794,25 +1799,14 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           
           {/* Right panel (Inspector) */}
           <ResizablePanel 
-            defaultSize={50}
+            defaultSize={rightPanelCollapsed ? 0 : 50}
             minSize={15}
             maxSize={85}
             collapsible={true}
             collapsedSize={0}
             onCollapse={() => setRightPanelCollapsed(true)}
             onExpand={() => setRightPanelCollapsed(false)}
-            className={rightPanelCollapsed ? "hidden" : ""}
           >
-            {/* Toggle button for right panel */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleRightPanel}
-              className="absolute right-2 top-20 z-10 h-8 w-8 p-0 rounded-full bg-accent/50"
-            >
-              {rightPanelCollapsed ? <ChevronLeft className="h-4 w-4" /> : <Minimize className="h-4 w-4" />}
-            </Button>
-            
             <Tabs defaultValue="details" className="w-full h-full flex flex-col">
               <TabsList className="w-full justify-start border-b rounded-none px-6 h-12">
                 <TabsTrigger value="details" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
