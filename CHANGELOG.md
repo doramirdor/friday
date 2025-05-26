@@ -38,6 +38,11 @@ All notable changes to this project will be documented in this file.
 - Periodic auto-save every 30 seconds to prevent data loss
 - Context content textarea for rich meeting context instead of simple name field
 - Enhanced context management with content field stored in database
+- Gemini AI integration for intelligent meeting analysis
+- AI-powered generation of meeting titles, descriptions, notes, and tags from transcripts
+- Context-aware AI analysis that considers both global and meeting-specific context
+- Gemini API key configuration in settings for AI features
+- Smart fallback analysis when AI service is unavailable
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
