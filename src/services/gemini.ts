@@ -33,7 +33,7 @@ class GeminiService {
     try {
       // Get API key from database settings
       const settings = await DatabaseService.getSettings();
-      const apiKey = settings?.geminiApiKey || process.env.GEMINI_API_KEY || localStorage.getItem('gemini-api-key');
+      const apiKey = settings?.geminiApiKey || localStorage.getItem('gemini-api-key');
       
       if (!apiKey) {
         console.warn('Gemini API key not found. AI features will be disabled.');
@@ -41,7 +41,7 @@ class GeminiService {
       }
 
       this.genAI = new GoogleGenerativeAI(apiKey);
-      this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+      this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
       
       console.log('Gemini AI initialized successfully');
     } catch (error) {
@@ -80,16 +80,6 @@ class GeminiService {
     if (input.meetingContext?.content) {
       contextPrompt += `\nMeeting Context: ${input.meetingContext.content}`;
     }
-
-    // Add current title and description for reference
-    if (input.currentTitle) {
-      contextPrompt += `\nCurrent Title: ${input.currentTitle}`;
-    }
-
-    if (input.currentDescription) {
-      contextPrompt += `\nCurrent Description: ${input.currentDescription}`;
-    }
-
     return contextPrompt;
   }
 
