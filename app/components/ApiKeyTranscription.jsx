@@ -41,7 +41,7 @@ export function ApiKeyTranscription() {
       toast({
         title: 'Recording started',
         status: 'info',
-        duration: 2000,
+        duration: 1000,
       });
     } catch (error) {
       console.error('Error starting recording:', error);
@@ -151,7 +151,7 @@ export function ApiKeyTranscription() {
           toast({
             title: 'Transcription successful',
             status: 'success',
-            duration: 2000,
+            duration: 1000,
           });
         } else {
           throw new Error(result || 'Transcription failed');
@@ -181,7 +181,7 @@ export function ApiKeyTranscription() {
           toast({
             title: 'Transcription successful',
             status: 'success',
-            duration: 2000,
+            duration: 1000,
           });
         } else {
           throw new Error(result.error || 'Transcription failed');

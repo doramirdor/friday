@@ -12,6 +12,12 @@ All notable changes to this project will be documented in this file.
   - Prioritized environment variables over database settings for Gemini API key
   - **Fixed renderer process access**: Exposed environment variables through electronAPI preload script
   - Added debugging logs to track API key source resolution in Gemini service
+- **Toast Notification Improvements**: Enhanced toast system with better UX
+  - Set default toast duration to 1 second for faster feedback
+  - Positioned toasts in right bottom corner for better visibility
+  - Made close button always visible for easy dismissal
+  - Added `remove` function for immediate toast removal without delay
+  - Added support for custom duration per toast
 - Enhanced audio file handling with automatic MP3 to WAV conversion for better browser compatibility
 - Improved software recording mode with better MP3 file generation
 - Refactored TranscriptDetails component into a layered architecture with:

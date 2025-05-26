@@ -693,7 +693,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     try {
       toast.loading('Transcribing audio file. This may take a while for longer recordings...', { 
         id: 'transcribing',
-        duration: 60000
+        duration: 10000
       });
       
       const filePath = filePathUrl || recordedAudioUrl;
@@ -703,7 +703,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       if (win?.electronAPI?.testSpeechWithFile) {
         toast.loading('Processing audio. Large files may take several minutes...', { 
           id: 'transcribing', 
-          duration: 60000
+          duration: 10000
         });
         
         console.log('win.electronAPI.testSpeechWithFile filePath', filePath);
