@@ -35,6 +35,19 @@ import { StreamingSpeechOptions } from '@/services/streaming-speech';
 import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
+// Simple debounce function
+const debounce = (func: Function, wait: number) => {
+  let timeout: NodeJS.Timeout;
+  return function executedFunction(...args: any[]) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
+
 interface TranscriptLine {
   id: string;
   text: string;
@@ -578,6 +591,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         if (success) {
           console.log('DOR Debug - success:', success);
           toast.success("Recording stopped");
+          // Auto-save when recording stops
+          debouncedAutoSave();
         } else {
           toast.error("Failed to stop recording");
         }
@@ -736,6 +751,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           
           setTranscriptLines(prev => [...prev, ...lines]);
           toast.success('Transcription completed', { id: 'transcribing' });
+          // Auto-save when transcript is generated
+          debouncedAutoSave();
         } else if (result.error) {
           console.log('result.error');
           if (result.error.includes('payload size exceeds')) {
@@ -1122,6 +1139,19 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     meetingState?.createdAt
   ]);
   
+  // Debounced auto-save function to avoid too frequent saves
+  const debouncedAutoSave = useCallback(
+    debounce(async () => {
+      try {
+        await handleSave();
+        console.log('Auto-saved meeting data');
+      } catch (error) {
+        console.error('Error during auto-save:', error);
+      }
+    }, 1000), // 1 second debounce
+    [handleSave]
+  );
+  
   // Toggle panel visibility
   const toggleLeftPanel = () => {
     setLeftPanelCollapsed(!leftPanelCollapsed);
@@ -1204,19 +1234,37 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     };
   }, [handleSave]);
 
-  // Auto-save periodically (every 30 seconds)
+  // Auto-save on specific events
   useEffect(() => {
-    const autoSaveInterval = setInterval(async () => {
-      try {
-        await handleSave();
-        console.log('Auto-saved meeting data');
-      } catch (error) {
-        console.error('Error during periodic auto-save:', error);
-      }
-    }, 30000); // 30 seconds
+    // Auto-save when title changes
+    if (title !== (meetingState?.title || "Weekly Team Standup")) {
+      debouncedAutoSave();
+    }
+  }, [title, debouncedAutoSave, meetingState?.title]);
 
-    return () => clearInterval(autoSaveInterval);
-  }, [handleSave]);
+  useEffect(() => {
+    // Auto-save when description changes
+    if (description !== (meetingState?.description || "Discussion about current project status and next steps.")) {
+      debouncedAutoSave();
+    }
+  }, [description, debouncedAutoSave, meetingState?.description]);
+
+  useEffect(() => {
+    // Auto-save when tags change
+    if (JSON.stringify(tags) !== JSON.stringify(meetingState?.tags || ["meeting", "team"])) {
+      debouncedAutoSave();
+    }
+  }, [tags, debouncedAutoSave, meetingState?.tags]);
+
+  useEffect(() => {
+    // Auto-save when notes change
+    debouncedAutoSave();
+  }, [notes, debouncedAutoSave]);
+
+  useEffect(() => {
+    // Auto-save when context content changes
+    debouncedAutoSave();
+  }, [contextContent, debouncedAutoSave]);
 
   // Handle AI analysis of the meeting
   const handleAIAnalysis = useCallback(async () => {
@@ -1273,6 +1321,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       setNotes(analysis.notes);
 
       toast.success("AI analysis completed! Meeting details have been updated.");
+      
+      // Auto-save after AI analysis
+      debouncedAutoSave();
       
     } catch (error) {
       console.error('Error during AI analysis:', error);
@@ -1331,7 +1382,11 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         <Button 
           variant="ghost" 
           size="sm"
-          onClick={() => navigate("/library")}
+          onClick={async () => {
+            // Auto-save before navigating back
+            await handleSave();
+            navigate("/library");
+          }}
           className="h-8 w-8 p-0 rounded-full"
         >
           <ChevronLeft className="h-5 w-5" />

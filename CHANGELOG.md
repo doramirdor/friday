@@ -149,6 +149,14 @@ All notable changes to this project will be documented in this file.
 - Implemented bulk save operations for transcripts and action items to prevent data conflicts
 - Fixed unique meeting ID generation to prevent all new meetings from using the same ID by generating unique IDs with timestamp and random components
 - Fixed database initialization issues by adding ensureDatabaseInitialized() calls to all database functions to prevent 'bulkDocs is not a function' errors
+- **Panel Expansion Issue**: Fixed UI issue where collapsed panels couldn't be expanded back
+  - Moved toggle buttons outside of panels so they remain visible when panels are collapsed
+  - Removed `hidden` className that prevented panel expansion
+  - Updated panel default sizes to respect collapsed state
+  - Enhanced toggle button positioning and styling for better accessibility
+- **Context Files Initialization**: Fixed new meetings starting with default context files instead of empty list
+  - New meetings now start with empty context files array
+  - Users can add context files as needed for each meeting
 
 ## [0.3.1] - 2024-05-21
 
