@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import RecordingsTable, { Recording } from "@/components/recordings-table";
+import RecordingsTable from "@/components/recordings-table";
 import EmptyState from "@/components/empty-state";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,11 @@ const Library = () => {
     navigate(`/transcript/${id}`);
   };
 
+  const handleRecordingDeleted = (deletedId: string) => {
+    // Remove the deleted recording from the list
+    setRecordings(prev => prev.filter(recording => recording.id !== deletedId));
+  };
+
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
@@ -94,7 +99,11 @@ const Library = () => {
           </Button>
         </div>
       ) : recordings.length > 0 ? (
-        <RecordingsTable recordings={recordings} onRowClick={handleRowClick} />
+        <RecordingsTable 
+          recordings={recordings} 
+          onRowClick={handleRowClick}
+          onRecordingDeleted={handleRecordingDeleted}
+        />
       ) : (
         <EmptyState
           title="No recordings yet"

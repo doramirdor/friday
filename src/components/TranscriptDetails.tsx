@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX, Laptop, Headphones, Sparkles } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX, Laptop, Headphones, Sparkles, Trash2 } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,7 @@ import AudioPlayer from "@/components/AudioPlayer";
 import { useStreamingSpeech } from '@/hooks/useStreamingSpeech';
 import { StreamingSpeechOptions } from '@/services/streaming-speech';
 import { Switch } from "@/components/ui/switch";
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
 interface TranscriptLine {
   id: string;
@@ -961,6 +962,10 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     );
   };
   
+  const handleDeleteActionItem = (id: string) => {
+    setActionItems(actionItems.filter(item => item.id !== id));
+  };
+  
   const handleToggleOverrideContext = () => {
     setContext({
       ...context,
@@ -1289,6 +1294,39 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     setNotes
   ]);
 
+  // Add delete state
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // Handle delete meeting
+  const handleDeleteMeeting = useCallback(async () => {
+    if (!meetingId || meetingId === 'new' || isDeleting) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      // Delete the meeting and all associated data
+      await DatabaseService.deleteMeeting(meetingId);
+      
+      toast.success("Meeting deleted successfully");
+      
+      // Navigate back to library
+      navigate('/library');
+    } catch (error) {
+      console.error('Error deleting meeting:', error);
+      toast.error("Failed to delete meeting. Please try again.");
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  }, [meetingId, isDeleting, navigate]);
+
+  const handleDeleteTranscriptLine = (id: string) => {
+    setTranscriptLines(transcriptLines.filter(line => line.id !== id));
+  };
+
   // Render the component
   return (
     <div className="min-h-screen flex flex-col">
@@ -1309,21 +1347,26 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           variant="outline"
           size="sm"
           onClick={handleAIAnalysis}
-          disabled={isAnalyzing || transcriptLines.length === 0}
-          className="text-sm mr-2"
+          disabled={isAnalyzing || !transcriptLines.length}
+          className="flex items-center gap-2"
         >
-          {isAnalyzing ? (
-            <>
-              <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4 mr-2" />
-              AI Analysis
-            </>
-          )}
+          <Sparkles className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
+          {isAnalyzing ? 'Analyzing...' : 'AI Analysis'}
         </Button>
+
+        {/* Delete button - only show for existing meetings */}
+        {meetingId && meetingId !== 'new' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDeleteDialog(true)}
+            disabled={isDeleting}
+            className="flex items-center gap-2 text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete Meeting
+          </Button>
+        )}
         
         <Button
           variant="outline"
@@ -1662,61 +1705,83 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       <p className="mt-2 text-sm">Start recording to begin transcription</p>
                     </div>
                   ) : (
-                    transcriptLines.map((line) => (
-                      <div 
-                        key={line.id}
-                        className={`p-2 rounded-md ${
-                          line.id === currentLineId 
-                            ? "bg-primary/10 border-l-2 border-primary" 
-                            : "hover:bg-accent/50"
-                        }`}
-                        onClick={() => handleLineClick(line)}
-                      >
-                        {line.isEditing ? (
-                          <div className="flex gap-2">
-                            <select 
-                              value={line.speakerId}
-                              onChange={(e) => handleSpeakerChange(line.id, e.target.value)}
-                              className="h-10 w-32 rounded-md border border-input bg-background px-3 text-sm"
-                            >
-                              {speakers.map(speaker => (
-                                <option key={speaker.id} value={speaker.id}>{speaker.name}</option>
-                              ))}
-                            </select>
-                            <Input
-                              value={line.text}
-                              onChange={(e) => handleLineEdit(line.id, e.target.value)}
-                              autoFocus
-                              onBlur={() => {
-                                setTranscriptLines(
-                                  transcriptLines.map(l => 
-                                    l.id === line.id ? { ...l, isEditing: false } : l
-                                  )
-                                );
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  handleLineEdit(line.id, (e.target as HTMLInputElement).value);
-                                }
-                              }}
-                              className="flex-1"
-                            />
+                    transcriptLines.map((line) => {
+                      const speaker = speakers.find(s => s.id === line.speakerId);
+                      return (
+                        <div 
+                          key={line.id} 
+                          className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors group"
+                        >
+                          <div 
+                            className="w-3 h-3 rounded-full mt-2 flex-shrink-0"
+                            style={{ backgroundColor: speaker?.color || '#666666' }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-medium text-muted-foreground">
+                                {speaker?.name || `Speaker ${line.speakerId}`}
+                              </span>
+                            </div>
+                            {line.isEditing ? (
+                              <div className="space-y-2">
+                                <Textarea
+                                  value={line.text}
+                                  onChange={(e) => {
+                                    setTranscriptLines(transcriptLines.map(l => 
+                                      l.id === line.id ? { ...l, text: e.target.value } : l
+                                    ));
+                                  }}
+                                  className="min-h-[60px] resize-none"
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      setTranscriptLines(transcriptLines.map(l => 
+                                        l.id === line.id ? { ...l, isEditing: false } : l
+                                      ));
+                                    }}
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setTranscriptLines(transcriptLines.map(l => 
+                                        l.id === line.id ? { ...l, isEditing: false } : l
+                                      ));
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p 
+                                className="text-sm leading-relaxed cursor-pointer hover:bg-accent/30 p-1 rounded"
+                                onClick={() => {
+                                  setTranscriptLines(transcriptLines.map(l => 
+                                    l.id === line.id ? { ...l, isEditing: true } : l
+                                  ));
+                                }}
+                              >
+                                {line.text}
+                              </p>
+                            )}
                           </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            <span 
-                              className="font-medium"
-                              style={{ 
-                                color: speakers.find(s => s.id === line.speakerId)?.color || "#666666",
-                              }}
-                            >
-                              {speakers.find(s => s.id === line.speakerId)?.name}
-                            </span>
-                            <p className="flex-1">{line.text}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteTranscriptLine(line.id)}
+                            className="h-8 w-8 p-0 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Delete line</span>
+                          </Button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1825,6 +1890,15 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                           >
                             {item.text}
                           </Label>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteActionItem(item.id)}
+                            className="h-8 w-8 p-0 text-destructive"
+                          >
+                            <span className="sr-only">Remove</span>
+                            ×
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -1978,6 +2052,28 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Meeting?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{title}"? This action cannot be undone. All transcript data, notes, and action items will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteMeeting}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete Meeting"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

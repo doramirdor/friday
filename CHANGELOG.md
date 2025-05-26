@@ -55,6 +55,13 @@ All notable changes to this project will be documented in this file.
   - Electron main process handler for audio recording and streaming
   - IPC communication between renderer and main processes
   - Configurable streaming options (language, speaker count, etc.)
+- **Delete Functionality**: Complete meeting and data deletion capabilities
+  - Delete meetings from the library with confirmation dialog
+  - Delete individual transcript lines with hover controls
+  - Delete individual action items with remove buttons
+  - Delete entire meetings from transcript details page
+  - Cascading deletion of all associated data (transcript, notes, action items, context)
+  - Loading states and error handling for all delete operations
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization

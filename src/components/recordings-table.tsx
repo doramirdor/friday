@@ -11,18 +11,21 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { RecordingListItem } from "@/models/types";
+import { DatabaseService } from "@/services/database";
 
 interface RecordingsTableProps {
   recordings: RecordingListItem[];
   onRowClick: (id: string) => void;
+  onRecordingDeleted?: (id: string) => void; // Add callback for when a recording is deleted
 }
 
-const RecordingsTable = ({ recordings, onRowClick }: RecordingsTableProps) => {
+const RecordingsTable = ({ recordings, onRowClick, onRecordingDeleted }: RecordingsTableProps) => {
   const [selectedRecording, setSelectedRecording] = useState<RecordingListItem | null>(null);
   const [contextDialogOpen, setContextDialogOpen] = useState(false);
   const [currentRecordingId, setCurrentRecordingId] = useState<string | null>(null);
   const [contextName, setContextName] = useState("");
   const [overrideGlobal, setOverrideGlobal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -35,10 +38,28 @@ const RecordingsTable = ({ recordings, onRowClick }: RecordingsTableProps) => {
     toast(`Playing: ${recording.title}`);
   };
   
-  const handleDelete = (id: string) => {
-    // Future implementation: Wire this up to the database service
-    toast.error("Delete functionality will be implemented later");
-    setSelectedRecording(null);
+  const handleDelete = async (id: string) => {
+    if (isDeleting) return;
+    
+    setIsDeleting(true);
+    
+    try {
+      // Delete the meeting and all associated data
+      await DatabaseService.deleteMeeting(id);
+      
+      // Notify parent component about the deletion
+      if (onRecordingDeleted) {
+        onRecordingDeleted(id);
+      }
+      
+      toast.success("Meeting moved to trash successfully");
+      setSelectedRecording(null);
+    } catch (error) {
+      console.error('Error deleting meeting:', error);
+      toast.error("Failed to delete meeting. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
   };
   
   const handleContextClick = (recording: RecordingListItem, e: React.MouseEvent) => {
@@ -130,12 +151,13 @@ const RecordingsTable = ({ recordings, onRowClick }: RecordingsTableProps) => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction 
               onClick={() => selectedRecording && handleDelete(selectedRecording.id)}
+              disabled={isDeleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Move to Trash
+              {isDeleting ? "Deleting..." : "Move to Trash"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
