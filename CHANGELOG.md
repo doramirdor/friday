@@ -43,6 +43,18 @@ All notable changes to this project will be documented in this file.
 - Context-aware AI analysis that considers both global and meeting-specific context
 - Gemini API key configuration in settings for AI features
 - Smart fallback analysis when AI service is unavailable
+- **Live Streaming Transcription**: Real-time speech-to-text using Google Cloud Speech-to-Text streaming API
+  - Near real-time transcription with interim and final results
+  - Speaker diarization support for multi-speaker meetings
+  - Live transcript display with confidence scores
+  - Ability to add live transcripts directly to meeting notes
+  - Automatic microphone audio capture and streaming
+  - Error handling and connection management
+- **Streaming Speech Service**: New service layer for managing live transcription
+  - React hook (`useStreamingSpeech`) for easy integration
+  - Electron main process handler for audio recording and streaming
+  - IPC communication between renderer and main processes
+  - Configurable streaming options (language, speaker count, etc.)
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
@@ -246,3 +258,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Error handling in Electron's main process for Google Speech API calls 
+
+### Enhanced
+- **Recording Interface**: Added live transcript toggle and controls to recording page
+- **TranscriptDetails Component**: Integrated live streaming controls with existing recording functionality
+- **Settings**: Live transcript preferences and API configuration
+
+### Technical
+- Added `node-record-lpcm16` dependency for audio recording
+- Implemented streaming speech handler in Electron main process
+- Added preload script methods for streaming speech IPC
+- Created TypeScript interfaces for streaming speech results and options 

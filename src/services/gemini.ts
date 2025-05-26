@@ -33,7 +33,7 @@ class GeminiService {
     try {
       // Get API key from database settings
       const settings = await DatabaseService.getSettings();
-      const apiKey = settings?.geminiApiKey || localStorage.getItem('gemini-api-key');
+      const apiKey = settings?.geminiApiKey || localStorage.getItem('gemini-api-key') || process.env.GEMINI_API_KEY; 
       
       if (!apiKey) {
         console.warn('Gemini API key not found. AI features will be disabled.');

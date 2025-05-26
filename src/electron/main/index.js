@@ -15,6 +15,9 @@ const { google } = pkg;
 import { setupTranscriptHandlers } from "./transcript-handler.js";
 import { setupDatabaseHandlers } from "./database-handler.js";
 
+// Import streaming speech handler (CommonJS module)
+const streamingSpeechHandler = await import("./streaming-speech-handler.cjs");
+
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

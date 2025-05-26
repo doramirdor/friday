@@ -50,7 +50,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     getIndexes: async (dbName) => {
       return await ipcRenderer.invoke('db:getIndexes', { dbName });
     },
-    bulkDocs: async (dbName, docs, options = {}) => {
+    bulkDocs: async (dbName, docs, options) => {
       return await ipcRenderer.invoke('db:bulkDocs', { dbName, docs, options });
     }
   },
@@ -205,6 +205,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on('recording-warning', (_, warningCode, warningMessage) => {
       callback(warningCode, warningMessage);
     });
+  },
+
+  // Streaming speech recognition methods
+  startStreamingSpeech: async (options) => {
+    return await ipcRenderer.invoke('streaming-speech:start', options);
+  },
+  stopStreamingSpeech: async () => {
+    return await ipcRenderer.invoke('streaming-speech:stop');
+  },
+  onStreamingSpeechResult: (callback) => {
+    ipcRenderer.on('streaming-speech:result', (event, result) => callback(result));
+  },
+  onStreamingSpeechError: (callback) => {
+    ipcRenderer.on('streaming-speech:error', (event, error) => callback(error));
+  },
+  removeStreamingSpeechListeners: () => {
+    ipcRenderer.removeAllListeners('streaming-speech:result');
+    ipcRenderer.removeAllListeners('streaming-speech:error');
   }
 });
 
