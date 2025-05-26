@@ -22,6 +22,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
   isElectron: true,
   
+  // Environment variables (only expose specific ones for security)
+  env: {
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GOOGLE_SPEECH_API_KEY: process.env.GOOGLE_SPEECH_API_KEY,
+    GOOGLE_PROJECT_ID: process.env.GOOGLE_PROJECT_ID,
+  },
+  
   // Database methods
   database: {
     create: async (name, options) => {

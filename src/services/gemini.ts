@@ -31,8 +31,20 @@ class GeminiService {
 
   private async initializeGemini() {
     try {
-      // Get API key from environment variable first, then fall back to settings and localStorage
-      const apiKey = process.env.GEMINI_API_KEY || (await DatabaseService.getSettings())?.geminiApiKey || localStorage.getItem('gemini-api-key');
+      // Get API key from environment variable first (via electronAPI if available), then fall back to settings and localStorage
+      const electronAPI = (window as any).electronAPI;
+      const envApiKey = electronAPI?.env?.GEMINI_API_KEY;
+      const settingsApiKey = (await DatabaseService.getSettings())?.geminiApiKey;
+      const localStorageApiKey = localStorage.getItem('gemini-api-key');
+      
+      const apiKey = envApiKey || settingsApiKey || localStorageApiKey;
+      
+      console.log('Gemini API key sources:', {
+        envApiKey: envApiKey ? `${envApiKey.substring(0, 10)}...` : 'Not found',
+        settingsApiKey: settingsApiKey ? `${settingsApiKey.substring(0, 10)}...` : 'Not found',
+        localStorageApiKey: localStorageApiKey ? `${localStorageApiKey.substring(0, 10)}...` : 'Not found',
+        finalApiKey: apiKey ? `${apiKey.substring(0, 10)}...` : 'Not found'
+      });
       
       if (!apiKey) {
         console.warn('Gemini API key not found. AI features will be disabled.');

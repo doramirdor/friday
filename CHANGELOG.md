@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   - Configured Electron main process to load environment variables from `.env` and `.env.local` files
   - Added dotenv configuration to streaming speech handler for Google Speech API
   - Prioritized environment variables over database settings for Gemini API key
+  - **Fixed renderer process access**: Exposed environment variables through electronAPI preload script
+  - Added debugging logs to track API key source resolution in Gemini service
 - Enhanced audio file handling with automatic MP3 to WAV conversion for better browser compatibility
 - Improved software recording mode with better MP3 file generation
 - Refactored TranscriptDetails component into a layered architecture with:
