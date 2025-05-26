@@ -1414,9 +1414,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                 {/* Show AudioPlayer when we have an audio URL, regardless of meeting state */}
                 {recordedAudioUrl ? (
                   <div className="flex flex-col gap-4 mb-4">
-                    <div className="p-2 border border-blue-300 rounded-md bg-blue-50 mb-2">
+                    {/* <div className="p-2 border border-blue-300 rounded-md bg-blue-50 mb-2">
                       <p className="text-sm text-blue-700">Audio file loaded: {recordedAudioUrl.substring(0, 50)}...</p>
-                    </div>
+                    </div> */}
                     
                     <AudioPlayer 
                       audioUrl={recordedAudioUrl}
@@ -1444,7 +1444,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       </Button>
 
                       {/* Recording source selector for existing recording */}
-                      <div className="flex items-center gap-2 mt-2 p-1 rounded-md border border-input">
+                      {/* <div className="flex items-center gap-2 mt-2 p-1 rounded-md border border-input">
                         <Button
                           variant={recordingSource === 'system' ? "secondary" : "ghost"}
                           size="sm"
@@ -1475,7 +1475,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                           <Headphones className="h-3 w-3" />
                           <span className="text-xs">Both</span>
                         </Button>
-                      </div>
+                      </div> */}
                     </div>
                   </div>
                 ) : (

@@ -1,3 +1,7 @@
+// Load environment variables from .env files
+require('dotenv').config({ path: require('path').join(__dirname, '../../..', '.env') });
+require('dotenv').config({ path: require('path').join(__dirname, '../../..', '.env.local') });
+
 const { ipcMain, app } = require('electron');
 const recorder = require('node-record-lpcm16');
 const { SpeechClient } = require('@google-cloud/speech');

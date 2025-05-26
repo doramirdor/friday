@@ -1,7 +1,18 @@
+import dotenv from 'dotenv';
+import { fileURLToPath } from "url";
+import path from "path";
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from .env files in the project root
+const projectRoot = path.resolve(__dirname, '../../..');
+dotenv.config({ path: path.join(projectRoot, '.env') });
+dotenv.config({ path: path.join(projectRoot, '.env.local') });
+
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from "electron";
 import os from "os";
-import path from "path";
-import { fileURLToPath } from "url";
 import fs from "fs";
 import speech from "@google-cloud/speech";
 import { promisify } from "util";
@@ -17,10 +28,6 @@ import { setupDatabaseHandlers } from "./database-handler.js";
 
 // Import streaming speech handler (CommonJS module)
 const streamingSpeechHandler = await import("./streaming-speech-handler.cjs");
-
-// Get __dirname equivalent in ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Import local modules using dynamic import since they're CommonJS
 const { checkPermissions } = await import("./utils/permission.js");

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Environment Variable Configuration**: Added dotenv support for loading API keys from `.env` files
+  - Created `.env.example` template with all required environment variables
+  - Configured Electron main process to load environment variables from `.env` and `.env.local` files
+  - Added dotenv configuration to streaming speech handler for Google Speech API
+  - Prioritized environment variables over database settings for Gemini API key
 - Enhanced audio file handling with automatic MP3 to WAV conversion for better browser compatibility
 - Improved software recording mode with better MP3 file generation
 - Refactored TranscriptDetails component into a layered architecture with:
