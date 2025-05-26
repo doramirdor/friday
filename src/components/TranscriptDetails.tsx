@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX, Laptop, Headphones } from "lucide-react";
+import { ChevronLeft, Play, Pause, Bold, Italic, Link as LinkIcon, ChevronRight, ChevronDown, Maximize, Minimize, Mic, Square, ToggleRight, ToggleLeft, Volume2, VolumeX, Laptop, Headphones, Sparkles } from "lucide-react";
 import { TagInput } from "@/components/ui/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import useGoogleSpeech from "@/hooks/useGoogleSpeech";
 import { Toggle } from "@/components/ui/toggle";
 import { Slider } from "@/components/ui/slider";
 import { DatabaseService } from '@/services/database';
+import geminiService, { MeetingAnalysis } from '@/services/gemini';
 import { 
   Meeting, 
   ActionItem as DBActionItem, 
@@ -107,10 +108,17 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   
   const [context, setContext] = useState<Context>({
     id: "c1",
-    name: "Project Redesign",
+    name: "",
     files: ["requirements.pdf", "wireframes.fig"],
     overrideGlobal: false,
   });
+  
+  // Add context content state for the textarea
+  const [contextContent, setContextContent] = useState<string>("");
+  
+  // AI Analysis state
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResults, setAnalysisResults] = useState<MeetingAnalysis | null>(null);
   
   const [speakers, setSpeakers] = useState<Speaker[]>([
     { id: "1", name: "Speaker 1", color: "#28C76F" },
@@ -172,7 +180,13 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   );
   
   // Get meeting ID or generate a new one
-  const meetingId = id || `meeting_${Date.now()}`;
+  const meetingId = useMemo(() => {
+    if (id && id !== 'new') {
+      return id;
+    }
+    // Generate a unique ID for new meetings
+    return `meeting_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }, [id]);
   
   // Initialize recording hooks
   const { 
@@ -280,10 +294,15 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           if (meetingDetails.context) {
             setContext({
               id: meetingDetails.context._id || 'c1',
-              name: meetingDetails.context.name,
+              name: meetingDetails.context.name || '',
               files: meetingDetails.context.files,
               overrideGlobal: meetingDetails.context.overrideGlobal
             });
+            
+            // Set context content if available
+            if (meetingDetails.context.content) {
+              setContextContent(meetingDetails.context.content);
+            }
           }
           
           // Update recording info if available
@@ -1027,6 +1046,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       const dbContext: DBContext = {
         meetingId,
         name: context.name,
+        content: contextContent,
         files: context.files,
         overrideGlobal: context.overrideGlobal,
         type: 'context',
@@ -1138,6 +1158,131 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     console.log('Debug - transcriptLines.length:', transcriptLines.length);
   }, [recordedAudioUrl, isNewMeeting, transcriptLines.length]);
 
+  // Auto-save when leaving the page
+  useEffect(() => {
+    const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
+      // Trigger auto-save
+      try {
+        await handleSave();
+      } catch (error) {
+        console.error('Error auto-saving before unload:', error);
+      }
+    };
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'hidden') {
+        // Page is being hidden, auto-save
+        try {
+          await handleSave();
+        } catch (error) {
+          console.error('Error auto-saving on visibility change:', error);
+        }
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Cleanup function to auto-save when component unmounts
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      
+      // Auto-save when component unmounts (navigating away)
+      handleSave().catch(error => {
+        console.error('Error auto-saving on unmount:', error);
+      });
+    };
+  }, [handleSave]);
+
+  // Auto-save periodically (every 30 seconds)
+  useEffect(() => {
+    const autoSaveInterval = setInterval(async () => {
+      try {
+        await handleSave();
+        console.log('Auto-saved meeting data');
+      } catch (error) {
+        console.error('Error during periodic auto-save:', error);
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(autoSaveInterval);
+  }, [handleSave]);
+
+  // Handle AI analysis of the meeting
+  const handleAIAnalysis = useCallback(async () => {
+    if (!transcriptLines.length) {
+      toast.error("No transcript available for analysis");
+      return;
+    }
+
+    if (!geminiService.isAvailable()) {
+      toast.error("Gemini AI is not configured. Please add your API key in settings.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    
+    try {
+      // Get global context from settings
+      const settings = await DatabaseService.getSettings();
+      const globalContext = await DatabaseService.getGlobalContext();
+      
+      // Prepare analysis input
+      const analysisInput = {
+        transcript: transcriptLines.map(line => ({
+          ...line,
+          meetingId,
+          type: 'transcriptLine' as const
+        })) as DBTranscriptLine[],
+        speakers: speakers.map(speaker => ({
+          ...speaker,
+          meetingId,
+          type: 'speaker' as const
+        })) as DBSpeaker[],
+        meetingContext: contextContent ? {
+          meetingId,
+          name: context.name,
+          content: contextContent,
+          files: context.files,
+          overrideGlobal: context.overrideGlobal,
+          type: 'context' as const,
+          updatedAt: new Date().toISOString()
+        } as DBContext : undefined,
+        globalContext: globalContext || undefined,
+        currentTitle: title,
+        currentDescription: description
+      };
+
+      const analysis = await geminiService.analyzeMeeting(analysisInput);
+      setAnalysisResults(analysis);
+
+      // Apply the analysis results
+      setTitle(analysis.title);
+      setDescription(analysis.description);
+      setTags(analysis.tags);
+      setNotes(analysis.notes);
+
+      toast.success("AI analysis completed! Meeting details have been updated.");
+      
+    } catch (error) {
+      console.error('Error during AI analysis:', error);
+      toast.error(`AI analysis failed: ${error.message}`);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [
+    transcriptLines, 
+    speakers, 
+    meetingId, 
+    context, 
+    contextContent, 
+    title, 
+    description, 
+    setNotes
+  ]);
+
   // Render the component
   return (
     <div className="min-h-screen flex flex-col">
@@ -1153,6 +1298,26 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         </Button>
         
         <h1 className="text-xl font-semibold flex-1">{title}</h1>
+        
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAIAnalysis}
+          disabled={isAnalyzing || transcriptLines.length === 0}
+          className="text-sm mr-2"
+        >
+          {isAnalyzing ? (
+            <>
+              <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
+              Analyzing...
+            </>
+          ) : (
+            <>
+              <Sparkles className="h-4 w-4 mr-2" />
+              AI Analysis
+            </>
+          )}
+        </Button>
         
         <Button
           variant="outline"
@@ -1663,7 +1828,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                 <TabsContent value="context" className="p-6 space-y-6 h-full">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="context-name">Context Name</Label>
+                      <Label htmlFor="context-content">Meeting Context</Label>
                       <div className="flex items-center gap-2">
                         <Checkbox
                           id="override-global"
@@ -1676,12 +1841,17 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       </div>
                     </div>
                     
-                    <Input
-                      id="context-name"
-                      value={context.name}
-                      onChange={(e) => setContext({ ...context, name: e.target.value })}
-                      placeholder="Context name"
+                    <Textarea
+                      id="context-content"
+                      value={contextContent}
+                      onChange={(e) => setContextContent(e.target.value)}
+                      placeholder="Add context information for this meeting..."
+                      rows={8}
+                      className="resize-none"
                     />
+                    <p className="text-sm text-muted-foreground">
+                      Provide relevant context, background information, or notes for this meeting.
+                    </p>
                     
                     <Label htmlFor="context-files">Context Files</Label>
                     <div className="border rounded-md p-4 bg-accent/20">

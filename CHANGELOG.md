@@ -34,6 +34,10 @@ All notable changes to this project will be documented in this file.
 - Added permission request utility that opens system settings directly for microphone and screen recording
 - Added recorder restart functionality to recover from stuck recording processes
 - Added bulkDocs support to IPC database interface for bulk document operations
+- Auto-saving functionality when leaving meeting page or closing browser
+- Periodic auto-save every 30 seconds to prevent data loss
+- Context content textarea for rich meeting context instead of simple name field
+- Enhanced context management with content field stored in database
 
 ### Changed
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
@@ -102,6 +106,12 @@ All notable changes to this project will be documented in this file.
 - Added missing getAudioDevices function in recording.js to ensure proper audio device detection
 - Fixed "SyntaxError: Duplicate export of 'stopRecording'" by removing duplicate export declarations
 - Fixed "speakersDb.bulkDocs is not a function" error by implementing bulkDocs method in IPC database interface
+- Fixed database save operations overriding previous saves by properly handling existing documents before bulk operations
+- Fixed loading existing meetings showing generic "Weekly Team Standup" data instead of saved meeting details
+- Added proper data loading for existing meetings in TranscriptDetails component
+- Implemented bulk save operations for transcripts and action items to prevent data conflicts
+- Fixed unique meeting ID generation to prevent all new meetings from using the same ID by generating unique IDs with timestamp and random components
+- Fixed database initialization issues by adding ensureDatabaseInitialized() calls to all database functions to prevent 'bulkDocs is not a function' errors
 
 ## [0.3.1] - 2024-05-21
 

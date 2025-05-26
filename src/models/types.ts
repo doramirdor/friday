@@ -58,6 +58,7 @@ export interface Notes extends PouchDocument {
 export interface Context extends PouchDocument {
   meetingId: string;
   name: string;
+  content?: string; // Text content for the context
   files: string[];
   overrideGlobal: boolean;
   type: 'context'; // Document type for querying
@@ -114,6 +115,7 @@ export interface RecordingListItem {
 export interface UserSettings extends PouchDocument {
   liveTranscript: boolean;
   apiKey?: string;
+  geminiApiKey?: string; // Gemini AI API key for meeting analysis
   theme?: string;
   autoLaunch?: boolean;
   saveLocation?: string;

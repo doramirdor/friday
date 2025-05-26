@@ -76,8 +76,11 @@ const NewMeetingDialog = ({
   }, [open, initialLiveTranscript, form]);
 
   const onSubmit = () => {
+    // Generate a unique ID for the new meeting
+    const newMeetingId = `meeting_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    
     // Navigate to transcript details page with the new meeting data
-    navigate(`/transcript/new`, {
+    navigate(`/transcript/${newMeetingId}`, {
       state: {
         title: title,
         description: description,

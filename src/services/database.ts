@@ -318,9 +318,12 @@ const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
     await ensureDatabaseInitialized();
     
     const now = new Date().toISOString();
+    // Generate a more robust unique ID if one isn't provided
+    const uniqueId = meeting._id || `meeting_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    
     const docToSave: Meeting = {
       ...meeting,
-      _id: meeting._id || `meeting_${now}`,
+      _id: uniqueId,
       createdAt: meeting.createdAt || now,
       updatedAt: now,
       type: 'meeting'
@@ -460,6 +463,8 @@ const getMeetingsList = async (): Promise<RecordingListItem[]> => {
 // Transcript Operations
 const saveTranscript = async (meetingId: string, transcript: TranscriptLine[]): Promise<boolean> => {
   try {
+    await ensureDatabaseInitialized();
+    
     // First delete existing transcript lines for this meeting
     const existingTranscript = await transcriptsDb.find({
       selector: {
@@ -490,6 +495,8 @@ const saveTranscript = async (meetingId: string, transcript: TranscriptLine[]): 
 
 const getTranscript = async (meetingId: string): Promise<TranscriptLine[]> => {
   try {
+    await ensureDatabaseInitialized();
+    
     const result = await transcriptsDb.find({
       selector: {
         meetingId,
@@ -516,6 +523,8 @@ const getTranscript = async (meetingId: string): Promise<TranscriptLine[]> => {
 
 const deleteTranscript = async (meetingId: string): Promise<boolean> => {
   try {
+    await ensureDatabaseInitialized();
+    
     // Find all transcript lines for this meeting
     const result = await transcriptsDb.find({
       selector: {
@@ -539,6 +548,8 @@ const deleteTranscript = async (meetingId: string): Promise<boolean> => {
 // Speaker Operations
 const saveSpeakers = async (meetingId: string, speakers: Speaker[]): Promise<boolean> => {
   try {
+    await ensureDatabaseInitialized();
+    
     // First delete existing speakers for this meeting
     const existingSpeakers = await speakersDb.find({
       selector: {
@@ -570,6 +581,8 @@ const saveSpeakers = async (meetingId: string, speakers: Speaker[]): Promise<boo
 
 const getSpeakers = async (meetingId: string): Promise<Speaker[]> => {
   try {
+    await ensureDatabaseInitialized();
+    
     const result = await speakersDb.find({
       selector: {
         meetingId,
@@ -612,6 +625,8 @@ const saveActionItem = async (actionItem: ActionItem): Promise<ActionItem> => {
 
 const saveActionItems = async (meetingId: string, actionItems: ActionItem[]): Promise<boolean> => {
   try {
+    await ensureDatabaseInitialized();
+    
     // First delete existing action items for this meeting
     const existingActionItems = await actionItemsDb.find({
       selector: {
@@ -664,6 +679,8 @@ const toggleActionItem = async (id: string, completed: boolean): Promise<ActionI
 
 const getActionItems = async (meetingId: string): Promise<ActionItem[]> => {
   try {
+    await ensureDatabaseInitialized();
+    
     const result = await actionItemsDb.find({
       selector: {
         meetingId,
@@ -680,6 +697,8 @@ const getActionItems = async (meetingId: string): Promise<ActionItem[]> => {
 
 const deleteActionItems = async (meetingId: string): Promise<boolean> => {
   try {
+    await ensureDatabaseInitialized();
+    
     // Find all action items for this meeting
     const result = await actionItemsDb.find({
       selector: {
@@ -703,6 +722,8 @@ const deleteActionItems = async (meetingId: string): Promise<boolean> => {
 // Notes Operations
 const saveNotes = async (notes: Notes): Promise<Notes> => {
   try {
+    await ensureDatabaseInitialized();
+    
     const now = new Date().toISOString();
     let notesDoc: Notes;
     
@@ -734,6 +755,8 @@ const saveNotes = async (notes: Notes): Promise<Notes> => {
 
 const getNotes = async (meetingId: string): Promise<Notes | null> => {
   try {
+    await ensureDatabaseInitialized();
+    
     return await notesDb.get(`notes_${meetingId}`);
   } catch (error) {
     if ((error as any).status === 404) {
@@ -746,6 +769,8 @@ const getNotes = async (meetingId: string): Promise<Notes | null> => {
 
 const deleteNotes = async (meetingId: string): Promise<boolean> => {
   try {
+    await ensureDatabaseInitialized();
+    
     try {
       const doc = await notesDb.get(`notes_${meetingId}`);
       await notesDb.remove(doc);
@@ -766,6 +791,8 @@ const deleteNotes = async (meetingId: string): Promise<boolean> => {
 // Context Operations
 const saveContext = async (context: Context): Promise<Context> => {
   try {
+    await ensureDatabaseInitialized();
+    
     const now = new Date().toISOString();
     let contextDoc: Context;
     
@@ -775,6 +802,7 @@ const saveContext = async (context: Context): Promise<Context> => {
       contextDoc = {
         ...contextDoc,
         name: context.name,
+        content: context.content,
         files: context.files,
         overrideGlobal: context.overrideGlobal,
         updatedAt: now
@@ -799,6 +827,8 @@ const saveContext = async (context: Context): Promise<Context> => {
 
 const getContext = async (meetingId: string): Promise<Context | null> => {
   try {
+    await ensureDatabaseInitialized();
+    
     return await contextsDb.get(`context_${meetingId}`);
   } catch (error) {
     if ((error as any).status === 404) {
@@ -811,6 +841,8 @@ const getContext = async (meetingId: string): Promise<Context | null> => {
 
 const deleteContext = async (meetingId: string): Promise<boolean> => {
   try {
+    await ensureDatabaseInitialized();
+    
     try {
       const doc = await contextsDb.get(`context_${meetingId}`);
       await contextsDb.remove(doc);

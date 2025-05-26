@@ -31,8 +31,8 @@ const MeetingSetup = () => {
       return;
     }
     
-    // Generate a new ID for the transcript
-    const newId = `rec-${Date.now()}`;
+    // Generate a unique ID for the meeting with timestamp and random component
+    const newId = `meeting_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
     // Navigate to the transcript page with the new ID and meeting info
     navigate(`/transcript/${newId}`, {

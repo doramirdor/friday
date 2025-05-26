@@ -12,6 +12,7 @@ import { useState, useEffect } from "react"
 import useSettings from "@/hooks/useSettings"
 import { UserSettings } from "@/models/types"
 import { toast } from "sonner"
+import geminiService from "@/services/gemini"
 
 // Define dialog props interface
 interface SettingsDialogProps {
@@ -24,12 +25,14 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
   const { theme, setTheme } = useTheme()
   const { settings, isLoading, updateSettings } = useSettings()
   const [apiKey, setApiKey] = useState<string>('')
+  const [geminiApiKey, setGeminiApiKey] = useState<string>('')
   
   // Load settings when the component mounts or when settings are updated
   useEffect(() => {
     if (settings) {
       // Update API key field
       setApiKey(settings.apiKey || '')
+      setGeminiApiKey(settings.geminiApiKey || '')
     }
   }, [settings])
   
@@ -60,6 +63,22 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
       toast.success("API key saved")
     } catch (err) {
       toast.error("Failed to save API key")
+    }
+  }
+  
+  // Handle Gemini API key change
+  const handleGeminiApiKeySave = async () => {
+    if (!settings) return
+    
+    try {
+      await updateSettings({ geminiApiKey })
+      
+      // Reinitialize Gemini service with new API key
+      await geminiService.reinitialize()
+      
+      toast.success("Gemini API key saved")
+    } catch (err) {
+      toast.error("Failed to save Gemini API key")
     }
   }
   
@@ -276,6 +295,26 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
                     <Button onClick={handleApiKeySave} size="sm">Save</Button>
                   </div>
                   <p className="text-xs text-muted-foreground">Your API key is stored locally and never shared</p>
+                </div>
+                
+                <div className="space-y-3">
+                  <Label htmlFor="gemini-api-key" className="text-sm font-medium">Gemini API Key</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      type="password" 
+                      id="gemini-api-key" 
+                      placeholder="Enter your Gemini API key" 
+                      value={geminiApiKey}
+                      onChange={(e) => setGeminiApiKey(e.target.value)}
+                    />
+                    <Button onClick={handleGeminiApiKeySave} size="sm">Save</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Required for AI-powered meeting analysis. Get your API key from{" "}
+                    <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline">
+                      Google AI Studio
+                    </a>
+                  </p>
                 </div>
                 
                 <div className="border-t my-4 pt-4">
