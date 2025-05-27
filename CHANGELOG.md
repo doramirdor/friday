@@ -154,6 +154,11 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Recording Duration Display**: Fixed recording duration always showing 0:00 in the library table
+  - Preserved final recording duration when recording stops to prevent it from being reset to 0
+  - Enhanced duration tracking to maintain accurate recording times in the database
+  - Fixed duration mapping from recording hooks to ensure proper storage and display
+  - Recording durations now correctly display the actual length of recorded meetings
 - **Library Page Duplicates**: Fixed duplicate meetings appearing in the library page
   - Enhanced deduplication logic to group meetings by title and creation hour instead of minute
   - Improved duplicate detection to use case-insensitive title matching

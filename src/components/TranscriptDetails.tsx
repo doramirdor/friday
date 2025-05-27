@@ -544,7 +544,11 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       duration = combinedRecordingDuration;
     }
     
-    setRecordingDuration(duration);
+    // Only update if we have a valid duration or if we're currently recording
+    // This preserves the final duration when recording stops
+    if (duration > 0 || isSystemRecording || isMicRecording || isCombinedRecording) {
+      setRecordingDuration(duration);
+    }
   }, [
     isSystemRecording, 
     isMicRecording, 
@@ -622,6 +626,22 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         
         if (success) {
           console.log('DOR Debug - success:', success);
+          
+          // Capture the final recording duration before it gets reset
+          let finalDuration = 0;
+          if (isSystemRecording) {
+            finalDuration = systemRecordingDuration;
+          } else if (isMicRecording) {
+            finalDuration = micRecordingDuration;
+          } else if (isCombinedRecording) {
+            finalDuration = combinedRecordingDuration;
+          }
+          
+          // Preserve the final duration
+          if (finalDuration > 0) {
+            setRecordingDuration(finalDuration);
+          }
+          
           toast.success("Recording stopped");
           // Auto-save when recording stops
           debouncedAutoSave();
