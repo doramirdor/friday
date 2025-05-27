@@ -316,6 +316,40 @@ const handleConflicts = async <T extends { _id?: string, _rev?: string }>(
   throw new Error(`Failed to save document after ${maxRetries} attempts`);
 };
 
+// Helper function to safely delete documents with conflict resolution
+const safeDeleteDocs = async (db: any, docs: any[], maxRetries = 3): Promise<void> => {
+  for (const doc of docs) {
+    let attempts = 0;
+    while (attempts < maxRetries) {
+      try {
+        // Get the latest version of the document to ensure we have the current _rev
+        const latestDoc = await db.get(doc._id);
+        await db.remove(latestDoc);
+        break; // Success, move to next document
+      } catch (err: any) {
+        if (err.status === 404) {
+          // Document already deleted, that's fine
+          break;
+        } else if (err.status === 409) {
+          // Conflict, retry with exponential backoff
+          attempts++;
+          if (attempts >= maxRetries) {
+            console.warn(`Failed to delete document ${doc._id} after ${maxRetries} attempts, skipping`);
+            break; // Skip this document and continue with others
+          }
+          
+          const delay = 100 * Math.pow(2, attempts) + Math.random() * 100;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        } else {
+          // Other error, rethrow
+          throw err;
+        }
+      }
+    }
+  }
+};
+
 // Meeting CRUD Operations
 const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
   try {
@@ -469,7 +503,7 @@ const saveTranscript = async (meetingId: string, transcript: TranscriptLine[]): 
   try {
     await ensureDatabaseInitialized();
     
-    // First delete existing transcript lines for this meeting
+    // First delete existing transcript lines for this meeting using safe deletion
     const existingTranscript = await transcriptsDb.find({
       selector: {
         meetingId,
@@ -477,19 +511,19 @@ const saveTranscript = async (meetingId: string, transcript: TranscriptLine[]): 
       }
     });
     
-    for (const doc of existingTranscript.docs) {
-      await transcriptsDb.remove(doc);
-    }
+    await safeDeleteDocs(transcriptsDb, existingTranscript.docs);
     
     // Then add the new ones
-    await transcriptsDb.bulkDocs(
-      transcript.map(line => ({
-        ...line,
-        _id: `transcript_${meetingId}_${line.id}`,
-        meetingId,
-        type: 'transcript'
-      }))
-    );
+    if (transcript.length > 0) {
+      await transcriptsDb.bulkDocs(
+        transcript.map(line => ({
+          ...line,
+          _id: `transcript_${meetingId}_${line.id}`,
+          meetingId,
+          type: 'transcript'
+        }))
+      );
+    }
     return true;
   } catch (error) {
     console.error('Error saving transcript:', error);
@@ -537,10 +571,8 @@ const deleteTranscript = async (meetingId: string): Promise<boolean> => {
       }
     });
     
-    // Delete each document
-    for (const doc of result.docs) {
-      await transcriptsDb.remove(doc);
-    }
+    // Delete each document using safe deletion
+    await safeDeleteDocs(transcriptsDb, result.docs);
     
     return true;
   } catch (error) {
@@ -554,7 +586,7 @@ const saveSpeakers = async (meetingId: string, speakers: Speaker[]): Promise<boo
   try {
     await ensureDatabaseInitialized();
     
-    // First delete existing speakers for this meeting
+    // First delete existing speakers for this meeting using safe deletion
     const existingSpeakers = await speakersDb.find({
       selector: {
         meetingId,
@@ -562,19 +594,19 @@ const saveSpeakers = async (meetingId: string, speakers: Speaker[]): Promise<boo
       }
     });
     
-    for (const doc of existingSpeakers.docs) {
-      await speakersDb.remove(doc);
-    }
+    await safeDeleteDocs(speakersDb, existingSpeakers.docs);
     
     // Then add the new ones
-    await speakersDb.bulkDocs(
-      speakers.map(speaker => ({
-        ...speaker,
-        _id: `speaker_${meetingId}_${speaker.id}`,
-        meetingId,
-        type: 'speaker'
-      }))
-    );
+    if (speakers.length > 0) {
+      await speakersDb.bulkDocs(
+        speakers.map(speaker => ({
+          ...speaker,
+          _id: `speaker_${meetingId}_${speaker.id}`,
+          meetingId,
+          type: 'speaker'
+        }))
+      );
+    }
     
     return true;
   } catch (error) {
@@ -631,7 +663,7 @@ const saveActionItems = async (meetingId: string, actionItems: ActionItem[]): Pr
   try {
     await ensureDatabaseInitialized();
     
-    // First delete existing action items for this meeting
+    // First delete existing action items for this meeting using safe deletion
     const existingActionItems = await actionItemsDb.find({
       selector: {
         meetingId,
@@ -639,9 +671,7 @@ const saveActionItems = async (meetingId: string, actionItems: ActionItem[]): Pr
       }
     });
     
-    for (const doc of existingActionItems.docs) {
-      await actionItemsDb.remove(doc);
-    }
+    await safeDeleteDocs(actionItemsDb, existingActionItems.docs);
     
     // Then add the new ones
     if (actionItems.length > 0) {
@@ -711,10 +741,8 @@ const deleteActionItems = async (meetingId: string): Promise<boolean> => {
       }
     });
     
-    // Delete each document
-    for (const doc of result.docs) {
-      await actionItemsDb.remove(doc);
-    }
+    // Delete each document using safe deletion
+    await safeDeleteDocs(actionItemsDb, result.docs);
     
     return true;
   } catch (error) {
@@ -1257,5 +1285,6 @@ export const DatabaseService = {
   addFileToGlobalContext,
   removeFileFromGlobalContext,
   bulkSave,
-  handleConflicts
+  handleConflicts,
+  safeDeleteDocs
 }; 
