@@ -29,9 +29,9 @@ export function useNotes(transcriptId: string) {
     fetchNotes();
   }, [transcriptId]);
   
-  // Save notes to database (debounced)
+  // Save notes to database (debounced with longer delay to reduce frequency)
   useEffect(() => {
-    if (!transcriptId || transcriptId === 'new' || !notes) {
+    if (!transcriptId || transcriptId === 'new' || !notes || notes.trim().length < 3) {
       return;
     }
     
@@ -51,7 +51,7 @@ export function useNotes(transcriptId: string) {
       } finally {
         setIsSaving(false);
       }
-    }, 1000); // 1 second debounce
+    }, 3000); // 3 second debounce to reduce auto-save frequency
     
     return () => clearTimeout(saveTimer);
   }, [notes, transcriptId]);

@@ -1234,37 +1234,13 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     };
   }, [handleSave]);
 
-  // Auto-save on specific events
-  useEffect(() => {
-    // Auto-save when title changes
-    if (title !== (meetingState?.title || "Weekly Team Standup")) {
-      debouncedAutoSave();
-    }
-  }, [title, debouncedAutoSave, meetingState?.title]);
-
-  useEffect(() => {
-    // Auto-save when description changes
-    if (description !== (meetingState?.description || "Discussion about current project status and next steps.")) {
-      debouncedAutoSave();
-    }
-  }, [description, debouncedAutoSave, meetingState?.description]);
-
-  useEffect(() => {
-    // Auto-save when tags change
-    if (JSON.stringify(tags) !== JSON.stringify(meetingState?.tags || ["meeting", "team"])) {
-      debouncedAutoSave();
-    }
-  }, [tags, debouncedAutoSave, meetingState?.tags]);
-
-  useEffect(() => {
-    // Auto-save when notes change
-    debouncedAutoSave();
-  }, [notes, debouncedAutoSave]);
-
-  useEffect(() => {
-    // Auto-save when context content changes
-    debouncedAutoSave();
-  }, [contextContent, debouncedAutoSave]);
+  // Auto-save only on meaningful actions (removed excessive change-based auto-saves)
+  // Auto-save is now triggered only by:
+  // 1. Recording stopped (in recording logic)
+  // 2. Transcript generated (in handleTranscribeAudio)
+  // 3. AI analysis completed (in handleAIAnalysis)
+  // 4. Back to library button clicked (in header button)
+  // 5. Page unload/visibility change (in useEffect above)
 
   // Handle AI analysis of the meeting
   const handleAIAnalysis = useCallback(async () => {
