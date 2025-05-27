@@ -107,6 +107,11 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Auto-Save Loop During Recording**: Fixed infinite auto-save loop that occurred while recording
+  - Added check to skip auto-save while recording is active to prevent infinite loops
+  - Removed `recordingDuration` from `handleSave` dependencies as it's not used in save logic
+  - Prevents excessive database operations during recording while maintaining data safety
+  - Auto-save still triggers appropriately when recording stops, transcript is generated, or AI analysis completes
 - **Toast Notification Position**: Moved toast notifications to right bottom corner for better UX
   - Changed Toaster position from 'top-center' to 'bottom-right'
   - Positions toasts in a less intrusive location that doesn't block main content
