@@ -104,7 +104,7 @@ class StreamingSpeechServiceImpl implements StreamingSpeechService {
     }
 
     try {
-      // Get API key and settings
+      // Get API key from settings
       const settings = await DatabaseService.getSettings();
       if (!settings?.apiKey) {
         throw new Error('Google Cloud Speech API key not configured. Please add your Google Cloud Speech API key in Settings → Transcription.');
@@ -119,7 +119,7 @@ class StreamingSpeechServiceImpl implements StreamingSpeechService {
         useEnhanced: true,
         profanityFilter: false,
         enableSpeakerDiarization: false,
-        diarizationSpeakerCount: settings.maxSpeakers || 4,
+        diarizationSpeakerCount: 4, // Default value, will be overridden by options
         ...options
       };
 

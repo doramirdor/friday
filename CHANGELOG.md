@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Configurable Speaker Count**: Added setting to control maximum number of speakers for AI transcription
+  - Added `maxSpeakers` setting to UserSettings interface with default value of 4 speakers
+  - Enhanced settings dialog with speaker count configuration UI (1-10 speaker range)
+  - Updated Google Cloud Speech streaming service to use configured speaker count
+  - Modified Gemini transcription service to respect speaker count limit in prompts
+  - Added speaker limit enforcement in Gemini transcription parsing
+  - Updated TranscriptDetails component to use configured speaker count for live transcription
+  - Prevents AI from creating excessive speakers when misidentifying speech patterns
+  - Helps maintain cleaner speaker organization and reduces confusion in meeting transcripts
 - **Gemini Audio Transcription**: Implemented complete Gemini AI audio transcription functionality
   - Added `transcribeAudio` method to Gemini service for audio file transcription with speaker diarization
   - Integrated Gemini transcription into TranscriptDetails component with proper UI feedback

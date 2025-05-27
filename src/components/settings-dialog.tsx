@@ -26,7 +26,6 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
   const { settings, isLoading, updateSettings } = useSettings()
   const [apiKey, setApiKey] = useState<string>('')
   const [geminiApiKey, setGeminiApiKey] = useState<string>('')
-  const [maxSpeakers, setMaxSpeakers] = useState<number>(4)
   
   // Load settings when the component mounts or when settings are updated
   useEffect(() => {
@@ -34,7 +33,6 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
       // Update API key field
       setApiKey(settings.apiKey || '')
       setGeminiApiKey(settings.geminiApiKey || '')
-      setMaxSpeakers(settings.maxSpeakers || 4)
     }
   }, [settings])
   
@@ -84,17 +82,7 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
     }
   }
   
-  // Handle max speakers change
-  const handleMaxSpeakersSave = async () => {
-    if (!settings) return
-    
-    try {
-      await updateSettings({ maxSpeakers })
-      toast.success("Speaker count setting saved")
-    } catch (err) {
-      toast.error("Failed to save speaker count setting")
-    }
-  }
+
   
   // Handle theme change
   const handleThemeChange = async (newTheme: "light" | "dark" | "system") => {
@@ -336,24 +324,7 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
                   </p>
                 </div>
                 
-                <div className="space-y-3">
-                  <Label htmlFor="max-speakers" className="text-sm font-medium">Maximum Number of Speakers</Label>
-                  <div className="flex gap-2">
-                    <Input 
-                      type="number" 
-                      id="max-speakers" 
-                      placeholder="4" 
-                      min="1"
-                      max="10"
-                      value={maxSpeakers}
-                      onChange={(e) => setMaxSpeakers(parseInt(e.target.value) || 4)}
-                    />
-                    <Button onClick={handleMaxSpeakersSave} size="sm">Save</Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Set the maximum number of speakers for AI transcription. This helps prevent the AI from creating too many speakers when it misidentifies speech patterns. Recommended: 2-6 speakers.
-                  </p>
-                </div>
+
                 
                 <div className="border-t my-4 pt-4">
                   <h3 className="text-sm font-medium mb-4">Audio Devices</h3>

@@ -129,17 +129,13 @@ class GeminiService {
     return contextPrompt;
   }
 
-  async transcribeAudio(audioFile: File | string): Promise<GeminiTranscriptionResult> {
+  async transcribeAudio(audioFile: File | string, maxSpeakers: number = 4): Promise<GeminiTranscriptionResult> {
     if (!this.genAI) {
       throw new Error('Gemini AI is not initialized. Please check your API key.');
     }
 
     try {
-      console.log('Starting Gemini audio transcription...', { audioFile: typeof audioFile === 'string' ? audioFile : 'File object' });
-      
-      // Get speaker count setting
-      const settings = await DatabaseService.getSettings();
-      const maxSpeakers = settings?.maxSpeakers || 4;
+      console.log('Starting Gemini audio transcription...', { audioFile: typeof audioFile === 'string' ? audioFile : 'File object', maxSpeakers });
       
       let uploadedFile;
       
@@ -239,7 +235,7 @@ Please provide the transcription:`;
       console.log('Gemini transcription received:', transcriptionText);
 
       // Parse the transcription to extract speakers and create transcript lines
-      const { transcript, speakers } = await this.parseTranscriptionWithSpeakers(transcriptionText);
+      const { transcript, speakers } = await this.parseTranscriptionWithSpeakers(transcriptionText, maxSpeakers);
 
       // Clean up the uploaded file
       try {
@@ -259,14 +255,10 @@ Please provide the transcription:`;
     }
   }
 
-  private async parseTranscriptionWithSpeakers(transcriptionText: string): Promise<{ transcript: string, speakers: Speaker[] }> {
+  private async parseTranscriptionWithSpeakers(transcriptionText: string, maxSpeakers: number): Promise<{ transcript: string, speakers: Speaker[] }> {
     const lines = transcriptionText.split('\n').filter(line => line.trim());
     const speakerMap = new Map<string, Speaker>();
     const transcriptLines: string[] = [];
-    
-    // Get speaker count setting
-    const settings = await DatabaseService.getSettings();
-    const maxSpeakers = settings?.maxSpeakers || 4;
     
     // Default speaker colors
     const speakerColors = ['#28C76F', '#7367F0', '#FF9F43', '#EA5455', '#00CFE8', '#9F44D3'];

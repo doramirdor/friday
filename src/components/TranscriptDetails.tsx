@@ -140,6 +140,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const [title, setTitle] = useState(meetingState?.title || "Weekly Team Standup");
   const [description, setDescription] = useState(meetingState?.description || "Discussion about current project status and next steps.");
   const [tags, setTags] = useState<string[]>(meetingState?.tags || ["meeting", "team"]);
+  const [maxSpeakers, setMaxSpeakers] = useState<number>(4);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [newActionItem, setNewActionItem] = useState("");
   
@@ -302,6 +303,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           setTitle(meetingDetails.meeting.title);
           setDescription(meetingDetails.meeting.description);
           setTags(meetingDetails.meeting.tags);
+          setMaxSpeakers(meetingDetails.meeting.maxSpeakers || 4);
           setIsLiveTranscript(meetingDetails.meeting.liveTranscript);
           
           // Update transcript lines
@@ -839,7 +841,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       }
       
       // Transcribe audio using Gemini
-      const result = await geminiService.transcribeAudio(recordedAudioUrl);
+      const result = await geminiService.transcribeAudio(recordedAudioUrl, maxSpeakers);
       
       if (result && result.transcript) {
         // Parse the transcript into lines
@@ -1158,6 +1160,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         title,
         description,
         tags,
+        maxSpeakers,
         createdAt: meetingState?.createdAt ? new Date(meetingState.createdAt).toISOString() : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         recordingPath: recordedAudioUrl || undefined,
@@ -1770,7 +1773,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                                 const options: StreamingSpeechOptions = {
                                   languageCode: 'en-US',
                                   enableSpeakerDiarization: true,
-                                  diarizationSpeakerCount: settings?.maxSpeakers || 4
+                                  diarizationSpeakerCount: maxSpeakers
                                 };
                                 streamingSpeech.startStreaming(options);
                               }
@@ -2053,6 +2056,21 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       onTagsChange={setTags}
                       placeholder="Add tag..."
                     />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <Label htmlFor="max-speakers">Maximum Number of Speakers</Label>
+                    <Input
+                      id="max-speakers"
+                      type="number"
+                      min="1"
+                      max="10"
+                      value={maxSpeakers}
+                      onChange={(e) => setMaxSpeakers(parseInt(e.target.value) || 4)}
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Set the maximum number of speakers for AI transcription. This helps prevent the AI from creating too many speakers when it misidentifies speech patterns.
+                    </p>
                   </div>
                 </TabsContent>
                 

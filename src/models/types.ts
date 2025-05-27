@@ -14,6 +14,7 @@ export interface Meeting extends PouchDocument {
   recordingPath?: string; // Path to audio recording file
   recordingDuration?: number; // Duration in seconds
   liveTranscript: boolean;
+  maxSpeakers?: number; // Maximum number of speakers for AI transcription (default: 4)
   type: 'meeting'; // Document type for querying
 }
 
@@ -116,7 +117,6 @@ export interface UserSettings extends PouchDocument {
   liveTranscript: boolean;
   apiKey?: string;
   geminiApiKey?: string; // Gemini AI API key for meeting analysis
-  maxSpeakers?: number; // Maximum number of speakers for AI transcription (default: 4)
   theme?: string;
   autoLaunch?: boolean;
   saveLocation?: string;
