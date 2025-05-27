@@ -5,15 +5,17 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Configurable Speaker Count**: Added setting to control maximum number of speakers for AI transcription
-  - Added `maxSpeakers` setting to UserSettings interface with default value of 4 speakers
-  - Enhanced settings dialog with speaker count configuration UI (1-10 speaker range)
-  - Updated Google Cloud Speech streaming service to use configured speaker count
-  - Modified Gemini transcription service to respect speaker count limit in prompts
+- **Per-Meeting Speaker Count Configuration**: Added per-meeting setting to control maximum number of speakers for AI transcription
+  - Added `maxSpeakers` field to Meeting interface with default value of 4 speakers
+  - Added speaker count control in TranscriptDetails component Details tab (1-10 speaker range)
+  - Updated Gemini transcription service to accept maxSpeakers as parameter instead of global setting
+  - Modified streaming speech service to use speaker count from meeting options
+  - Enhanced Gemini transcription prompt to instruct AI to limit speakers per meeting
   - Added speaker limit enforcement in Gemini transcription parsing
-  - Updated TranscriptDetails component to use configured speaker count for live transcription
+  - Updated meeting save/load logic to persist speaker count per meeting
+  - Allows different meetings to have different speaker configurations based on actual participants
+  - More flexible than global setting - appropriate for varied meeting types and sizes
   - Prevents AI from creating excessive speakers when misidentifying speech patterns
-  - Helps maintain cleaner speaker organization and reduces confusion in meeting transcripts
 - **Gemini Audio Transcription**: Implemented complete Gemini AI audio transcription functionality
   - Added `transcribeAudio` method to Gemini service for audio file transcription with speaker diarization
   - Integrated Gemini transcription into TranscriptDetails component with proper UI feedback
