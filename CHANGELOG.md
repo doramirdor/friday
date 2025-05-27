@@ -107,6 +107,10 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Toast Notification Position**: Moved toast notifications to right bottom corner for better UX
+  - Changed Toaster position from 'top-center' to 'bottom-right'
+  - Positions toasts in a less intrusive location that doesn't block main content
+  - Follows common UI patterns for notification placement
 - **Auto-Save Performance**: Optimized auto-save system to trigger only on meaningful actions
   - Removed excessive auto-save triggers on every title, description, tags, notes, and context content change
   - Auto-save now only triggers on meaningful actions: recording stopped, transcript generated, AI analysis completed, back button clicked, and page unload
