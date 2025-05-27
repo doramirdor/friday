@@ -27,15 +27,68 @@ const DB_OPTIONS = {
 };
 
 /**
+ * Count lock files in a database directory (including MapReduce views)
+ */
+const countLockFiles = (dbPath) => {
+  let count = 0;
+  try {
+    // Count main database lock
+    const lockFile = path.join(dbPath, 'LOCK');
+    if (fs.existsSync(lockFile)) {
+      count++;
+    }
+
+    // Count MapReduce view locks
+    if (fs.existsSync(dbPath)) {
+      const entries = fs.readdirSync(dbPath);
+      for (const entry of entries) {
+        if (entry.includes('-mrview-')) {
+          const mrviewPath = path.join(dbPath, entry);
+          if (fs.statSync(mrviewPath).isDirectory()) {
+            const mrviewLockFile = path.join(mrviewPath, 'LOCK');
+            if (fs.existsSync(mrviewLockFile)) {
+              count++;
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(`Error counting lock files: ${error.message}`);
+  }
+  return count;
+};
+
+/**
  * Clean up stale lock files that might be left from previous crashes
+ * This includes both main database locks and MapReduce view locks
  */
 const cleanupStaleLocks = async (dbPath) => {
   try {
+    // Clean up main database lock
     const lockFile = path.join(dbPath, 'LOCK');
     if (fs.existsSync(lockFile)) {
       console.log(`Found stale lock file: ${lockFile}, attempting to remove...`);
       fs.unlinkSync(lockFile);
       console.log(`Successfully removed stale lock file: ${lockFile}`);
+    }
+
+    // Also clean up any MapReduce view locks (these have -mrview- in their path)
+    if (fs.existsSync(dbPath)) {
+      const entries = fs.readdirSync(dbPath);
+      for (const entry of entries) {
+        if (entry.includes('-mrview-')) {
+          const mrviewPath = path.join(dbPath, entry);
+          if (fs.statSync(mrviewPath).isDirectory()) {
+            const mrviewLockFile = path.join(mrviewPath, 'LOCK');
+            if (fs.existsSync(mrviewLockFile)) {
+              console.log(`Found stale MapReduce view lock file: ${mrviewLockFile}, attempting to remove...`);
+              fs.unlinkSync(mrviewLockFile);
+              console.log(`Successfully removed stale MapReduce view lock file: ${mrviewLockFile}`);
+            }
+          }
+        }
+      }
     }
   } catch (error) {
     console.warn(`Could not remove lock file: ${error.message}`);
@@ -274,18 +327,23 @@ export function setupDatabaseHandlers(ipcMain) {
       
       const entries = fs.readdirSync(dbPath);
       let cleanedCount = 0;
+      let locksRemoved = 0;
       
       for (const entry of entries) {
         const entryPath = path.join(dbPath, entry);
         if (fs.statSync(entryPath).isDirectory()) {
+          // Count locks before cleanup
+          const locksBefore = countLockFiles(entryPath);
           await cleanupStaleLocks(entryPath);
+          const locksAfter = countLockFiles(entryPath);
+          locksRemoved += (locksBefore - locksAfter);
           cleanedCount++;
         }
       }
       
       return { 
         success: true, 
-        message: `Checked ${cleanedCount} database directories for stale locks` 
+        message: `Checked ${cleanedCount} database directories and removed ${locksRemoved} stale lock files` 
       };
     } catch (error) {
       console.error('Error during manual lock cleanup:', error);

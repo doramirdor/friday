@@ -19,6 +19,10 @@ let isInitialized = localStorage.getItem('db_initialized') === 'true';
 let isInitializing = false;
 let initializationPromise: Promise<boolean> | null = null;
 let databasesInitialized = localStorage.getItem('databases_initialized') === 'true';
+let recoveryAttempts = 0;
+const MAX_RECOVERY_ATTEMPTS = 3;
+let recoveryAttempts = 0;
+const MAX_RECOVERY_ATTEMPTS = 3;
 
 // Database instances - will be initialized in setupDatabases
 let meetingsDb: any;
@@ -115,15 +119,25 @@ const setupIndexes = async () => {
       await setupDatabases();
     }
     
-    // Meeting indexes - create a simpler index first
-    const meetingsIndex = await meetingsDb.createIndex({
-      index: {
-        fields: ['type'],
-        name: 'type-index',
-        ddoc: 'type-index'
+    // Meeting indexes - create a simpler index first with retry logic
+    let meetingsIndex;
+    try {
+      meetingsIndex = await meetingsDb.createIndex({
+        index: {
+          fields: ['type'],
+          name: 'type-index',
+          ddoc: 'type-index'
+        }
+      });
+      console.log('Created meetings type index:', meetingsIndex);
+    } catch (indexError) {
+      if (indexError.message && indexError.message.includes('lock')) {
+        console.warn('Lock error creating meetings index, skipping index creation');
+        // Skip index creation if there's a lock error - the app can still function
+        return;
       }
-    });
-    console.log('Created meetings type index:', meetingsIndex);
+      throw indexError;
+    }
 
     // Create the compound index after
     const meetingsCompoundIndex = await meetingsDb.createIndex({
@@ -192,7 +206,15 @@ const setupIndexes = async () => {
 
 // Recovery function for database lock issues
 const recoverFromLockError = async () => {
-  console.log('Attempting to recover from database lock error...');
+  console.log(`Attempting to recover from database lock error... (attempt ${recoveryAttempts + 1}/${MAX_RECOVERY_ATTEMPTS})`);
+  
+  // Prevent infinite recovery loops
+  if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS) {
+    console.error('Maximum recovery attempts reached, giving up');
+    throw new Error(`Failed to recover from database lock error after ${MAX_RECOVERY_ATTEMPTS} attempts`);
+  }
+  
+  recoveryAttempts++;
   
   try {
     // Reset all flags
@@ -212,15 +234,94 @@ const recoverFromLockError = async () => {
       console.log('Lock cleanup result:', result);
     }
     
-    // Wait a bit before retrying
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait longer for each retry attempt
+    const delay = 2000 * recoveryAttempts;
+    console.log(`Waiting ${delay}ms before retry...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
     
-    // Try to reinitialize
-    return await initDatabase();
+    // Try to reinitialize without recovery to avoid infinite loops
+    return await initDatabaseWithoutRecovery();
   } catch (error) {
-    console.error('Recovery from lock error failed:', error);
+    console.error(`Recovery attempt ${recoveryAttempts} failed:`, error);
     throw error;
   }
+};
+
+// Initialize the database without recovery (to prevent infinite loops)
+const initDatabaseWithoutRecovery = async () => {
+  // If already initialized, return immediately
+  if (isInitialized && databasesInitialized) {
+    console.log('Database already initialized, skipping initialization');
+    return true;
+  }
+  
+  // If initialization is in progress, return the existing promise
+  if (isInitializing && initializationPromise) {
+    console.log('Database initialization already in progress, returning existing promise');
+    return initializationPromise;
+  }
+  
+  // Set flag and create promise
+  isInitializing = true;
+  initializationPromise = (async () => {
+    try {
+      console.log('Initializing database...');
+      
+      // First, check for and fix any PouchDB version compatibility issues
+      await checkAndUpgradePouchDB();
+      console.log('DOR Debug - After checkAndUpgradePouchDB databasesInitialized:', databasesInitialized);
+      
+      // Set up database instances if not already set up
+      if (!databasesInitialized) {
+        console.log('DOR Debug - Before setupDatabases');
+        await setupDatabases();
+        databasesInitialized = true;
+        localStorage.setItem('databases_initialized', 'true');
+      }
+      
+      // Then set up database indexes
+      await setupIndexes();
+      
+      // Verify all databases are working
+      await Promise.all([
+        meetingsDb.info(),
+        transcriptsDb.info(),
+        speakersDb.info(),
+        actionItemsDb.info(),
+        notesDb.info(),
+        contextsDb.info(),
+        settingsDb.info(),
+        contextFilesDb.info(),
+        globalContextDb.info()
+      ]);
+      
+      // Set initialized flags before returning
+      isInitialized = true;
+      localStorage.setItem('db_initialized', 'true');
+      console.log('Database initialized successfully');
+      
+      // Reset recovery attempts on successful initialization
+      recoveryAttempts = 0;
+      
+      return true;
+    } catch (error) {
+      console.error('Error initializing database:', error);
+      
+      // Reset flags on error
+      isInitializing = false;
+      isInitialized = false;
+      databasesInitialized = false;
+      localStorage.removeItem('db_initialized');
+      localStorage.removeItem('databases_initialized');
+      initializationPromise = null;
+      // Re-throw to allow the error to be handled by the caller
+      throw error;
+    } finally {
+      isInitializing = false;
+    }
+  })();
+  
+  return initializationPromise;
 };
 
 // Initialize the database
@@ -280,8 +381,8 @@ const initDatabase = async () => {
     } catch (error) {
       console.error('Error initializing database:', error);
       
-      // Check if it's a lock error and try recovery
-      if (error.message && error.message.includes('lock')) {
+      // Check if it's a lock error and try recovery (but only if we haven't exceeded attempts)
+      if (error.message && error.message.includes('lock') && recoveryAttempts < MAX_RECOVERY_ATTEMPTS) {
         console.log('Lock error detected during initialization, attempting recovery...');
         try {
           return await recoverFromLockError();
@@ -289,6 +390,8 @@ const initDatabase = async () => {
           console.error('Recovery failed:', recoveryError);
           // Fall through to normal error handling
         }
+      } else if (error.message && error.message.includes('lock')) {
+        console.error('Lock error detected but maximum recovery attempts reached');
       }
       
       // Reset flags on error

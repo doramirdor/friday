@@ -117,6 +117,14 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Database Index Lock Error Handling**: Enhanced solution for PouchDB MapReduce view lock issues
+  - Extended lock cleanup to handle MapReduce view lock files (directories with -mrview- pattern)
+  - Added prevention of infinite recovery loops with maximum recovery attempt limits
+  - Enhanced manual lock cleanup to count and report removed lock files
+  - Added graceful index creation failure handling to allow app to function without indexes
+  - Improved lock cleanup to handle both main database locks and view-specific locks
+  - Added recovery attempt tracking to prevent endless recovery cycles
+  - Enhanced error messages to distinguish between recoverable and non-recoverable lock errors
 - **Database Lock Error Handling**: Comprehensive solution for PouchDB database lock issues
   - Enhanced database handler in Electron main process with automatic stale lock cleanup
   - Added retry logic with exponential backoff for database creation failures
