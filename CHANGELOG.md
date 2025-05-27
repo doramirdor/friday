@@ -107,6 +107,12 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Auto-Save Performance**: Optimized auto-save system to trigger only on meaningful actions
+  - Removed excessive auto-save triggers on every title, description, tags, notes, and context content change
+  - Auto-save now only triggers on meaningful actions: recording stopped, transcript generated, AI analysis completed, back button clicked, and page unload
+  - Increased notes auto-save debounce from 1 second to 3 seconds with minimum content length requirement
+  - Significantly reduces database operations and improves overall application performance
+  - Maintains data safety with strategic action-based auto-save approach
 - **Database Document Deletion Conflicts**: Fixed 409 conflict errors when deleting and saving meeting data
   - Added `safeDeleteDocs` helper function with conflict resolution and exponential backoff
   - Updated `saveTranscript`, `saveSpeakers`, and `saveActionItems` to use safe deletion before bulk insert
