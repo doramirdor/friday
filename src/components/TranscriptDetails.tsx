@@ -1770,7 +1770,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                                 const options: StreamingSpeechOptions = {
                                   languageCode: 'en-US',
                                   enableSpeakerDiarization: true,
-                                  diarizationSpeakerCount: 4
+                                  diarizationSpeakerCount: settings?.maxSpeakers || 4
                                 };
                                 streamingSpeech.startStreaming(options);
                               }

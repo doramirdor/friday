@@ -137,6 +137,10 @@ class GeminiService {
     try {
       console.log('Starting Gemini audio transcription...', { audioFile: typeof audioFile === 'string' ? audioFile : 'File object' });
       
+      // Get speaker count setting
+      const settings = await DatabaseService.getSettings();
+      const maxSpeakers = settings?.maxSpeakers || 4;
+      
       let uploadedFile;
       
       // Handle both File objects and file paths
@@ -207,11 +211,13 @@ class GeminiService {
 
 Requirements:
 1. Identify different speakers and label them as "Speaker 1", "Speaker 2", etc.
-2. Format the output with each speaker's dialogue on separate lines
-3. Use the format: "Speaker X: [dialogue]"
-4. If you can detect speaker changes within a single turn, break them into separate lines
-5. Maintain chronological order of the conversation
-6. Include all speech content, even brief interjections
+2. Limit the number of speakers to a maximum of ${maxSpeakers} speakers
+3. If you detect more than ${maxSpeakers} different voices, group similar voices together rather than creating new speakers
+4. Format the output with each speaker's dialogue on separate lines
+5. Use the format: "Speaker X: [dialogue]"
+6. If you can detect speaker changes within a single turn, break them into separate lines
+7. Maintain chronological order of the conversation
+8. Include all speech content, even brief interjections
 
 Please provide the transcription:`;
 
@@ -233,7 +239,7 @@ Please provide the transcription:`;
       console.log('Gemini transcription received:', transcriptionText);
 
       // Parse the transcription to extract speakers and create transcript lines
-      const { transcript, speakers } = this.parseTranscriptionWithSpeakers(transcriptionText);
+      const { transcript, speakers } = await this.parseTranscriptionWithSpeakers(transcriptionText);
 
       // Clean up the uploaded file
       try {
@@ -253,10 +259,14 @@ Please provide the transcription:`;
     }
   }
 
-  private parseTranscriptionWithSpeakers(transcriptionText: string): { transcript: string, speakers: Speaker[] } {
+  private async parseTranscriptionWithSpeakers(transcriptionText: string): Promise<{ transcript: string, speakers: Speaker[] }> {
     const lines = transcriptionText.split('\n').filter(line => line.trim());
     const speakerMap = new Map<string, Speaker>();
     const transcriptLines: string[] = [];
+    
+    // Get speaker count setting
+    const settings = await DatabaseService.getSettings();
+    const maxSpeakers = settings?.maxSpeakers || 4;
     
     // Default speaker colors
     const speakerColors = ['#28C76F', '#7367F0', '#FF9F43', '#EA5455', '#00CFE8', '#9F44D3'];
@@ -271,16 +281,26 @@ Please provide the transcription:`;
         const speakerNumber = speakerMatch[2];
         const dialogue = speakerMatch[3].trim();
         
-        // Create speaker if not exists
+        // Create speaker if not exists and within limit
         if (!speakerMap.has(speakerNumber)) {
-          speakerMap.set(speakerNumber, {
-            id: speakerNumber,
-            meetingId: '', // Will be set when used
-            name: speakerLabel,
-            color: speakerColors[colorIndex % speakerColors.length],
-            type: 'speaker'
-          });
-          colorIndex++;
+          if (speakerMap.size < maxSpeakers) {
+            speakerMap.set(speakerNumber, {
+              id: speakerNumber,
+              meetingId: '', // Will be set when used
+              name: speakerLabel,
+              color: speakerColors[colorIndex % speakerColors.length],
+              type: 'speaker'
+            });
+            colorIndex++;
+          } else {
+            // If we've reached the speaker limit, assign to the last speaker
+            const lastSpeakerId = Array.from(speakerMap.keys())[speakerMap.size - 1];
+            const lastSpeaker = speakerMap.get(lastSpeakerId);
+            if (lastSpeaker) {
+              transcriptLines.push(`${lastSpeaker.name}: ${dialogue}`);
+              continue;
+            }
+          }
         }
         
         transcriptLines.push(`${speakerLabel}: ${dialogue}`);
