@@ -164,6 +164,12 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Notes Type Safety**: Fixed "notes.replace is not a function" error in TranscriptDetails component
+  - Added type checking to ensure notes is always a string before calling string methods
+  - Enhanced AI analysis result handling to validate notes field type
+  - Improved useNotes hook to validate database content before setting notes
+  - Prevents runtime errors when notes field contains non-string values
+  - Added fallback to empty string when notes data is invalid or missing
 - **Recording Duration Display**: Fixed recording duration always showing 0:00 in the library table
   - Preserved final recording duration when recording stops to prevent it from being reset to 0
   - Enhanced duration tracking to maintain accurate recording times in the database

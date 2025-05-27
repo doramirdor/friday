@@ -16,7 +16,7 @@ export function useNotes(transcriptId: string) {
       
       try {
         const noteData = await DatabaseService.getNotes(transcriptId);
-        if (noteData) {
+        if (noteData && typeof noteData.content === 'string') {
           setNotes(noteData.content);
         }
         setError(null);

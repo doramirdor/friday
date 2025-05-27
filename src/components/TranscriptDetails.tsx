@@ -1487,7 +1487,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       setTitle(analysis.title);
       setDescription(analysis.description);
       setTags(analysis.tags);
-      setNotes(analysis.notes);
+      setNotes(typeof analysis.notes === 'string' ? analysis.notes : '');
 
       toast.success("AI analysis completed! Meeting details have been updated.");
       
@@ -2390,7 +2390,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                     <div className="p-4 border rounded-md bg-accent/30">
                       <h3 className="text-sm font-medium mb-2">Preview</h3>
                       <div 
-                        dangerouslySetInnerHTML={{ __html: notes.replace(/\n/g, '<br />') }}
+                        dangerouslySetInnerHTML={{ __html: (notes || '').replace(/\n/g, '<br />') }}
                         className="prose prose-sm max-w-none"
                       />
                     </div>
