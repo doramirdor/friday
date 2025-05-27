@@ -117,6 +117,13 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Gemini JSON Response Parsing**: Fixed parsing errors when Gemini returns JSON wrapped in markdown code blocks
+  - Added `cleanJsonResponse` method to strip markdown code block markers (```json and ```)
+  - Enhanced error handling with multiple parsing attempts for malformed responses
+  - Added extra cleaning logic to extract JSON from responses with additional text
+  - Improved debugging logs to show both raw and cleaned responses for troubleshooting
+  - Added fallback parsing for responses that don't follow expected format
+  - Fixed "Unexpected token '`'" errors when Gemini wraps JSON in markdown
 - **Database Index Lock Error Handling**: Enhanced solution for PouchDB MapReduce view lock issues
   - Extended lock cleanup to handle MapReduce view lock files (directories with -mrview- pattern)
   - Added prevention of infinite recovery loops with maximum recovery attempt limits

@@ -87,6 +87,26 @@ class GeminiService {
       .join('\n');
   }
 
+  private cleanJsonResponse(text: string): string {
+    // Remove markdown code block markers if present
+    let cleaned = text.trim();
+    
+    // Remove ```json at the beginning
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.substring(7);
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.substring(3);
+    }
+    
+    // Remove ``` at the end
+    if (cleaned.endsWith('```')) {
+      cleaned = cleaned.substring(0, cleaned.length - 3);
+    }
+    
+    // Trim any remaining whitespace
+    return cleaned.trim();
+  }
+
   private buildContextPrompt(input: AnalysisInput): string {
     let contextPrompt = '';
     
@@ -343,7 +363,9 @@ Please respond with valid JSON only, no additional text.`;
 
       // Parse the JSON response
       try {
-        const analysis = JSON.parse(text);
+        // Clean the response text to handle markdown code blocks
+        const cleanedText = this.cleanJsonResponse(text);
+        const analysis = JSON.parse(cleanedText);
         
         // Validate the response structure
         if (!analysis.title || !analysis.description || !analysis.notes || !Array.isArray(analysis.tags)) {
@@ -360,6 +382,31 @@ Please respond with valid JSON only, no additional text.`;
       } catch (parseError) {
         console.error('Failed to parse Gemini response:', parseError);
         console.log('Raw response:', text);
+        console.log('Cleaned response:', this.cleanJsonResponse(text));
+        
+        // Try one more time with additional cleaning
+        try {
+          const extraCleanedText = this.cleanJsonResponse(text)
+            .replace(/^[^{]*/, '') // Remove everything before the first {
+            .replace(/[^}]*$/, ''); // Remove everything after the last }
+          
+          if (extraCleanedText.startsWith('{') && extraCleanedText.endsWith('}')) {
+            const analysis = JSON.parse(extraCleanedText);
+            
+            if (analysis.title || analysis.description || analysis.notes) {
+              console.log('Successfully parsed with extra cleaning');
+              return {
+                title: analysis.title?.substring(0, 100) || 'Meeting Analysis',
+                description: analysis.description?.substring(0, 500) || 'AI-generated meeting analysis',
+                notes: analysis.notes || 'Analysis could not be completed',
+                tags: Array.isArray(analysis.tags) ? analysis.tags.slice(0, 10) : ['meeting'],
+                summary: analysis.summary || analysis.notes?.substring(0, 300) + '...' || 'Summary not available'
+              };
+            }
+          }
+        } catch (secondParseError) {
+          console.error('Second parsing attempt also failed:', secondParseError);
+        }
         
         // Fallback: try to extract information manually
         return this.fallbackAnalysis(transcriptText);
