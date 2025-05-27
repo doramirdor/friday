@@ -1388,6 +1388,48 @@ ipcMain.handle("check-file-exists", async (event, filepath) => {
   }
 });
 
+// Handle reading audio file as buffer for Gemini transcription
+ipcMain.handle("readAudioFile", async (event, filepath) => {
+  try {
+    console.log(`🔄 main.js: Reading audio file for Gemini: ${filepath}`);
+    
+    if (!fs.existsSync(filepath)) {
+      console.error(`❌ main.js: Audio file not found: ${filepath}`);
+      return { success: false, error: "File not found" };
+    }
+    
+    // Get file stats to check size
+    const stats = fs.statSync(filepath);
+    const fileSizeMB = stats.size / (1024 * 1024);
+    console.log(`📊 main.js: Audio file size: ${fileSizeMB.toFixed(2)} MB`);
+    
+    // Check if file is too large (Gemini has file size limits)
+    if (fileSizeMB > 20) {
+      console.log(`⚠️ main.js: File is too large (${fileSizeMB.toFixed(2)} MB) for Gemini transcription`);
+      return { 
+        success: false, 
+        error: `File too large for Gemini transcription (${fileSizeMB.toFixed(2)} MB). Maximum size is 20MB.`
+      };
+    }
+    
+    // Read the audio file as buffer
+    const buffer = fs.readFileSync(filepath);
+    console.log(`✅ main.js: Read audio file: ${buffer.length} bytes`);
+    
+    return {
+      success: true,
+      buffer: buffer,
+      fileSizeMB: fileSizeMB
+    };
+  } catch (error) {
+    console.error(`❌ main.js: Error reading audio file: ${error.message}`);
+    return { 
+      success: false,
+      error: error.message
+    };
+  }
+});
+
 // Test specific file transcription
 async function testSpecificFileTranscription(filePath) {
   try {

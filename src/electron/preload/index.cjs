@@ -185,6 +185,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return await ipcRenderer.invoke("check-file-exists", filepath);
   },
   
+  // Read audio file as buffer for Gemini transcription
+  readAudioFile: async (filepath) => {
+    return await ipcRenderer.invoke("readAudioFile", filepath);
+  },
+  
   // Test functions for diagnostics
   testAudio: async (apiKey) => {
     return await ipcRenderer.invoke("test-audio", apiKey);

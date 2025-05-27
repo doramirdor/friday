@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Gemini Audio Transcription**: Implemented complete Gemini AI audio transcription functionality
+  - Added `transcribeAudio` method to Gemini service for audio file transcription with speaker diarization
+  - Integrated Gemini transcription into TranscriptDetails component with proper UI feedback
+  - Added `readAudioFile` IPC handler in Electron main process for secure file reading
+  - Exposed `readAudioFile` method through preload script for renderer process access
+  - Implemented automatic speaker detection and assignment from Gemini transcription results
+  - Added proper error handling and user feedback for Gemini transcription failures
+  - Updated Gemini service to use latest @google/genai SDK with correct API endpoints
+  - Added file size validation (20MB limit) for Gemini transcription uploads
+  - Integrated transcription results with existing transcript editing and speaker management features
 - **Environment Variable Configuration**: Added dotenv support for loading API keys from `.env` files
   - Created `.env.example` template with all required environment variables
   - Configured Electron main process to load environment variables from `.env` and `.env.local` files
@@ -107,6 +117,19 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Gemini Audio Transcription File Handling**: Improved error handling and file path validation for Gemini transcription
+  - Enhanced `transcribeAudio` method to properly handle data URLs, blob URLs, and file paths
+  - Added file existence validation before attempting transcription to prevent "File not found" errors
+  - Improved error messages to provide more specific feedback about transcription failures
+  - Added better debugging logs to track audio file processing and identify issues
+  - Fixed handling of different audio URL formats (data:, blob:, file:, http:) in transcription service
+  - Added pre-transcription file validation in TranscriptDetails component to catch missing files early
+- **Gemini Service API Compatibility**: Updated Gemini service to use correct @google/genai SDK API
+  - Fixed `getGenerativeModel` method calls to use `ai.models.generateContent` instead
+  - Updated model name from 'gemini-2.5-flash' to 'gemini-2.0-flash-001' for compatibility
+  - Fixed Speaker interface compatibility by adding required `meetingId` and `type` properties
+  - Corrected file upload API usage for audio transcription with proper mimeType handling
+  - Fixed response parsing to use `result.text` instead of deprecated `response.text()` method
 - **Meeting Duplication Issue**: Fixed critical bug where meetings were being duplicated in the database
   - Fixed `handleSave` function to properly check for existing meetings before creating new ones
   - Added `isSaving` state to prevent concurrent saves that could cause race conditions

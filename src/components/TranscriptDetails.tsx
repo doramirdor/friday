@@ -781,25 +781,115 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     }
 
     try {
+      console.log('Starting Gemini transcription for:', recordedAudioUrl);
+      
       toast.loading('Transcribing with Gemini 2.5. This may take a while for longer recordings...', { 
         id: 'gemini-transcribing',
         duration: 15000
       });
       
-      // For now, show a placeholder message since we need to implement the Gemini service properly
-      toast.error('Gemini transcription is not yet implemented. Please use Google Speech for now.', { 
-        id: 'gemini-transcribing' 
-      });
+      // Check if Gemini is available
+      if (!geminiService.isAvailable()) {
+        toast.error('Gemini AI is not configured. Please add your API key in settings.', { 
+          id: 'gemini-transcribing' 
+        });
+        return;
+      }
       
-      // TODO: Implement Gemini transcription
-      // const result = await GeminiService.transcribeAudio(recordedAudioUrl);
-      // Process result similar to handleTranscribeAudio
+      // For file paths, check if the file exists first
+      if (typeof recordedAudioUrl === 'string' && 
+          !recordedAudioUrl.startsWith('data:') && 
+          !recordedAudioUrl.startsWith('blob:') && 
+          !recordedAudioUrl.startsWith('http')) {
+        
+        const electronAPI = (window as any).electronAPI;
+        if (electronAPI?.checkFileExists) {
+          const fileExists = await electronAPI.checkFileExists(recordedAudioUrl);
+          if (!fileExists) {
+            toast.error(`Audio file not found: ${recordedAudioUrl}`, { id: 'gemini-transcribing' });
+            return;
+          }
+        }
+      }
+      
+      // Transcribe audio using Gemini
+      const result = await geminiService.transcribeAudio(recordedAudioUrl);
+      
+      if (result && result.transcript) {
+        // Parse the transcript into lines
+        const lines = result.transcript.split('\n').filter(line => line.trim());
+        const newTranscriptLines: TranscriptLine[] = [];
+        
+        // Update speakers if we got new ones from Gemini
+        if (result.speakers && result.speakers.length > 0) {
+          const updatedSpeakers = result.speakers.map(speaker => ({
+            ...speaker,
+            meetingId: meetingId || ''
+          }));
+          setSpeakers(updatedSpeakers);
+        }
+        
+        // Process each line
+        lines.forEach((line, index) => {
+          const speakerMatch = line.match(/^(Speaker\s+\d+):\s*(.+)$/i);
+          
+          if (speakerMatch) {
+            const speakerName = speakerMatch[1];
+            const text = speakerMatch[2].trim();
+            
+            // Find the speaker ID
+            const speaker = result.speakers?.find(s => s.name === speakerName);
+            const speakerId = speaker?.id || '1';
+            
+            newTranscriptLines.push({
+              id: `gemini-${Date.now()}-${index}`,
+              text: text,
+              speakerId: speakerId,
+            });
+          } else if (line.trim()) {
+            // If no speaker pattern, assign to default speaker
+            newTranscriptLines.push({
+              id: `gemini-${Date.now()}-${index}`,
+              text: line.trim(),
+              speakerId: '1',
+            });
+          }
+        });
+        
+        // Update transcript lines
+        setTranscriptLines(newTranscriptLines);
+        
+        toast.success('Audio transcribed successfully with Gemini AI!', { 
+          id: 'gemini-transcribing' 
+        });
+        
+        // Note: Auto-save will be triggered by the useEffect that watches transcriptLines changes
+      } else {
+        toast.error('No transcription received from Gemini', { id: 'gemini-transcribing' });
+      }
       
     } catch (error) {
       console.error('Error transcribing audio with Gemini:', error);
-      toast.error('Failed to transcribe audio with Gemini', { id: 'gemini-transcribing' });
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to transcribe audio with Gemini';
+      if (error instanceof Error) {
+        if (error.message.includes('File not found')) {
+          errorMessage = 'Audio file not found. Please check if the recording file exists.';
+        } else if (error.message.includes('Failed to read audio file')) {
+          errorMessage = 'Could not read the audio file. The file may be corrupted or in an unsupported format.';
+        } else if (error.message.includes('File reading not available')) {
+          errorMessage = 'File reading is not available in this environment.';
+        } else if (error.message.includes('API key')) {
+          errorMessage = 'Gemini API key is not configured. Please add your API key in settings.';
+        } else {
+          errorMessage = `Transcription failed: ${error.message}`;
+        }
+      }
+      
+      toast.error(errorMessage, { id: 'gemini-transcribing' });
     }
-  }, [recordedAudioUrl]);
+  }, [recordedAudioUrl, meetingId]);
 
   // Start timer for recording duration
   const startRecordingTimer = () => {

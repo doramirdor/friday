@@ -115,31 +115,65 @@ class GeminiService {
     }
 
     try {
-      console.log('Starting Gemini audio transcription...');
+      console.log('Starting Gemini audio transcription...', { audioFile: typeof audioFile === 'string' ? audioFile : 'File object' });
       
       let uploadedFile;
       
       // Handle both File objects and file paths
       if (typeof audioFile === 'string') {
-        // For file paths, we need to read the file first
-        const electronAPI = (window as any).electronAPI;
-        if (electronAPI?.readAudioFile) {
-          const audioData = await electronAPI.readAudioFile(audioFile);
-          if (!audioData.success) {
-            throw new Error(`Failed to read audio file: ${audioData.error}`);
+        console.log('Processing audio file path:', audioFile);
+        
+        // Check if it's a data URL or blob URL
+        if (audioFile.startsWith('data:') || audioFile.startsWith('blob:')) {
+          console.log('Converting data/blob URL to File object');
+          try {
+            const response = await fetch(audioFile);
+            const blob = await response.blob();
+            const file = new File([blob], 'audio.mp3', { type: 'audio/mp3' });
+            
+            uploadedFile = await this.genAI.files.upload({
+              file: file,
+              config: { mimeType: 'audio/mp3' }
+            });
+          } catch (fetchError) {
+            console.error('Error converting data/blob URL:', fetchError);
+            throw new Error(`Failed to process audio URL: ${fetchError.message}`);
           }
-          
-          // Convert the audio data to a Blob
-          const audioBlob = new Blob([audioData.buffer], { type: 'audio/mp3' });
-          uploadedFile = await this.genAI.files.upload({
-            file: audioBlob,
-            config: { mimeType: 'audio/mp3' }
-          });
         } else {
-          throw new Error('File reading not available in this environment');
+          // For file paths, we need to read the file first
+          const electronAPI = (window as any).electronAPI;
+          if (electronAPI?.readAudioFile) {
+            console.log('Reading audio file via Electron API:', audioFile);
+            
+            // First check if file exists
+            if (electronAPI?.checkFileExists) {
+              const fileExists = await electronAPI.checkFileExists(audioFile);
+              if (!fileExists) {
+                throw new Error(`Audio file not found or is empty: ${audioFile}`);
+              }
+            }
+            
+            const audioData = await electronAPI.readAudioFile(audioFile);
+            if (!audioData.success) {
+              console.error('Failed to read audio file:', audioData);
+              throw new Error(`Failed to read audio file: ${audioData.error || 'Unknown error'}`);
+            }
+            
+            console.log('Audio file read successfully, size:', audioData.buffer?.length || 'unknown');
+            
+            // Convert the audio data to a Blob
+            const audioBlob = new Blob([audioData.buffer], { type: 'audio/mp3' });
+            uploadedFile = await this.genAI.files.upload({
+              file: audioBlob,
+              config: { mimeType: 'audio/mp3' }
+            });
+          } else {
+            throw new Error('File reading not available in this environment');
+          }
         }
       } else {
         // Handle File objects directly
+        console.log('Processing File object:', audioFile.name, audioFile.type, audioFile.size);
         uploadedFile = await this.genAI.files.upload({
           file: audioFile,
           config: { mimeType: audioFile.type || 'audio/mp3' }
@@ -161,18 +195,20 @@ Requirements:
 
 Please provide the transcription:`;
 
-      const result = await this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }).generateContent([
-        prompt,
-        {
-          fileData: {
-            mimeType: uploadedFile.mimeType,
-            fileUri: uploadedFile.uri
+      const result = await this.genAI.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: [
+          prompt,
+          {
+            fileData: {
+              mimeType: uploadedFile.mimeType,
+              fileUri: uploadedFile.uri
+            }
           }
-        }
-      ]);
+        ]
+      });
 
-      const response = await result.response;
-      const transcriptionText = response.text();
+      const transcriptionText = result.text;
 
       console.log('Gemini transcription received:', transcriptionText);
 
@@ -219,8 +255,10 @@ Please provide the transcription:`;
         if (!speakerMap.has(speakerNumber)) {
           speakerMap.set(speakerNumber, {
             id: speakerNumber,
+            meetingId: '', // Will be set when used
             name: speakerLabel,
-            color: speakerColors[colorIndex % speakerColors.length]
+            color: speakerColors[colorIndex % speakerColors.length],
+            type: 'speaker'
           });
           colorIndex++;
         }
@@ -236,8 +274,10 @@ Please provide the transcription:`;
     if (speakerMap.size === 0) {
       speakerMap.set('1', {
         id: '1',
+        meetingId: '', // Will be set when used
         name: 'Speaker 1',
-        color: speakerColors[0]
+        color: speakerColors[0],
+        type: 'speaker'
       });
       
       // Format the entire transcription under Speaker 1
@@ -258,7 +298,7 @@ Please provide the transcription:`;
   }
 
   async analyzeMeeting(input: AnalysisInput): Promise<MeetingAnalysis> {
-    if (!this.model) {
+    if (!this.genAI) {
       throw new Error('Gemini AI is not initialized. Please check your API key.');
     }
 
@@ -294,9 +334,12 @@ Guidelines:
 
 Please respond with valid JSON only, no additional text.`;
 
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const result = await this.genAI.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: prompt
+      });
+
+      const text = result.text;
 
       // Parse the JSON response
       try {
@@ -342,14 +385,16 @@ Please respond with valid JSON only, no additional text.`;
   }
 
   async testConnection(): Promise<boolean> {
-    if (!this.model) {
+    if (!this.genAI) {
       return false;
     }
 
     try {
-      const result = await this.model.generateContent('Hello, please respond with "OK" if you can hear me.');
-      const response = await result.response;
-      const text = response.text();
+      const result = await this.genAI.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: 'Hello, please respond with "OK" if you can hear me.'
+      });
+      const text = result.text;
       return text.toLowerCase().includes('ok');
     } catch (error) {
       console.error('Gemini connection test failed:', error);
