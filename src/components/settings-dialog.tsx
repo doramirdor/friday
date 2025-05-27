@@ -283,18 +283,23 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
                 </div>
                 
                 <div className="space-y-3">
-                  <Label htmlFor="api-key" className="text-sm font-medium">API Key</Label>
+                  <Label htmlFor="api-key" className="text-sm font-medium">Google Cloud Speech API Key</Label>
                   <div className="flex gap-2">
                     <Input 
                       type="password" 
                       id="api-key" 
-                      placeholder="Enter your API key" 
+                      placeholder="Enter your Google Cloud Speech API key" 
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                     />
                     <Button onClick={handleApiKeySave} size="sm">Save</Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">Your API key is stored locally and never shared</p>
+                  <p className="text-xs text-muted-foreground">
+                    Required for live transcription and streaming speech features. Get your API key from{" "}
+                    <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline">
+                      Google Cloud Console
+                    </a>
+                  </p>
                 </div>
                 
                 <div className="space-y-3">

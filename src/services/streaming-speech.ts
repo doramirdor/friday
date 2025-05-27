@@ -52,7 +52,7 @@ class StreamingSpeechServiceImpl implements StreamingSpeechService {
   }
 
   private getElectronAPI(): StreamingElectronAPI | null {
-    const electronWindow = window as any;
+    const electronWindow = window as unknown as { electronAPI?: StreamingElectronAPI };
     return electronWindow.electronAPI || null;
   }
 
@@ -107,7 +107,7 @@ class StreamingSpeechServiceImpl implements StreamingSpeechService {
       // Get API key from settings
       const settings = await DatabaseService.getSettings();
       if (!settings?.apiKey) {
-        throw new Error('Google Cloud Speech API key not configured. Please add it in Settings.');
+        throw new Error('Google Cloud Speech API key not configured. Please add your Google Cloud Speech API key in Settings → Transcription.');
       }
 
       const defaultOptions: StreamingSpeechOptions = {

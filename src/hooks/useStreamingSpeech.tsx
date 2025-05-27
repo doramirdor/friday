@@ -119,9 +119,14 @@ export const useStreamingSpeech = (): UseStreamingSpeechReturn => {
       setIsStreaming(false);
       setError(error instanceof Error ? error : new Error(String(error)));
       
+      // Provide more specific guidance for API key errors
+      const isApiKeyError = error instanceof Error && error.message.includes('API key not configured');
+      
       toast({
         title: 'Failed to Start',
-        description: error instanceof Error ? error.message : String(error),
+        description: isApiKeyError 
+          ? 'Google Cloud Speech API key not configured. Go to Settings → Transcription to add your API key.'
+          : error instanceof Error ? error.message : String(error),
         variant: 'destructive'
       });
     }
