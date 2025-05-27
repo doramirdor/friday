@@ -1848,10 +1848,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
             </div>
           </ResizablePanel>
           
-          {!leftPanelCollapsed && !rightPanelCollapsed && (
-            <ResizableHandle withHandle />
-          )}
-          
           {/* Right panel (Inspector) */}
           <ResizablePanel 
             defaultSize={rightPanelCollapsed ? 0 : 50}

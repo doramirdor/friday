@@ -91,6 +91,20 @@ All notable changes to this project will be documented in this file.
 - Modified native player behavior to no longer auto-open on audio errors
 - Improved recording status detection with better tracking of startup progress
 - Enhanced combined recording mode with smarter status reporting for better reliability
+- **Auto-Save System**: Replaced periodic auto-saving with event-based auto-saving for better performance
+  - Removed automatic saving every 30 seconds
+  - Added auto-save triggers for specific events:
+    - Recording stopped
+    - Transcript generated
+    - AI analysis completed
+    - Notes changed
+    - Context content changed
+    - Title changed
+    - Description changed
+    - Tags changed
+    - Back to library button clicked
+  - Implemented debounced auto-save (1 second delay) to prevent excessive saves
+  - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
 - Fixed audio playback issues with MP3 data URLs by adding automatic conversion to WAV format for better browser compatibility
