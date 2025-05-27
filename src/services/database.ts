@@ -21,8 +21,6 @@ let initializationPromise: Promise<boolean> | null = null;
 let databasesInitialized = localStorage.getItem('databases_initialized') === 'true';
 let recoveryAttempts = 0;
 const MAX_RECOVERY_ATTEMPTS = 3;
-let recoveryAttempts = 0;
-const MAX_RECOVERY_ATTEMPTS = 3;
 
 // Database instances - will be initialized in setupDatabases
 let meetingsDb: any;
