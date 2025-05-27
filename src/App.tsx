@@ -45,7 +45,7 @@ function App({ isElectron = false }: AppProps) {
               <Route path="/transcript/:id" element={<TranscriptDetailsPage />} />
             </Routes>
           </BrowserRouter>
-          <Toaster position="top-center" />
+          <Toaster position="bottom-right" />
         </DatabaseProvider>
       </ThemeProvider>
     </ErrorBoundary>
