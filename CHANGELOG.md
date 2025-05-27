@@ -117,6 +117,13 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Google Cloud Speech API Configuration**: Improved API key configuration and error handling for streaming speech
+  - Enhanced settings dialog to clearly label Google Cloud Speech API key field with helpful description
+  - Added direct link to Google Cloud Console for easy API key creation
+  - Improved error messages in streaming speech service to guide users to correct settings location
+  - Enhanced error handling in useStreamingSpeech hook with actionable guidance for API key configuration
+  - Fixed TypeScript linting issues in streaming speech service with proper type definitions
+  - Made API key configuration more discoverable and user-friendly
 - **Gemini JSON Response Parsing**: Fixed parsing errors when Gemini returns JSON wrapped in markdown code blocks
   - Added `cleanJsonResponse` method to strip markdown code block markers (```json and ```)
   - Enhanced error handling with multiple parsing attempts for malformed responses
