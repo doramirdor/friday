@@ -107,6 +107,10 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Panel Border Line**: Removed the resizable handle border line between panels that was causing UI issues
+  - Eliminated conditional ResizableHandle component that created unwanted border separator
+  - Simplified panel layout for cleaner appearance
+  - Fixed minimize logic issues by removing conditional border rendering
 - Fixed audio playback issues with MP3 data URLs by adding automatic conversion to WAV format for better browser compatibility
 - Fixed "The element has no supported sources" errors by implementing more robust MP3 to WAV conversion
 - Enhanced silence MP3 file generation for software recording mode with more robust file structure
