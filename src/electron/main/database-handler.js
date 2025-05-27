@@ -3,6 +3,7 @@ import leveldb from 'pouchdb-adapter-leveldb';
 import find from 'pouchdb-find';
 import path from 'path';
 import { app } from 'electron';
+import fs from 'fs';
 
 // Register PouchDB adapters and plugins
 PouchDB.plugin(leveldb);
@@ -26,24 +27,109 @@ const DB_OPTIONS = {
 };
 
 /**
- * Get or create a database instance
+ * Clean up stale lock files that might be left from previous crashes
+ */
+const cleanupStaleLocks = async (dbPath) => {
+  try {
+    const lockFile = path.join(dbPath, 'LOCK');
+    if (fs.existsSync(lockFile)) {
+      console.log(`Found stale lock file: ${lockFile}, attempting to remove...`);
+      fs.unlinkSync(lockFile);
+      console.log(`Successfully removed stale lock file: ${lockFile}`);
+    }
+  } catch (error) {
+    console.warn(`Could not remove lock file: ${error.message}`);
+  }
+};
+
+/**
+ * Get or create a database instance with lock handling
  * The 'name' parameter is the suffix for the database name (e.g., 'user-settings')
  */
-const getDatabase = async (nameSuffix) => {
+const getDatabase = async (nameSuffix, retryCount = 3) => {
   const dbName = `${DB_NAME_PREFIX}-${nameSuffix}`;
-  if (!databaseInstances.has(dbName)) {
-    console.log(`Creating new PouchDB instance: ${dbName} with options:`, DB_OPTIONS);
-    const db = new PouchDB(dbName, {
-      ...DB_OPTIONS,
-      deterministic_revs: true
-    });
-    // It's good practice to wait for the database to be ready, e.g., by calling info()
-    await db.info(); 
-    databaseInstances.set(dbName, db);
-    console.log(`Database ${dbName} created and info confirmed.`);
+  
+  if (databaseInstances.has(dbName)) {
+    return databaseInstances.get(dbName);
   }
-  return databaseInstances.get(dbName);
+
+  let lastError;
+  
+  for (let attempt = 0; attempt < retryCount; attempt++) {
+    try {
+      console.log(`Creating new PouchDB instance: ${dbName} (attempt ${attempt + 1}/${retryCount})`);
+      
+      // If this is a retry, try to clean up stale locks
+      if (attempt > 0) {
+        const dbPath = path.join(getAppDataPath(), dbName);
+        await cleanupStaleLocks(dbPath);
+        
+        // Wait a bit before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+      
+      const db = new PouchDB(dbName, {
+        ...DB_OPTIONS,
+        deterministic_revs: true
+      });
+      
+      // Test the database connection
+      await db.info(); 
+      
+      databaseInstances.set(dbName, db);
+      console.log(`Database ${dbName} created and info confirmed.`);
+      return db;
+      
+    } catch (error) {
+      lastError = error;
+      console.warn(`Attempt ${attempt + 1} failed for database ${dbName}:`, error.message);
+      
+      // If it's a lock error and we have more attempts, continue
+      if (error.message.includes('lock') && attempt < retryCount - 1) {
+        console.log(`Lock error detected, will retry in ${1000 * (attempt + 1)}ms...`);
+        continue;
+      }
+      
+      // If it's not a lock error or we're out of attempts, throw
+      if (attempt === retryCount - 1) {
+        console.error(`Failed to create database ${dbName} after ${retryCount} attempts`);
+        throw error;
+      }
+    }
+  }
+  
+  throw lastError;
 };
+
+/**
+ * Close all database connections gracefully
+ */
+const closeAllDatabases = async () => {
+  console.log('Closing all database connections...');
+  const closePromises = [];
+  
+  for (const [name, db] of databaseInstances.entries()) {
+    console.log(`Closing database: ${name}`);
+    closePromises.push(
+      db.close().catch(error => {
+        console.warn(`Error closing database ${name}:`, error.message);
+      })
+    );
+  }
+  
+  await Promise.all(closePromises);
+  databaseInstances.clear();
+  console.log('All databases closed');
+};
+
+// Clean up on app exit
+app.on('before-quit', async () => {
+  await closeAllDatabases();
+});
+
+app.on('window-all-closed', async () => {
+  await closeAllDatabases();
+});
 
 /**
  * Helper function to serialize error objects for IPC
@@ -172,6 +258,37 @@ export function setupDatabaseHandlers(ipcMain) {
       return { success: true, result };
     } catch (error) {
       console.error(`Error in db:bulkDocs for '${dbName}':`, error);
+      return { success: false, error: serializeError(error) };
+    }
+  });
+
+  // Add a handler to manually clean up locks if needed
+  ipcMain.handle('db:cleanup-locks', async (event) => {
+    try {
+      console.log('Manual lock cleanup requested...');
+      const dbPath = getAppDataPath();
+      
+      if (!fs.existsSync(dbPath)) {
+        return { success: true, message: 'Database directory does not exist' };
+      }
+      
+      const entries = fs.readdirSync(dbPath);
+      let cleanedCount = 0;
+      
+      for (const entry of entries) {
+        const entryPath = path.join(dbPath, entry);
+        if (fs.statSync(entryPath).isDirectory()) {
+          await cleanupStaleLocks(entryPath);
+          cleanedCount++;
+        }
+      }
+      
+      return { 
+        success: true, 
+        message: `Checked ${cleanedCount} database directories for stale locks` 
+      };
+    } catch (error) {
+      console.error('Error during manual lock cleanup:', error);
       return { success: false, error: serializeError(error) };
     }
   });

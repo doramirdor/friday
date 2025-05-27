@@ -59,6 +59,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     },
     bulkDocs: async (dbName, docs, options) => {
       return await ipcRenderer.invoke('db:bulkDocs', { dbName, docs, options });
+    },
+    cleanupLocks: async () => {
+      return await ipcRenderer.invoke('db:cleanup-locks');
     }
   },
   

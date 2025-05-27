@@ -1,22 +1,24 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { DatabaseService } from '@/services/database';
 import { toast } from 'sonner';
 
-interface DatabaseContextProps {
+interface DatabaseContextType {
   isInitialized: boolean;
   isLoading: boolean;
   error: string | null;
   retryInitialization: () => Promise<void>;
+  cleanupLocks: () => Promise<{ success: boolean; message: string }>;
 }
 
-const DatabaseContext = createContext<DatabaseContextProps>({
-  isInitialized: false,
-  isLoading: true,
-  error: null,
-  retryInitialization: async () => {}
-});
+const DatabaseContext = createContext<DatabaseContextType | undefined>(undefined);
 
-export const useDatabase = () => useContext(DatabaseContext);
+export const useDatabase = () => {
+  const context = useContext(DatabaseContext);
+  if (context === undefined) {
+    throw new Error('useDatabase must be used within a DatabaseProvider');
+  }
+  return context;
+};
 
 export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -34,7 +36,13 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.error('Error initializing database:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to initialize database';
       setError(errorMessage);
-      toast.error(`Database initialization failed: ${errorMessage}`);
+      
+      // Show different messages for lock errors
+      if (errorMessage.includes('lock')) {
+        toast.error(`Database lock error: ${errorMessage}. Try the "Fix Database" button below.`);
+      } else {
+        toast.error(`Database initialization failed: ${errorMessage}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -42,6 +50,29 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const retryInitialization = async () => {
     await initDatabase();
+  };
+
+  const cleanupLocks = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      setIsLoading(true);
+      const result = await DatabaseService.cleanupDatabaseLocks();
+      
+      if (result.success) {
+        setError(null);
+        setIsInitialized(true);
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+      
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Lock cleanup failed';
+      toast.error(errorMessage);
+      return { success: false, message: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -60,41 +91,16 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
-  // Provide a simplified version of the app when database initialization fails
-  if (error && !isLoading) {
-    return (
-      <DatabaseContext.Provider
-        value={{
-          isInitialized,
-          isLoading,
-          error,
-          retryInitialization
-        }}
-      >
-        <div className="p-4 max-w-md mx-auto mt-8 bg-red-50 border border-red-300 rounded shadow-md">
-          <h1 className="text-xl font-bold text-red-800 mb-4">Database Error</h1>
-          <p className="text-sm text-red-600 mb-4">{error}</p>
-          <button 
-            onClick={retryInitialization}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
-          >
-            Retry Initialization
-          </button>
-        </div>
-        {children}
-      </DatabaseContext.Provider>
-    );
-  }
+  const value: DatabaseContextType = {
+    isInitialized,
+    isLoading,
+    error,
+    retryInitialization,
+    cleanupLocks
+  };
 
   return (
-    <DatabaseContext.Provider
-      value={{
-        isInitialized,
-        isLoading,
-        error,
-        retryInitialization
-      }}
-    >
+    <DatabaseContext.Provider value={value}>
       {children}
     </DatabaseContext.Provider>
   );

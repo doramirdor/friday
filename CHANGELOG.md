@@ -117,6 +117,16 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Database Lock Error Handling**: Comprehensive solution for PouchDB database lock issues
+  - Enhanced database handler in Electron main process with automatic stale lock cleanup
+  - Added retry logic with exponential backoff for database creation failures
+  - Implemented graceful database connection closing on app exit to prevent lock files
+  - Added manual lock cleanup functionality accessible via IPC
+  - Created database error recovery UI component for user-friendly error resolution
+  - Enhanced database context with lock cleanup capabilities
+  - Added automatic recovery mechanisms for lock errors during initialization
+  - Improved error messages to distinguish between lock errors and other database issues
+  - Added comprehensive logging for database lock detection and cleanup operations
 - **Gemini Audio Transcription File Handling**: Improved error handling and file path validation for Gemini transcription
   - Enhanced `transcribeAudio` method to properly handle data URLs, blob URLs, and file paths
   - Added file existence validation before attempting transcription to prevent "File not found" errors

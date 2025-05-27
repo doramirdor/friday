@@ -47,7 +47,28 @@ const setupDatabases = async (retryCount = 3) => {
     } catch (error) {
       if (attempts < retryCount) {
         console.warn(`Retrying database creation for ${name}, attempt ${attempts + 1}`);
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
+        
+        // Check if it's a lock error and try to clean up
+        if (error.message && error.message.includes('lock')) {
+          console.log(`Lock error detected for ${name}, attempting cleanup...`);
+          
+          // Try to clean up locks via IPC
+          const electronAPI = (window as any).electronAPI;
+          if (electronAPI?.database?.cleanupLocks) {
+            try {
+              const result = await electronAPI.database.cleanupLocks();
+              console.log('Lock cleanup result:', result);
+            } catch (cleanupError) {
+              console.warn('Lock cleanup failed:', cleanupError);
+            }
+          }
+        }
+        
+        // Exponential backoff: wait longer for each retry
+        const delay = Math.min(1000 * Math.pow(2, attempts), 10000); // Max 10 seconds
+        console.log(`Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
         return createWithRetry(name, attempts + 1);
       }
       throw error;
@@ -169,6 +190,39 @@ const setupIndexes = async () => {
   }
 };
 
+// Recovery function for database lock issues
+const recoverFromLockError = async () => {
+  console.log('Attempting to recover from database lock error...');
+  
+  try {
+    // Reset all flags
+    isInitializing = false;
+    isInitialized = false;
+    databasesInitialized = false;
+    initializationPromise = null;
+    
+    // Clear localStorage flags
+    localStorage.removeItem('db_initialized');
+    localStorage.removeItem('databases_initialized');
+    
+    // Try to clean up locks via IPC
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.database?.cleanupLocks) {
+      const result = await electronAPI.database.cleanupLocks();
+      console.log('Lock cleanup result:', result);
+    }
+    
+    // Wait a bit before retrying
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Try to reinitialize
+    return await initDatabase();
+  } catch (error) {
+    console.error('Recovery from lock error failed:', error);
+    throw error;
+  }
+};
+
 // Initialize the database
 const initDatabase = async () => {
   // If already initialized, return immediately
@@ -225,6 +279,18 @@ const initDatabase = async () => {
       return true;
     } catch (error) {
       console.error('Error initializing database:', error);
+      
+      // Check if it's a lock error and try recovery
+      if (error.message && error.message.includes('lock')) {
+        console.log('Lock error detected during initialization, attempting recovery...');
+        try {
+          return await recoverFromLockError();
+        } catch (recoveryError) {
+          console.error('Recovery failed:', recoveryError);
+          // Fall through to normal error handling
+        }
+      }
+      
       // Reset flags on error
       isInitializing = false;
       isInitialized = false;
@@ -1336,6 +1402,50 @@ const bulkSave = async <T extends { _id?: string, _rev?: string }>(
   }
 };
 
+// Manual lock cleanup function that can be called from UI
+const cleanupDatabaseLocks = async (): Promise<{ success: boolean; message: string }> => {
+  try {
+    console.log('Manual database lock cleanup requested...');
+    
+    const electronAPI = (window as any).electronAPI;
+    if (!electronAPI?.database?.cleanupLocks) {
+      return {
+        success: false,
+        message: 'Lock cleanup not available in this environment'
+      };
+    }
+    
+    const result = await electronAPI.database.cleanupLocks();
+    
+    if (result.success) {
+      // Also try to reinitialize databases after cleanup
+      try {
+        await recoverFromLockError();
+        return {
+          success: true,
+          message: `Lock cleanup successful: ${result.message}. Database reinitialized.`
+        };
+      } catch (reinitError) {
+        return {
+          success: true,
+          message: `Lock cleanup successful: ${result.message}. Database reinitialize failed: ${reinitError.message}`
+        };
+      }
+    } else {
+      return {
+        success: false,
+        message: `Lock cleanup failed: ${result.error?.message || 'Unknown error'}`
+      };
+    }
+  } catch (error) {
+    console.error('Error during manual lock cleanup:', error);
+    return {
+      success: false,
+      message: `Lock cleanup failed: ${error.message}`
+    };
+  }
+};
+
 // Export as a namespaced service
 export const DatabaseService = {
   initDatabase,
@@ -1397,5 +1507,6 @@ export const DatabaseService = {
   removeFileFromGlobalContext,
   bulkSave,
   handleConflicts,
-  safeDeleteDocs
+  safeDeleteDocs,
+  cleanupDatabaseLocks
 }; 
