@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Duplicate Meeting Cleanup**: Enhanced duplicate meeting detection and cleanup functionality
+  - Automatic cleanup of duplicate meetings when loading the library page
+  - Manual "Clean Duplicates" button in library header for on-demand cleanup
+  - Improved deduplication algorithm using title and creation time (grouped by hour)
+  - Toast notifications showing cleanup results and number of duplicates removed
+  - Cascading deletion of associated data (transcripts, speakers, action items, notes, context)
+  - Better duplicate detection using case-insensitive title matching
 - **Speaker Name Editing**: Added ability to edit speaker names after transcription
   - Click on any speaker name in the Speakers tab to edit it inline
   - Save changes with Enter key or Save button, cancel with Escape key or Cancel button
@@ -147,6 +154,12 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Library Page Duplicates**: Fixed duplicate meetings appearing in the library page
+  - Enhanced deduplication logic to group meetings by title and creation hour instead of minute
+  - Improved duplicate detection to use case-insensitive title matching
+  - Added automatic cleanup on library page load to remove existing duplicates
+  - Fixed getAllMeetings function to consistently apply deduplication across all query methods
+  - Prevents duplicate meetings from cluttering the library interface
 - **Google Cloud Speech API Configuration**: Improved API key configuration and error handling for streaming speech
   - Enhanced settings dialog to clearly label Google Cloud Speech API key field with helpful description
   - Added direct link to Google Cloud Console for easy API key creation

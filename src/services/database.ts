@@ -622,17 +622,18 @@ const getAllMeetings = async (): Promise<Meeting[]> => {
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
-      // Remove duplicates based on title and creation time (within 1 minute)
+      // Remove duplicates based on title and creation time (within 1 hour)
       const uniqueDocs = [];
-      const seen = new Set();
+      const seen = new Map();
       
       for (const doc of sortedDocs) {
-        const key = `${doc.title}_${Math.floor(new Date(doc.createdAt).getTime() / 60000)}`; // Group by minute
+        const createdAtHour = Math.floor(new Date(doc.createdAt).getTime() / 3600000); // Group by hour
+        const key = `${doc.title.toLowerCase().trim()}_${createdAtHour}`;
         if (!seen.has(key)) {
-          seen.add(key);
+          seen.set(key, doc);
           uniqueDocs.push(doc);
         } else {
-          console.warn('Removing duplicate meeting:', doc.title, doc.createdAt);
+          console.warn('Removing duplicate meeting:', doc.title, doc.createdAt, doc._id);
         }
       }
 
@@ -651,17 +652,18 @@ const getAllMeetings = async (): Promise<Meeting[]> => {
             use_index: 'type-createdAt-index'
           });
           
-          // Remove duplicates based on title and creation time (within 1 minute)
+          // Remove duplicates based on title and creation time (within 1 hour)
           const uniqueDocs = [];
-          const seen = new Set();
+          const seen = new Map();
           
           for (const doc of result.docs) {
-            const key = `${doc.title}_${Math.floor(new Date(doc.createdAt).getTime() / 60000)}`; // Group by minute
+            const createdAtHour = Math.floor(new Date(doc.createdAt).getTime() / 3600000); // Group by hour
+            const key = `${doc.title.toLowerCase().trim()}_${createdAtHour}`;
             if (!seen.has(key)) {
-              seen.add(key);
+              seen.set(key, doc);
               uniqueDocs.push(doc);
             } else {
-              console.warn('Removing duplicate meeting:', doc.title, doc.createdAt);
+              console.warn('Removing duplicate meeting:', doc.title, doc.createdAt, doc._id);
             }
           }
           
@@ -681,17 +683,18 @@ const getAllMeetings = async (): Promise<Meeting[]> => {
           .filter(doc => doc && doc.type === 'meeting')
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           
-        // Remove duplicates based on title and creation time (within 1 minute)
+        // Remove duplicates based on title and creation time (within 1 hour)
         const uniqueDocs = [];
-        const seen = new Set();
+        const seen = new Map();
         
         for (const doc of sortedDocs) {
-          const key = `${doc.title}_${Math.floor(new Date(doc.createdAt).getTime() / 60000)}`; // Group by minute
+          const createdAtHour = Math.floor(new Date(doc.createdAt).getTime() / 3600000); // Group by hour
+          const key = `${doc.title.toLowerCase().trim()}_${createdAtHour}`;
           if (!seen.has(key)) {
-            seen.add(key);
+            seen.set(key, doc);
             uniqueDocs.push(doc);
           } else {
-            console.warn('Removing duplicate meeting:', doc.title, doc.createdAt);
+            console.warn('Removing duplicate meeting:', doc.title, doc.createdAt, doc._id);
           }
         }
         
@@ -722,7 +725,7 @@ const getMeetingsList = async (): Promise<RecordingListItem[]> => {
 };
 
 // Function to clean up duplicate meetings
-const cleanupDuplicateMeetings = async (): Promise<void> => {
+const cleanupDuplicateMeetings = async (): Promise<{ deletedCount: number; message: string }> => {
   try {
     await ensureDatabaseInitialized();
     
@@ -738,16 +741,20 @@ const cleanupDuplicateMeetings = async (): Promise<void> => {
     );
     
     const duplicatesToDelete = [];
-    const seen = new Set();
+    const seen = new Map(); // Use Map to track which meeting to keep
     
     for (const meeting of allMeetings) {
-      const key = `${meeting.title}_${Math.floor(new Date(meeting.createdAt).getTime() / 60000)}`;
+      // Create a more specific key that includes title and creation date (rounded to hour)
+      const createdAtHour = Math.floor(new Date(meeting.createdAt).getTime() / 3600000); // Group by hour
+      const key = `${meeting.title.toLowerCase().trim()}_${createdAtHour}`;
+      
       if (seen.has(key)) {
         // This is a duplicate, mark for deletion
         duplicatesToDelete.push(meeting);
-        console.log('Marking duplicate for deletion:', meeting.title, meeting.createdAt);
+        console.log('Marking duplicate for deletion:', meeting.title, meeting.createdAt, meeting._id);
       } else {
-        seen.add(key);
+        // Keep the first occurrence (oldest)
+        seen.set(key, meeting);
       }
     }
     
@@ -767,11 +774,23 @@ const cleanupDuplicateMeetings = async (): Promise<void> => {
           console.warn(`Error cleaning up data for duplicate meeting ${duplicate._id}:`, error);
         }
       }
+      
+      return {
+        deletedCount: duplicatesToDelete.length,
+        message: `Successfully deleted ${duplicatesToDelete.length} duplicate meetings`
+      };
     }
     
-    console.log('Duplicate cleanup completed');
+    return {
+      deletedCount: 0,
+      message: 'No duplicate meetings found'
+    };
   } catch (error) {
     console.error('Error cleaning up duplicate meetings:', error);
+    return {
+      deletedCount: 0,
+      message: `Error cleaning up duplicates: ${error.message}`
+    };
   }
 };
 

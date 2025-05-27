@@ -4,7 +4,7 @@ import RecordingsTable from "@/components/recordings-table";
 import EmptyState from "@/components/empty-state";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { DatabaseService } from "@/services/database";
 import { RecordingListItem } from "@/models/types";
 
@@ -13,12 +13,21 @@ const Library = () => {
   const [recordings, setRecordings] = useState<RecordingListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
 
   // Load recordings from database
   useEffect(() => {
     const loadRecordings = async () => {
       try {
         setLoading(true);
+        
+        // First clean up any duplicate meetings
+        const cleanupResult = await DatabaseService.cleanupDuplicateMeetings();
+        if (cleanupResult.deletedCount > 0) {
+          console.log(cleanupResult.message);
+          toast.success(`Cleaned up ${cleanupResult.deletedCount} duplicate meetings`);
+        }
+        
         const data = await DatabaseService.getMeetingsList();
         setRecordings(data);
         setError(null);
@@ -69,17 +78,48 @@ const Library = () => {
     setRecordings(prev => prev.filter(recording => recording.id !== deletedId));
   };
 
+  const handleCleanupDuplicates = async () => {
+    setIsCleaningUp(true);
+    try {
+      const cleanupResult = await DatabaseService.cleanupDuplicateMeetings();
+      if (cleanupResult.deletedCount > 0) {
+        toast.success(cleanupResult.message);
+        // Reload the recordings list
+        const data = await DatabaseService.getMeetingsList();
+        setRecordings(data);
+      } else {
+        toast.info(cleanupResult.message);
+      }
+    } catch (error) {
+      console.error("Error cleaning up duplicates:", error);
+      toast.error("Failed to clean up duplicate meetings");
+    } finally {
+      setIsCleaningUp(false);
+    }
+  };
+
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold tracking-tight">Recordings Library</h1>
-        <Button 
-          onClick={handleCreateNew}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          New Recording
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline"
+            onClick={handleCleanupDuplicates}
+            disabled={isCleaningUp}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isCleaningUp ? 'animate-spin' : ''}`} />
+            {isCleaningUp ? 'Cleaning...' : 'Clean Duplicates'}
+          </Button>
+          <Button 
+            onClick={handleCreateNew}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            New Recording
+          </Button>
+        </div>
       </div>
       
       {loading ? (
