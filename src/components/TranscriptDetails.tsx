@@ -1129,7 +1129,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     description, 
     tags, 
     recordedAudioUrl, 
-    recordingDuration,
     isLiveTranscript,
     transcriptLines,
     speakers,
@@ -1142,6 +1141,12 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   // Debounced auto-save function to avoid too frequent saves
   const debouncedAutoSave = useCallback(
     debounce(async () => {
+      // Don't auto-save while recording is active to prevent loops
+      if (isRecording) {
+        console.log('Skipping auto-save during active recording');
+        return;
+      }
+      
       try {
         await handleSave();
         console.log('Auto-saved meeting data');
@@ -1149,7 +1154,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         console.error('Error during auto-save:', error);
       }
     }, 1000), // 1 second debounce
-    [handleSave]
+    [handleSave, isRecording]
   );
   
   // Toggle panel visibility
