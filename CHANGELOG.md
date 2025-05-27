@@ -107,6 +107,12 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Database Document Deletion Conflicts**: Fixed 409 conflict errors when deleting and saving meeting data
+  - Added `safeDeleteDocs` helper function with conflict resolution and exponential backoff
+  - Updated `saveTranscript`, `saveSpeakers`, and `saveActionItems` to use safe deletion before bulk insert
+  - Updated `deleteTranscript` and `deleteActionItems` to use safe deletion with retry logic
+  - Prevents "Document update conflict" errors when multiple operations try to delete same documents
+  - Gracefully handles concurrent deletions with proper error handling and retry mechanisms
 - **Database Document Update Conflicts**: Fixed 409 conflict errors when saving meeting data
   - Updated `saveNotes` and `saveContext` functions to use proper conflict resolution
   - Fixed `saveGlobalContext` and `saveContextFile` to handle document conflicts
