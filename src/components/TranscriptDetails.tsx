@@ -168,7 +168,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   ]);
   
   const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
-  const [newSpeakerName, setNewSpeakerName] = useState("");
+  const [editingSpeakerId, setEditingSpeakerId] = useState<string | null>(null);
+  const [editingSpeakerName, setEditingSpeakerName] = useState("");
   
   // Add saving state to prevent concurrent saves
   const [isSaving, setIsSaving] = useState(false);
@@ -1090,21 +1091,28 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     );
   };
   
-  const handleAddSpeaker = () => {
-    if (newSpeakerName.trim()) {
-      const colors = ["#EA5455", "#00CFE8", "#9F44D3", "#666666", "#FE9900"];
-      const randomColor = colors[Math.floor(Math.random() * colors.length)];
-      
-      const newSpeaker: Speaker = {
-        id: `s${Date.now()}`,
-        name: newSpeakerName,
-        color: randomColor,
-      };
-      
-      setSpeakers([...speakers, newSpeaker]);
-      setNewSpeakerName("");
-      toast.success(`Added ${newSpeakerName} as a speaker`);
-    }
+  const handleEditSpeaker = (speakerId: string, newName: string) => {
+    if (!newName.trim()) return;
+    
+    setSpeakers(speakers.map(speaker => 
+      speaker.id === speakerId 
+        ? { ...speaker, name: newName.trim() }
+        : speaker
+    ));
+    
+    setEditingSpeakerId(null);
+    setEditingSpeakerName("");
+    toast.success(`Speaker name updated to "${newName.trim()}"`);
+  };
+
+  const handleStartEditingSpeaker = (speaker: Speaker) => {
+    setEditingSpeakerId(speaker.id);
+    setEditingSpeakerName(speaker.name);
+  };
+
+  const handleCancelEditingSpeaker = () => {
+    setEditingSpeakerId(null);
+    setEditingSpeakerName("");
   };
   
   const handleAddActionItem = () => {
@@ -1574,7 +1582,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       
       <div className="flex flex-1 overflow-hidden relative">
         {/* Toggle buttons positioned outside panels so they remain visible when collapsed */}
-        <Button
+        {/* <Button
           variant="ghost"
           size="sm"
           onClick={toggleLeftPanel}
@@ -1591,7 +1599,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         >
           {rightPanelCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </Button>
-        
+         */}
         <ResizablePanelGroup 
           direction="horizontal" 
           className="w-full"
@@ -2067,48 +2075,67 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                         {speakers.map((speaker) => (
                           <div
                             key={speaker.id}
-                            className="flex items-center gap-3 p-3 border rounded-md"
+                            className="flex items-center gap-3 p-3 border rounded-md hover:bg-accent/50 transition-colors"
                           >
                             <div 
                               className="w-4 h-4 rounded-full flex-shrink-0"
                               style={{ backgroundColor: speaker.color }}
                             />
-                            <span className="text-sm font-medium flex-1">
-                              {speaker.name}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              ID: {speaker.id}
-                            </span>
+                            
+                            {editingSpeakerId === speaker.id ? (
+                              <div className="flex-1 flex items-center gap-2">
+                                <Input
+                                  value={editingSpeakerName}
+                                  onChange={(e) => setEditingSpeakerName(e.target.value)}
+                                  className="text-sm"
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      handleEditSpeaker(speaker.id, editingSpeakerName);
+                                    } else if (e.key === "Escape") {
+                                      handleCancelEditingSpeaker();
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleEditSpeaker(speaker.id, editingSpeakerName)}
+                                  className="h-8 px-2"
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={handleCancelEditingSpeaker}
+                                  className="h-8 px-2"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <span 
+                                  className="text-sm font-medium flex-1 cursor-pointer hover:text-primary"
+                                  onClick={() => handleStartEditingSpeaker(speaker)}
+                                  title="Click to edit speaker name"
+                                >
+                                  {speaker.name}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  ID: {speaker.id}
+                                </span>
+                              </>
+                            )}
                           </div>
                         ))}
                         
                         {speakers.length === 0 && (
                           <div className="text-center py-8 text-muted-foreground">
-                            <p>No speakers added yet</p>
+                            <p>No speakers detected yet</p>
                             <p className="text-sm mt-1">Speakers will be automatically detected during transcription</p>
                           </div>
                         )}
-                      </div>
-                      
-                      <div className="flex gap-2 pt-4">
-                        <Input
-                          value={newSpeakerName}
-                          onChange={(e) => setNewSpeakerName(e.target.value)}
-                          placeholder="Add new speaker..."
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              handleAddSpeaker();
-                            }
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          onClick={handleAddSpeaker}
-                          variant="outline"
-                          size="sm"
-                        >
-                          Add
-                        </Button>
                       </div>
                     </div>
                   </div>

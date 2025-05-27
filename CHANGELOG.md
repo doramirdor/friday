@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Speaker Name Editing**: Added ability to edit speaker names after transcription
+  - Click on any speaker name in the Speakers tab to edit it inline
+  - Save changes with Enter key or Save button, cancel with Escape key or Cancel button
+  - Visual feedback with hover states and cursor changes to indicate editable elements
+  - Toast notifications confirm successful speaker name updates
+  - Changes are automatically saved to the database
 - **Per-Meeting Speaker Count Configuration**: Added per-meeting setting to control maximum number of speakers for AI transcription
   - Added `maxSpeakers` field to Meeting interface with default value of 4 speakers
   - Added speaker count control in TranscriptDetails component Details tab (1-10 speaker range)
@@ -98,6 +104,11 @@ All notable changes to this project will be documented in this file.
   - Loading states and error handling for all delete operations
 
 ### Changed
+- **Speaker Management UI**: Simplified speaker management by removing manual speaker addition
+  - Removed "Add new speaker" input field and button from Speakers tab
+  - Speakers are now only created automatically during transcription process
+  - Updated empty state message to reflect automatic speaker detection
+  - Focused UI on editing existing speakers rather than manual creation
 - **Speaker Management UI Organization**: Improved speaker-related settings organization in TranscriptDetails
   - Added dedicated "Speakers" tab for all speaker-related functionality
   - Moved "Maximum Number of Speakers" setting from Details tab to Speakers tab
