@@ -107,6 +107,12 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Database Document Update Conflicts**: Fixed 409 conflict errors when saving meeting data
+  - Updated `saveNotes` and `saveContext` functions to use proper conflict resolution
+  - Fixed `saveGlobalContext` and `saveContextFile` to handle document conflicts
+  - Improved `handleConflicts` function with better merge logic and exponential backoff with jitter
+  - Prevents "Document update conflict" errors when multiple operations try to save simultaneously
+  - Enhanced conflict resolution to preserve intended changes while respecting document revisions
 - **Panel Border Line**: Removed the resizable handle border line between panels that was causing UI issues
   - Eliminated conditional ResizableHandle component that created unwanted border separator
   - Simplified panel layout for cleaner appearance
