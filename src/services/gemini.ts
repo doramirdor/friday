@@ -37,7 +37,7 @@ class GeminiService {
   private async initializeGemini() {
     try {
       // Get API key from environment variable first (via electronAPI if available), then fall back to settings and localStorage
-      const electronAPI = (window as any).electronAPI;
+      const electronAPI = (window as { electronAPI?: { env?: { GEMINI_API_KEY?: string } } }).electronAPI;
       const envApiKey = electronAPI?.env?.GEMINI_API_KEY;
       const settingsApiKey = (await DatabaseService.getSettings())?.geminiApiKey;
       const localStorageApiKey = localStorage.getItem('gemini-api-key');
@@ -161,7 +161,7 @@ class GeminiService {
           }
         } else {
           // For file paths, we need to read the file first
-          const electronAPI = (window as any).electronAPI;
+          const electronAPI = (window as { electronAPI?: { readAudioFile?: (path: string) => Promise<{ success: boolean; buffer?: ArrayBuffer; error?: string }>; checkFileExists?: (path: string) => Promise<boolean> } }).electronAPI;
           if (electronAPI?.readAudioFile) {
             console.log('Reading audio file via Electron API:', audioFile);
             
@@ -179,7 +179,7 @@ class GeminiService {
               throw new Error(`Failed to read audio file: ${audioData.error || 'Unknown error'}`);
             }
             
-            console.log('Audio file read successfully, size:', audioData.buffer?.length || 'unknown');
+            console.log('Audio file read successfully, size:', audioData.buffer?.byteLength || 'unknown');
             
             // Convert the audio data to a Blob
             const audioBlob = new Blob([audioData.buffer], { type: 'audio/mp3' });

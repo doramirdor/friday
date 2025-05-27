@@ -36,9 +36,9 @@ import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
 // Simple debounce function
-const debounce = (func: Function, wait: number) => {
+const debounce = <T extends unknown[]>(func: (...args: T) => void, wait: number) => {
   let timeout: NodeJS.Timeout;
-  return function executedFunction(...args: any[]) {
+  return function executedFunction(...args: T) {
     const later = () => {
       clearTimeout(timeout);
       func(...args);
@@ -83,14 +83,40 @@ interface MeetingState {
   liveTranscript: boolean;
 }
 
+interface ElectronAPI {
+  isElectron: boolean;
+  platform: string;
+  env?: {
+    GEMINI_API_KEY?: string;
+  };
+  sendMessage: (channel: string, data: unknown) => void;
+  receive: (channel: string, callback: (...args: unknown[]) => void) => void;
+  invokeGoogleSpeech: (audioBuffer: ArrayBuffer) => Promise<string>;
+  loadAudioFile?: (filePath: string) => Promise<{
+    success: boolean;
+    dataUrl?: string;
+    useNativePlayer?: boolean;
+    error?: string;
+  }>;
+  checkFileExists?: (filePath: string) => Promise<boolean>;
+  testSpeechWithFile?: (filePath: string) => Promise<{
+    transcription?: string | { transcript: string; speakers?: Speaker[] };
+    error?: string;
+  }>;
+  saveAudioFile?: (buffer: ArrayBuffer, filename: string, formats: string[]) => Promise<{
+    success: boolean;
+    filePath?: string;
+  }>;
+  readAudioFile?: (filePath: string) => Promise<{
+    success: boolean;
+    buffer?: ArrayBuffer;
+    error?: string;
+  }>;
+  playAudioFile?: (filePath: string) => void;
+}
+
 interface ElectronWindow extends Window {
-  electronAPI?: {
-    isElectron: boolean;
-    platform: string;
-    sendMessage: (channel: string, data: unknown) => void;
-    receive: (channel: string, callback: (...args: unknown[]) => void) => void;
-    invokeGoogleSpeech: (audioBuffer: ArrayBuffer) => Promise<string>;
-  }
+  electronAPI?: ElectronAPI;
 }
 
 // Define constants for recording sources
@@ -382,7 +408,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     }
     
     // In Electron environment, we need to use IPC to load the file
-    const win = window as any;
+    const win = window as ElectronWindow;
     
     if (win?.electronAPI?.loadAudioFile) {
       try {
@@ -461,7 +487,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     
     if (path) {
       // Ensure the file exists before trying to load it
-      const win = window as any;
+      const win = window as ElectronWindow;
       if (win?.electronAPI?.checkFileExists) {
         // First check if the file exists and has content
         win.electronAPI.checkFileExists(path)
@@ -477,7 +503,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
               toast.error('Recording file could not be created properly');
             }
           })
-          .catch((error: any) => {
+          .catch((error: Error) => {
             console.error('Error checking file existence:', error);
             // Try loading anyway as fallback
             if (path !== recordedAudioUrl) {
@@ -714,7 +740,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       const filePath = filePathUrl || recordedAudioUrl;
       console.log('filePath', filePath);
       
-      const win = window as any;
+      const win = window as ElectronWindow;
       if (win?.electronAPI?.testSpeechWithFile) {
         toast.loading('Processing audio. Large files may take several minutes...', { 
           id: 'transcribing', 
@@ -731,7 +757,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
             : result.transcription.transcript;
             
           // Update speakers if provided
-          if (result.transcription.speakers) {
+          if (typeof result.transcription === 'object' && result.transcription.speakers) {
             setSpeakers(result.transcription.speakers);
           }
           
@@ -802,7 +828,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           !recordedAudioUrl.startsWith('blob:') && 
           !recordedAudioUrl.startsWith('http')) {
         
-        const electronAPI = (window as any).electronAPI;
+        const electronAPI = (window as ElectronWindow).electronAPI;
         if (electronAPI?.checkFileExists) {
           const fileExists = await electronAPI.checkFileExists(recordedAudioUrl);
           if (!fileExists) {
@@ -1210,7 +1236,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       if (recordedAudioUrl) {
         // If this is a blob URL created in the browser, we need to save the actual file
         if (recordedAudioUrl.startsWith('blob:')) {
-          const win = window as any;
+          const win = window as ElectronWindow;
           
           if (win?.electronAPI?.saveAudioFile) {
             try {
