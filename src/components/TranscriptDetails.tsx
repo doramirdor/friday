@@ -1881,30 +1881,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                 <div className="space-y-4">
                   <div className="flex justify-between items-center mb-4">
                     <h2 className="text-lg font-medium">Transcript</h2>
-                    {transcriptLines.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <Label htmlFor="add-speaker" className="sr-only">Add Speaker</Label>
-                        <Input 
-                          id="add-speaker"
-                          placeholder="Add new speaker..."
-                          value={newSpeakerName}
-                          onChange={(e) => setNewSpeakerName(e.target.value)}
-                          className="w-48"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              handleAddSpeaker();
-                            }
-                          }}
-                        />
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={handleAddSpeaker}
-                        >
-                          Add
-                        </Button>
-                      </div>
-                    )}
                   </div>
                   
                   {/* Empty state for new meeting */}
@@ -2016,6 +1992,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                 <TabsTrigger value="details" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
                   Details
                 </TabsTrigger>
+                <TabsTrigger value="speakers" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
+                  Speakers
+                </TabsTrigger>
                 <TabsTrigger value="action-items" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
                   Action Items
                 </TabsTrigger>
@@ -2057,20 +2036,81 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       placeholder="Add tag..."
                     />
                   </div>
-                  
-                  <div className="space-y-4">
-                    <Label htmlFor="max-speakers">Maximum Number of Speakers</Label>
-                    <Input
-                      id="max-speakers"
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={maxSpeakers}
-                      onChange={(e) => setMaxSpeakers(parseInt(e.target.value) || 4)}
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Set the maximum number of speakers for AI transcription. This helps prevent the AI from creating too many speakers when it misidentifies speech patterns.
-                    </p>
+                </TabsContent>
+                
+                <TabsContent value="speakers" className="p-6 space-y-6 h-full">
+                  <div className="space-y-6">
+                    <div className="space-y-4">
+                      <Label htmlFor="max-speakers">Maximum Number of Speakers</Label>
+                      <Input
+                        id="max-speakers"
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={maxSpeakers}
+                        onChange={(e) => setMaxSpeakers(parseInt(e.target.value) || 4)}
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        Set the maximum number of speakers for AI transcription. This helps prevent the AI from creating too many speakers when it misidentifies speech patterns.
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="speakers-list">Current Speakers</Label>
+                        <span className="text-sm text-muted-foreground">
+                          {speakers.length} speaker{speakers.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                        {speakers.map((speaker) => (
+                          <div
+                            key={speaker.id}
+                            className="flex items-center gap-3 p-3 border rounded-md"
+                          >
+                            <div 
+                              className="w-4 h-4 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: speaker.color }}
+                            />
+                            <span className="text-sm font-medium flex-1">
+                              {speaker.name}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              ID: {speaker.id}
+                            </span>
+                          </div>
+                        ))}
+                        
+                        {speakers.length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <p>No speakers added yet</p>
+                            <p className="text-sm mt-1">Speakers will be automatically detected during transcription</p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-2 pt-4">
+                        <Input
+                          value={newSpeakerName}
+                          onChange={(e) => setNewSpeakerName(e.target.value)}
+                          placeholder="Add new speaker..."
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleAddSpeaker();
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          onClick={handleAddSpeaker}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </TabsContent>
                 
