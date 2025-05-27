@@ -107,6 +107,15 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Meeting Duplication Issue**: Fixed critical bug where meetings were being duplicated in the database
+  - Fixed `handleSave` function to properly check for existing meetings before creating new ones
+  - Added `isSaving` state to prevent concurrent saves that could cause race conditions
+  - Improved `createMeeting` function to check for existing meetings and throw error if duplicate ID exists
+  - Added deduplication logic to `getAllMeetings` function to filter out duplicates based on title and creation time
+  - Created `cleanupDuplicateMeetings` function to remove existing duplicates from database
+  - Added utility script for manual cleanup of duplicate meetings
+  - Prevented auto-save during active saves to avoid race conditions and duplicate creation
+  - Used direct `put` instead of `handleConflicts` for meeting creation to avoid duplicate generation
 - **Auto-Save Loop During Recording**: Fixed infinite auto-save loop that occurred while recording
   - Added check to skip auto-save while recording is active to prevent infinite loops
   - Removed `recordingDuration` from `handleSave` dependencies as it's not used in save logic
