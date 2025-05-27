@@ -283,7 +283,7 @@ const handleConflicts = async <T extends { _id?: string, _rev?: string }>(
       if (currentDoc._id && !currentDoc._rev) {
         try {
           const existing = await db.get(currentDoc._id);
-          currentDoc._rev = existing._rev;
+          currentDoc = { ...currentDoc, _rev: existing._rev };
         } catch (err: any) {
           if (err.status !== 404) throw err;
           // If 404, proceed with creation
@@ -294,12 +294,16 @@ const handleConflicts = async <T extends { _id?: string, _rev?: string }>(
       return { ...currentDoc, _rev: response.rev };
     } catch (err: any) {
       if (err.status === 409) {
-        // On conflict, get the latest version and try again
+        // On conflict, get the latest version and merge with our changes
         try {
           const latest = await db.get(currentDoc._id!);
-          currentDoc = { ...latest, ...currentDoc, _rev: latest._rev };
+          // Preserve our changes but use the latest _rev
+          currentDoc = { ...currentDoc, _rev: latest._rev };
           attempts++;
-          await new Promise(resolve => setTimeout(resolve, 100 * attempts)); // Exponential backoff
+          
+          // Exponential backoff with jitter to avoid thundering herd
+          const delay = 100 * Math.pow(2, attempts) + Math.random() * 100;
+          await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         } catch (getErr) {
           console.error('Error getting latest version during conflict resolution:', getErr);
@@ -725,28 +729,14 @@ const saveNotes = async (notes: Notes): Promise<Notes> => {
     await ensureDatabaseInitialized();
     
     const now = new Date().toISOString();
-    let notesDoc: Notes;
+    const notesDoc: Notes = {
+      ...notes,
+      _id: `notes_${notes.meetingId}`,
+      updatedAt: now,
+      type: 'notes'
+    };
     
-    // Check if notes already exist for this meeting
-    try {
-      notesDoc = await notesDb.get(`notes_${notes.meetingId}`);
-      notesDoc = {
-        ...notesDoc,
-        content: notes.content,
-        updatedAt: now
-      };
-    } catch (error) {
-      // Notes don't exist yet, create new
-      notesDoc = {
-        ...notes,
-        _id: `notes_${notes.meetingId}`,
-        updatedAt: now,
-        type: 'notes'
-      };
-    }
-    
-    const response = await notesDb.put(notesDoc);
-    return { ...notesDoc, _id: response.id, _rev: response.rev };
+    return await handleConflicts(notesDb, notesDoc);
   } catch (error) {
     console.error('Error saving notes:', error);
     throw error;
@@ -794,31 +784,14 @@ const saveContext = async (context: Context): Promise<Context> => {
     await ensureDatabaseInitialized();
     
     const now = new Date().toISOString();
-    let contextDoc: Context;
+    const contextDoc: Context = {
+      ...context,
+      _id: `context_${context.meetingId}`,
+      updatedAt: now,
+      type: 'context'
+    };
     
-    // Check if context already exists for this meeting
-    try {
-      contextDoc = await contextsDb.get(`context_${context.meetingId}`);
-      contextDoc = {
-        ...contextDoc,
-        name: context.name,
-        content: context.content,
-        files: context.files,
-        overrideGlobal: context.overrideGlobal,
-        updatedAt: now
-      };
-    } catch (error) {
-      // Context doesn't exist yet, create new
-      contextDoc = {
-        ...context,
-        _id: `context_${context.meetingId}`,
-        updatedAt: now,
-        type: 'context'
-      };
-    }
-    
-    const response = await contextsDb.put(contextDoc);
-    return { ...contextDoc, _id: response.id, _rev: response.rev };
+    return await handleConflicts(contextsDb, contextDoc);
   } catch (error) {
     console.error('Error saving context:', error);
     throw error;
@@ -1030,29 +1003,14 @@ const saveGlobalContext = async (globalContext: GlobalContext): Promise<GlobalCo
     await ensureDatabaseInitialized();
     
     const now = new Date().toISOString();
-    let contextDoc: GlobalContext;
+    const contextDoc: GlobalContext = {
+      ...globalContext,
+      _id: 'global_context',
+      updatedAt: now,
+      type: 'globalContext'
+    };
     
-    // Check if global context already exists
-    try {
-      contextDoc = await globalContextDb.get('global_context');
-      contextDoc = {
-        ...contextDoc,
-        name: globalContext.name,
-        files: globalContext.files,
-        updatedAt: now
-      };
-    } catch (error) {
-      // Global context doesn't exist yet, create new
-      contextDoc = {
-        ...globalContext,
-        _id: 'global_context',
-        updatedAt: now,
-        type: 'globalContext'
-      };
-    }
-    
-    const response = await globalContextDb.put(contextDoc);
-    return { ...contextDoc, _id: response.id, _rev: response.rev };
+    return await handleConflicts(globalContextDb, contextDoc);
   } catch (error) {
     console.error('Error saving global context:', error);
     throw error;
@@ -1073,8 +1031,7 @@ const saveContextFile = async (contextFile: ContextFile): Promise<ContextFile> =
       type: 'contextFile'
     };
     
-    const response = await contextFilesDb.put(fileDoc);
-    return { ...fileDoc, _id: response.id, _rev: response.rev };
+    return await handleConflicts(contextFilesDb, fileDoc);
   } catch (error) {
     console.error('Error saving context file:', error);
     throw error;
