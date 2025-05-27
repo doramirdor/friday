@@ -2,6 +2,21 @@ import { GoogleGenAI } from '@google/genai';
 import { TranscriptLine, Speaker, Context, GlobalContext } from '@/models/types';
 import { DatabaseService } from './database';
 
+// Interface for decision made in the meeting
+export interface Decision {
+  decision: string;
+  rationale: string;
+  impact: string;
+}
+
+// Interface for action item from analysis
+export interface AnalysisActionItem {
+  task: string;
+  owner: string;
+  due_date: string;
+  priority: 'High' | 'Med' | 'Low';
+}
+
 // Interface for Gemini analysis results
 export interface MeetingAnalysis {
   title: string;
@@ -9,6 +24,11 @@ export interface MeetingAnalysis {
   notes: string;
   tags: string[];
   summary: string;
+  decisions: Decision[];
+  action_items: AnalysisActionItem[];
+  risks: string[];
+  open_questions: string[];
+  sentiment: 'Positive' | 'Neutral' | 'Negative';
 }
 
 // Interface for Gemini transcription results
@@ -339,35 +359,56 @@ Please provide the transcription:`;
       const contextPrompt = this.buildContextPrompt(input);
 
       const prompt = `
-You are an AI assistant specialized in analyzing meeting transcripts and generating comprehensive meeting summaries. 
-
-${contextPrompt}
-
-Meeting Transcript:
-${transcriptText}
-
-Based on the transcript and context provided, please generate a comprehensive analysis in the following JSON format:
-
-{
-  "title": "A concise, descriptive title for the meeting (max 60 characters)",
-  "description": "A brief 1-2 sentence description of the meeting's purpose and main topics",
-  "summary": "A detailed summary of the key points, decisions, and outcomes discussed",
-  "notes": "Comprehensive meeting notes in markdown format, including:\n- Key discussion points\n- Decisions made\n- Action items identified\n- Important insights or concerns raised\n- Next steps or follow-up items",
-  "tags": ["array", "of", "relevant", "tags", "for", "categorization"]
-}
-
-Guidelines:
-- Make the title specific and actionable
-- Keep the description concise but informative
-- Structure the notes with clear headings and bullet points
-- Include 3-8 relevant tags that would help categorize and search for this meeting
-- Focus on actionable insights and key takeaways
-- If the transcript is unclear or incomplete, note this in the summary
-
-Please respond with valid JSON only, no additional text.`;
+      You are a senior meeting analyst AI that digests raw transcripts and produces
+      executive-quality, action-oriented summaries.
+      
+      💡 **Think silently, step-by-step**, to spot themes, agreements, disagreements,
+      risks, and next steps — but DO NOT reveal that internal reasoning.  
+      Return **only** the final JSON that conforms to the schema below.
+      
+      ====================================================================
+      MEETING CONTEXT
+      --------------------------------------------------------------------
+      ${contextPrompt}
+      
+      MEETING TRANSCRIPT
+      --------------------------------------------------------------------
+      ${transcriptText}
+      
+      ====================================================================
+      RETURN JSON WITH THIS EXACT SHAPE
+      {
+        "title":         "Concise, specific headline – ≤60 chars",
+        "description":   "1–2-sentence purpose of the meeting",
+        "summary":       "4–8 sentence narrative of key discussion points",
+        "decisions":     [
+            { "decision": "What was decided", "rationale": "Why", "impact": "Expected effect" }
+        ],
+        "action_items":  [
+            {
+              "task":      "Actionable task phrased as a verb",
+              "owner":     "Name (or ´Unassigned´ if unknown)",
+              "due_date":  "YYYY-MM-DD or ´TBD´",
+              "priority":  "High | Med | Low"
+            }
+        ],
+        "risks":         ["Potential issues, blockers, unknowns"],
+        "open_questions":["Questions that need follow-up"],
+        "sentiment":     "Overall tone: Positive | Neutral | Negative",
+        "tags":          ["3-8 searchable keywords"],
+      - **Discussion Points**\n- **Insights**\n- **Decisions**\n- **Next Steps**\n\
+      Include timestamps or speaker initials where helpful.",
+        "notes":         "Structured meeting notes with sections for Discussion Points, Insights, Decisions, and Next Steps"
+      }
+      
+      RULES
+      1. Do not invent data; flag missing info with "TBD" or empty arrays.
+      2. Keep arrays deduplicated and elements concise.
+      3. Output valid JSON **only** – no markdown fences, comments, or extra text.
+      `;
 
       const result = await this.genAI.models.generateContent({
-        model: 'gemini-2.0-flash-001',
+        model: 'gemini-2.5-flash-preview-05-20',
         contents: prompt
       });
 
@@ -380,16 +421,21 @@ Please respond with valid JSON only, no additional text.`;
         const analysis = JSON.parse(cleanedText);
         
         // Validate the response structure
-        if (!analysis.title || !analysis.description || !analysis.notes || !Array.isArray(analysis.tags)) {
+        if (!analysis.title || !analysis.description || !Array.isArray(analysis.tags)) {
           throw new Error('Invalid response structure from Gemini');
         }
 
         return {
           title: analysis.title.substring(0, 100), // Ensure reasonable length
           description: analysis.description.substring(0, 500),
-          notes: analysis.notes,
+          notes: analysis.notes || 'No detailed notes available',
           tags: analysis.tags.slice(0, 10), // Limit to 10 tags
-          summary: analysis.summary || analysis.notes.substring(0, 300) + '...'
+          summary: analysis.summary || analysis.notes?.substring(0, 300) + '...' || 'No summary available',
+          decisions: Array.isArray(analysis.decisions) ? analysis.decisions : [],
+          action_items: Array.isArray(analysis.action_items) ? analysis.action_items : [],
+          risks: Array.isArray(analysis.risks) ? analysis.risks : [],
+          open_questions: Array.isArray(analysis.open_questions) ? analysis.open_questions : [],
+          sentiment: analysis.sentiment || 'Neutral'
         };
       } catch (parseError) {
         console.error('Failed to parse Gemini response:', parseError);
@@ -412,7 +458,12 @@ Please respond with valid JSON only, no additional text.`;
                 description: analysis.description?.substring(0, 500) || 'AI-generated meeting analysis',
                 notes: analysis.notes || 'Analysis could not be completed',
                 tags: Array.isArray(analysis.tags) ? analysis.tags.slice(0, 10) : ['meeting'],
-                summary: analysis.summary || analysis.notes?.substring(0, 300) + '...' || 'Summary not available'
+                summary: analysis.summary || analysis.notes?.substring(0, 300) + '...' || 'Summary not available',
+                decisions: Array.isArray(analysis.decisions) ? analysis.decisions : [],
+                action_items: Array.isArray(analysis.action_items) ? analysis.action_items : [],
+                risks: Array.isArray(analysis.risks) ? analysis.risks : [],
+                open_questions: Array.isArray(analysis.open_questions) ? analysis.open_questions : [],
+                sentiment: analysis.sentiment || 'Neutral'
               };
             }
           }
@@ -439,7 +490,12 @@ Please respond with valid JSON only, no additional text.`;
       description: `Meeting with ${speakers.size} participants discussing various topics (${wordCount} words transcribed).`,
       notes: `# Meeting Notes\n\n## Participants\n${Array.from(speakers).map(s => `- ${s}`).join('\n')}\n\n## Transcript\n${transcriptText}`,
       tags: ['meeting', 'discussion', 'transcript'],
-      summary: `Meeting with ${speakers.size} participants. Full transcript available in notes.`
+      summary: `Meeting with ${speakers.size} participants. Full transcript available in notes.`,
+      decisions: [],
+      action_items: [],
+      risks: [],
+      open_questions: [],
+      sentiment: 'Neutral'
     };
   }
 

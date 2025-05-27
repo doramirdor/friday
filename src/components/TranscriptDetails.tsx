@@ -2023,6 +2023,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                 <TabsTrigger value="speakers" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
                   Speakers
                 </TabsTrigger>
+                <TabsTrigger value="summary" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
+                  Summary
+                </TabsTrigger>
                 <TabsTrigger value="action-items" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
                   Action Items
                 </TabsTrigger>
@@ -2158,6 +2161,119 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                         )}
                       </div>
                     </div>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="summary" className="p-6 space-y-6 h-full">
+                  <div className="space-y-6">
+                    {analysisResults ? (
+                      <>
+                        {/* Summary Section */}
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-lg font-semibold">Meeting Summary</Label>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">Sentiment:</span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                analysisResults.sentiment === 'Positive' ? 'bg-green-100 text-green-800' :
+                                analysisResults.sentiment === 'Negative' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {analysisResults.sentiment}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="p-4 border rounded-md bg-accent/20">
+                            <p className="text-sm leading-relaxed">{analysisResults.summary}</p>
+                          </div>
+                        </div>
+
+                        {/* Decisions Section */}
+                        {analysisResults.decisions.length > 0 && (
+                          <div className="space-y-4">
+                            <Label className="text-lg font-semibold">Decisions Made</Label>
+                            <div className="space-y-3">
+                              {analysisResults.decisions.map((decision, index) => (
+                                <div key={index} className="p-4 border rounded-md bg-blue-50">
+                                  <h4 className="font-medium text-blue-900 mb-2">{decision.decision}</h4>
+                                  <p className="text-sm text-blue-700 mb-2"><strong>Rationale:</strong> {decision.rationale}</p>
+                                  <p className="text-sm text-blue-700"><strong>Expected Impact:</strong> {decision.impact}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* AI Action Items Section */}
+                        {analysisResults.action_items.length > 0 && (
+                          <div className="space-y-4">
+                            <Label className="text-lg font-semibold">AI-Identified Action Items</Label>
+                            <div className="space-y-3">
+                              {analysisResults.action_items.map((item, index) => (
+                                <div key={index} className="p-4 border rounded-md bg-yellow-50">
+                                  <div className="flex items-start justify-between mb-2">
+                                    <h4 className="font-medium text-yellow-900">{item.task}</h4>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      item.priority === 'High' ? 'bg-red-100 text-red-800' :
+                                      item.priority === 'Med' ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-green-100 text-green-800'
+                                    }`}>
+                                      {item.priority}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-sm text-yellow-700">
+                                    <span><strong>Owner:</strong> {item.owner}</span>
+                                    <span><strong>Due:</strong> {item.due_date}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Risks Section */}
+                        {analysisResults.risks.length > 0 && (
+                          <div className="space-y-4">
+                            <Label className="text-lg font-semibold">Identified Risks</Label>
+                            <div className="space-y-2">
+                              {analysisResults.risks.map((risk, index) => (
+                                <div key={index} className="p-3 border rounded-md bg-red-50">
+                                  <p className="text-sm text-red-700">{risk}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Open Questions Section */}
+                        {analysisResults.open_questions.length > 0 && (
+                          <div className="space-y-4">
+                            <Label className="text-lg font-semibold">Open Questions</Label>
+                            <div className="space-y-2">
+                              {analysisResults.open_questions.map((question, index) => (
+                                <div key={index} className="p-3 border rounded-md bg-purple-50">
+                                  <p className="text-sm text-purple-700">{question}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-center py-16 text-muted-foreground">
+                        <p>No AI analysis available yet</p>
+                        <p className="mt-2 text-sm">Run AI Analysis to generate a comprehensive meeting summary</p>
+                        <Button
+                          variant="outline"
+                          onClick={handleAIAnalysis}
+                          disabled={isAnalyzing || !transcriptLines.length}
+                          className="mt-4 flex items-center gap-2"
+                        >
+                          <Sparkles className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                          {isAnalyzing ? 'Analyzing...' : 'Run AI Analysis'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
                 

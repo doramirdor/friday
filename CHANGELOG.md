@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Enhanced AI Meeting Analysis**: Significantly enriched AI analysis capabilities with comprehensive meeting insights
+  - Added detailed decision tracking with rationale and impact assessment
+  - Integrated AI-identified action items with priority levels, owners, and due dates
+  - Added risk identification and assessment from meeting discussions
+  - Implemented sentiment analysis to gauge overall meeting tone (Positive/Neutral/Negative)
+  - Added open questions tracking for follow-up items
+  - Created dedicated Summary tab in transcript details with organized sections for all analysis results
+  - Enhanced Gemini AI prompt to provide executive-quality, action-oriented summaries
+  - Added visual indicators and color-coded sections for different types of insights
+  - Improved analysis result structure with proper TypeScript interfaces
 - **Duplicate Meeting Cleanup**: Enhanced duplicate meeting detection and cleanup functionality
   - Automatic cleanup of duplicate meetings when loading the library page
   - Manual "Clean Duplicates" button in library header for on-demand cleanup
