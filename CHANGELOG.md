@@ -98,6 +98,14 @@ All notable changes to this project will be documented in this file.
   - Loading states and error handling for all delete operations
 
 ### Changed
+- **Speaker Management UI Organization**: Improved speaker-related settings organization in TranscriptDetails
+  - Added dedicated "Speakers" tab for all speaker-related functionality
+  - Moved "Maximum Number of Speakers" setting from Details tab to Speakers tab
+  - Consolidated speaker management controls in dedicated tab for better UX
+  - Added comprehensive speaker list view with color indicators and speaker IDs
+  - Removed duplicate speaker controls from transcript section
+  - Enhanced speaker management with count display and empty state messaging
+  - More intuitive and organized placement of speaker configuration options
 - Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
 - Simplified TranscriptDetailsPage to use the new TranscriptDetails component
 - Improved settings dialog with fixed size and scrollable content for better user experience
