@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import { TranscriptLine, Speaker, Context, GlobalContext } from '@/models/types';
 import { DatabaseService } from './database';
 
@@ -9,6 +9,12 @@ export interface MeetingAnalysis {
   notes: string;
   tags: string[];
   summary: string;
+}
+
+// Interface for Gemini transcription results
+export interface GeminiTranscriptionResult {
+  transcript: string;
+  speakers: Speaker[];
 }
 
 // Interface for analysis input
@@ -22,8 +28,7 @@ interface AnalysisInput {
 }
 
 class GeminiService {
-  private genAI: GoogleGenerativeAI | null = null;
-  private model: any = null;
+  private genAI: GoogleGenAI | null = null;
 
   constructor() {
     this.initializeGemini();
@@ -51,8 +56,7 @@ class GeminiService {
         return;
       }
 
-      this.genAI = new GoogleGenerativeAI(apiKey);
-      this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      this.genAI = new GoogleGenAI({ apiKey });
       
       console.log('Gemini AI initialized successfully');
     } catch (error) {
@@ -62,6 +66,10 @@ class GeminiService {
 
   async reinitialize() {
     await this.initializeGemini();
+  }
+
+  isAvailable(): boolean {
+    return this.genAI !== null;
   }
 
   private formatTranscriptForAI(transcript: TranscriptLine[], speakers: Speaker[]): string {
@@ -81,17 +89,172 @@ class GeminiService {
 
   private buildContextPrompt(input: AnalysisInput): string {
     let contextPrompt = '';
-
-    // Add global context if available
-    if (input.globalContext?.description) {
-      contextPrompt += `\nGlobal Context: ${input.globalContext.description}`;
+    
+    if (input.globalContext) {
+      contextPrompt += `Global Context:\n${input.globalContext.description}\n\n`;
     }
-
-    // Add meeting-specific context if available
-    if (input.meetingContext?.content) {
-      contextPrompt += `\nMeeting Context: ${input.meetingContext.content}`;
+    
+    if (input.meetingContext && input.meetingContext.overrideGlobal) {
+      contextPrompt += `Meeting-Specific Context:\n${input.meetingContext.content}\n\n`;
     }
+    
+    if (input.currentTitle) {
+      contextPrompt += `Current Title: ${input.currentTitle}\n`;
+    }
+    
+    if (input.currentDescription) {
+      contextPrompt += `Current Description: ${input.currentDescription}\n`;
+    }
+    
     return contextPrompt;
+  }
+
+  async transcribeAudio(audioFile: File | string): Promise<GeminiTranscriptionResult> {
+    if (!this.genAI) {
+      throw new Error('Gemini AI is not initialized. Please check your API key.');
+    }
+
+    try {
+      console.log('Starting Gemini audio transcription...');
+      
+      let uploadedFile;
+      
+      // Handle both File objects and file paths
+      if (typeof audioFile === 'string') {
+        // For file paths, we need to read the file first
+        const electronAPI = (window as any).electronAPI;
+        if (electronAPI?.readAudioFile) {
+          const audioData = await electronAPI.readAudioFile(audioFile);
+          if (!audioData.success) {
+            throw new Error(`Failed to read audio file: ${audioData.error}`);
+          }
+          
+          // Convert the audio data to a Blob
+          const audioBlob = new Blob([audioData.buffer], { type: 'audio/mp3' });
+          uploadedFile = await this.genAI.files.upload({
+            file: audioBlob,
+            config: { mimeType: 'audio/mp3' }
+          });
+        } else {
+          throw new Error('File reading not available in this environment');
+        }
+      } else {
+        // Handle File objects directly
+        uploadedFile = await this.genAI.files.upload({
+          file: audioFile,
+          config: { mimeType: audioFile.type || 'audio/mp3' }
+        });
+      }
+
+      console.log('Audio file uploaded to Gemini, generating transcription...');
+
+      // Request transcription with speaker diarization
+      const prompt = `Please provide a detailed transcription of this audio with speaker diarization. 
+
+Requirements:
+1. Identify different speakers and label them as "Speaker 1", "Speaker 2", etc.
+2. Format the output with each speaker's dialogue on separate lines
+3. Use the format: "Speaker X: [dialogue]"
+4. If you can detect speaker changes within a single turn, break them into separate lines
+5. Maintain chronological order of the conversation
+6. Include all speech content, even brief interjections
+
+Please provide the transcription:`;
+
+      const result = await this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }).generateContent([
+        prompt,
+        {
+          fileData: {
+            mimeType: uploadedFile.mimeType,
+            fileUri: uploadedFile.uri
+          }
+        }
+      ]);
+
+      const response = await result.response;
+      const transcriptionText = response.text();
+
+      console.log('Gemini transcription received:', transcriptionText);
+
+      // Parse the transcription to extract speakers and create transcript lines
+      const { transcript, speakers } = this.parseTranscriptionWithSpeakers(transcriptionText);
+
+      // Clean up the uploaded file
+      try {
+        await this.genAI.files.delete(uploadedFile.name);
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup uploaded file:', cleanupError);
+      }
+
+      return {
+        transcript,
+        speakers
+      };
+
+    } catch (error) {
+      console.error('Error transcribing audio with Gemini:', error);
+      throw new Error(`Failed to transcribe audio: ${error.message}`);
+    }
+  }
+
+  private parseTranscriptionWithSpeakers(transcriptionText: string): { transcript: string, speakers: Speaker[] } {
+    const lines = transcriptionText.split('\n').filter(line => line.trim());
+    const speakerMap = new Map<string, Speaker>();
+    const transcriptLines: string[] = [];
+    
+    // Default speaker colors
+    const speakerColors = ['#28C76F', '#7367F0', '#FF9F43', '#EA5455', '#00CFE8', '#9F44D3'];
+    let colorIndex = 0;
+
+    for (const line of lines) {
+      // Match patterns like "Speaker 1:", "Speaker 2:", etc.
+      const speakerMatch = line.match(/^(Speaker\s+(\d+)):\s*(.+)$/i);
+      
+      if (speakerMatch) {
+        const speakerLabel = speakerMatch[1];
+        const speakerNumber = speakerMatch[2];
+        const dialogue = speakerMatch[3].trim();
+        
+        // Create speaker if not exists
+        if (!speakerMap.has(speakerNumber)) {
+          speakerMap.set(speakerNumber, {
+            id: speakerNumber,
+            name: speakerLabel,
+            color: speakerColors[colorIndex % speakerColors.length]
+          });
+          colorIndex++;
+        }
+        
+        transcriptLines.push(`${speakerLabel}: ${dialogue}`);
+      } else if (line.trim()) {
+        // If no speaker pattern found, add to transcript as-is
+        transcriptLines.push(line.trim());
+      }
+    }
+
+    // If no speakers were detected, create a default speaker
+    if (speakerMap.size === 0) {
+      speakerMap.set('1', {
+        id: '1',
+        name: 'Speaker 1',
+        color: speakerColors[0]
+      });
+      
+      // Format the entire transcription under Speaker 1
+      const formattedTranscript = transcriptLines.length > 0 
+        ? `Speaker 1: ${transcriptLines.join(' ')}`
+        : `Speaker 1: ${transcriptionText}`;
+      
+      return {
+        transcript: formattedTranscript,
+        speakers: Array.from(speakerMap.values())
+      };
+    }
+
+    return {
+      transcript: transcriptLines.join('\n'),
+      speakers: Array.from(speakerMap.values())
+    };
   }
 
   async analyzeMeeting(input: AnalysisInput): Promise<MeetingAnalysis> {
@@ -178,21 +341,6 @@ Please respond with valid JSON only, no additional text.`;
     };
   }
 
-  async setApiKey(apiKey: string): Promise<boolean> {
-    try {
-      localStorage.setItem('gemini-api-key', apiKey);
-      await this.initializeGemini();
-      return this.model !== null;
-    } catch (error) {
-      console.error('Failed to set Gemini API key:', error);
-      return false;
-    }
-  }
-
-  isAvailable(): boolean {
-    return this.model !== null;
-  }
-
   async testConnection(): Promise<boolean> {
     if (!this.model) {
       return false;
@@ -210,6 +358,6 @@ Please respond with valid JSON only, no additional text.`;
   }
 }
 
-// Export singleton instance
-export const geminiService = new GeminiService();
+// Export a singleton instance
+const geminiService = new GeminiService();
 export default geminiService; 

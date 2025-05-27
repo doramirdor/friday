@@ -143,6 +143,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const [transcriptLines, setTranscriptLines] = useState<TranscriptLine[]>([]);
   const [newSpeakerName, setNewSpeakerName] = useState("");
   
+  // Add saving state to prevent concurrent saves
+  const [isSaving, setIsSaving] = useState(false);
+  
   // Use different speech recognition based on environment
   const isElectron = !!(window as unknown as ElectronWindow)?.electronAPI?.isElectron;
   const googleSpeech = useGoogleSpeech();
@@ -770,6 +773,34 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     }
   }, [recordedAudioUrl, filePathUrl]);
 
+  // Handle Gemini transcription of audio file
+  const handleGeminiTranscribe = useCallback(async () => {
+    if (!recordedAudioUrl) {
+      toast.error('No audio file available to transcribe');
+      return;
+    }
+
+    try {
+      toast.loading('Transcribing with Gemini 2.5. This may take a while for longer recordings...', { 
+        id: 'gemini-transcribing',
+        duration: 15000
+      });
+      
+      // For now, show a placeholder message since we need to implement the Gemini service properly
+      toast.error('Gemini transcription is not yet implemented. Please use Google Speech for now.', { 
+        id: 'gemini-transcribing' 
+      });
+      
+      // TODO: Implement Gemini transcription
+      // const result = await GeminiService.transcribeAudio(recordedAudioUrl);
+      // Process result similar to handleTranscribeAudio
+      
+    } catch (error) {
+      console.error('Error transcribing audio with Gemini:', error);
+      toast.error('Failed to transcribe audio with Gemini', { id: 'gemini-transcribing' });
+    }
+  }, [recordedAudioUrl]);
+
   // Start timer for recording duration
   const startRecordingTimer = () => {
     setRecordingDuration(0);
@@ -993,6 +1024,14 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
       return;
     }
 
+    // Prevent concurrent saves
+    if (isSaving) {
+      console.log('Save already in progress, skipping...');
+      return;
+    }
+
+    setIsSaving(true);
+
     try {
       // Start with a loading toast
       const loadingToast = toast.loading("Saving meeting data...");
@@ -1011,17 +1050,15 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         type: 'meeting'
       };
       
-      // Try to get existing meeting first
-      try {
-        const existingMeeting = await DatabaseService.getMeeting(meetingId);
-        if (existingMeeting && existingMeeting._rev) {
-          meetingData._rev = existingMeeting._rev;
-          await DatabaseService.updateMeeting(meetingData);
-        } else {
-          await DatabaseService.createMeeting(meetingData);
-        }
-      } catch (err) {
-        // If meeting doesn't exist, create it
+      // Try to get existing meeting first to determine if we should create or update
+      const existingMeeting = await DatabaseService.getMeeting(meetingId);
+      
+      if (existingMeeting) {
+        // Meeting exists, update it
+        meetingData._rev = existingMeeting._rev;
+        await DatabaseService.updateMeeting(meetingData);
+      } else {
+        // Meeting doesn't exist, create it
         await DatabaseService.createMeeting(meetingData);
       }
       
@@ -1122,6 +1159,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     } catch (error) {
       console.error('Error saving meeting:', error);
       toast.error('Failed to save meeting data');
+    } finally {
+      setIsSaving(false);
     }
   }, [
     meetingId, 
@@ -1135,15 +1174,17 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     actionItems,
     notes,
     context,
-    meetingState?.createdAt
+    contextContent,
+    meetingState?.createdAt,
+    isSaving
   ]);
   
   // Debounced auto-save function to avoid too frequent saves
   const debouncedAutoSave = useCallback(
     debounce(async () => {
-      // Don't auto-save while recording is active to prevent loops
-      if (isRecording) {
-        console.log('Skipping auto-save during active recording');
+      // Don't auto-save while recording is active or already saving to prevent loops
+      if (isRecording || isSaving) {
+        console.log('Skipping auto-save during active recording or save in progress');
         return;
       }
       
@@ -1154,7 +1195,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         console.error('Error during auto-save:', error);
       }
     }, 1000), // 1 second debounce
-    [handleSave, isRecording]
+    [handleSave, isRecording, isSaving]
   );
   
   // Toggle panel visibility
@@ -1475,14 +1516,22 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       >
                         {isRecording ? "Stop Recording" : "Record New Audio"}
                       </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="mt-2"
-                        onClick={handleTranscribeAudio}
-                      >
-                        Send to Transcript
-                      </Button>
+                      <div className="flex gap-2 mt-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={handleTranscribeAudio}
+                        >
+                          Google Speech
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={handleGeminiTranscribe}
+                        >
+                          Gemini 2.5
+                        </Button>
+                      </div>
 
                       {/* Recording source selector for existing recording */}
                       {/* <div className="flex items-center gap-2 mt-2 p-1 rounded-md border border-input">

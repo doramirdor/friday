@@ -356,6 +356,15 @@ const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
     await ensureDatabaseInitialized();
     
     const now = new Date().toISOString();
+    
+    // Check if a meeting with this ID already exists
+    if (meeting._id) {
+      const existing = await getMeeting(meeting._id);
+      if (existing) {
+        throw new Error(`Meeting with ID ${meeting._id} already exists. Use updateMeeting instead.`);
+      }
+    }
+    
     // Generate a more robust unique ID if one isn't provided
     const uniqueId = meeting._id || `meeting_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
@@ -367,7 +376,9 @@ const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
       type: 'meeting'
     };
 
-    return await handleConflicts(meetingsDb, docToSave);
+    // Use direct put instead of handleConflicts for creation to avoid duplicates
+    const response = await meetingsDb.put(docToSave);
+    return { ...docToSave, _rev: response.rev };
   } catch (error) {
     console.error('Error creating meeting:', error);
     throw error;
@@ -444,21 +455,50 @@ const getAllMeetings = async (): Promise<Meeting[]> => {
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
-      return sortedDocs;
+      // Remove duplicates based on title and creation time (within 1 minute)
+      const uniqueDocs = [];
+      const seen = new Set();
+      
+      for (const doc of sortedDocs) {
+        const key = `${doc.title}_${Math.floor(new Date(doc.createdAt).getTime() / 60000)}`; // Group by minute
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueDocs.push(doc);
+        } else {
+          console.warn('Removing duplicate meeting:', doc.title, doc.createdAt);
+        }
+      }
+
+      return uniqueDocs;
     } catch (simpleIndexError) {
       console.warn('Simple index query failed, trying compound index:', simpleIndexError);
       
-      try {
-        // Try with compound index
-        const result = await meetingsDb.find({
-          selector: {
-            type: 'meeting',
-            createdAt: { $gt: null }
-          },
-          sort: [{ createdAt: 'desc' }],
-          use_index: 'type-createdAt-index'
-        });
-        return result.docs;
+              try {
+          // Try with compound index
+          const result = await meetingsDb.find({
+            selector: {
+              type: 'meeting',
+              createdAt: { $gt: null }
+            },
+            sort: [{ createdAt: 'desc' }],
+            use_index: 'type-createdAt-index'
+          });
+          
+          // Remove duplicates based on title and creation time (within 1 minute)
+          const uniqueDocs = [];
+          const seen = new Set();
+          
+          for (const doc of result.docs) {
+            const key = `${doc.title}_${Math.floor(new Date(doc.createdAt).getTime() / 60000)}`; // Group by minute
+            if (!seen.has(key)) {
+              seen.add(key);
+              uniqueDocs.push(doc);
+            } else {
+              console.warn('Removing duplicate meeting:', doc.title, doc.createdAt);
+            }
+          }
+          
+          return uniqueDocs;
       } catch (compoundIndexError) {
         console.warn('Compound index query failed, falling back to allDocs:', compoundIndexError);
         
@@ -469,10 +509,26 @@ const getAllMeetings = async (): Promise<Meeting[]> => {
           endkey: 'meeting_\ufff0'
         });
         
-        return result.rows
+        const sortedDocs = result.rows
           .map(row => row.doc)
           .filter(doc => doc && doc.type === 'meeting')
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          
+        // Remove duplicates based on title and creation time (within 1 minute)
+        const uniqueDocs = [];
+        const seen = new Set();
+        
+        for (const doc of sortedDocs) {
+          const key = `${doc.title}_${Math.floor(new Date(doc.createdAt).getTime() / 60000)}`; // Group by minute
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueDocs.push(doc);
+          } else {
+            console.warn('Removing duplicate meeting:', doc.title, doc.createdAt);
+          }
+        }
+        
+        return uniqueDocs;
       }
     }
   } catch (error) {
@@ -495,6 +551,60 @@ const getMeetingsList = async (): Promise<RecordingListItem[]> => {
   } catch (error) {
     console.error('Error getting meetings list:', error);
     throw error;
+  }
+};
+
+// Function to clean up duplicate meetings
+const cleanupDuplicateMeetings = async (): Promise<void> => {
+  try {
+    await ensureDatabaseInitialized();
+    
+    // Get all meetings without deduplication
+    const result = await meetingsDb.find({
+      selector: {
+        type: 'meeting'
+      }
+    });
+    
+    const allMeetings = result.docs.sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    
+    const duplicatesToDelete = [];
+    const seen = new Set();
+    
+    for (const meeting of allMeetings) {
+      const key = `${meeting.title}_${Math.floor(new Date(meeting.createdAt).getTime() / 60000)}`;
+      if (seen.has(key)) {
+        // This is a duplicate, mark for deletion
+        duplicatesToDelete.push(meeting);
+        console.log('Marking duplicate for deletion:', meeting.title, meeting.createdAt);
+      } else {
+        seen.add(key);
+      }
+    }
+    
+    // Delete duplicates
+    if (duplicatesToDelete.length > 0) {
+      console.log(`Deleting ${duplicatesToDelete.length} duplicate meetings`);
+      await safeDeleteDocs(meetingsDb, duplicatesToDelete);
+      
+      // Also delete associated data for duplicates
+      for (const duplicate of duplicatesToDelete) {
+        try {
+          await deleteTranscript(duplicate._id);
+          await deleteActionItems(duplicate._id);
+          await deleteNotes(duplicate._id);
+          await deleteContext(duplicate._id);
+        } catch (error) {
+          console.warn(`Error cleaning up data for duplicate meeting ${duplicate._id}:`, error);
+        }
+      }
+    }
+    
+    console.log('Duplicate cleanup completed');
+  } catch (error) {
+    console.error('Error cleaning up duplicate meetings:', error);
   }
 };
 
@@ -1237,6 +1347,7 @@ export const DatabaseService = {
   deleteMeeting,
   getAllMeetings,
   getMeetingsList,
+  cleanupDuplicateMeetings,
   
   // Transcript operations
   saveTranscript,
