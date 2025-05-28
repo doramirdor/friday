@@ -419,6 +419,11 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         try {
           audioEventCount++;
           
+          // Always log the first few events to verify audio processing is working
+          if (audioEventCount <= 10) {
+            console.log(`🎤 AUDIO EVENT #${audioEventCount} - ScriptProcessorNode firing`);
+          }
+          
           // Add crash detection wrapper
           const crashDetector = {
             step: 'audio-event-start',
@@ -475,6 +480,11 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           
           crashDetector.log('buffer-push');
           this.audioAccumulationBuffer.push(pcmBlob);
+          
+          // Always log buffer growth for first few events
+          if (audioEventCount <= 10) {
+            console.log(`🎤 BUFFER: Added chunk ${pcmData.byteLength} bytes, total buffer size: ${this.audioAccumulationBuffer.length}`);
+          }
           
           crashDetector.log('logging-check');
           if (audioEventCount <= 3 || audioEventCount % 1000 === 1) {
@@ -792,6 +802,17 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
               isStreaming: this._isStreaming
             });
             
+            // Log specific close codes for debugging
+            if (event.code === 4003) {
+              console.error('🚨 WebSocket closed: API quota exceeded');
+            } else if (event.code === 4400) {
+              console.error('🚨 WebSocket closed: Bad request - likely audio format issue');
+            } else if (event.code === 1000) {
+              console.log('✅ WebSocket closed normally');
+            } else {
+              console.warn(`⚠️ WebSocket closed with code ${event.code}: ${event.reason}`);
+            }
+            
             if (this._isStreaming) {
               // Unexpected close - provide more detailed error information
               let errorMessage = 'Connection to Gemini Live lost';
@@ -1069,10 +1090,39 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     
     try {
       // Instead of complex intervals, process audio immediately when it's available
-      let audioEventCount = 0;
+      let intervalEventCount = 0;
       let lastAudioSent = 0;
       const SEND_INTERVAL_MS = 1000; // Send audio every 1 second
       const MAX_BUFFER_SIZE = 200; // Safety cap to prevent unbounded growth
+      
+      // Add heartbeat monitor to detect silent crashes
+      let lastHeartbeat = Date.now();
+      let lastBufferSize = 0;
+      
+      const heartbeatMonitor = window.setInterval(() => {
+        const now = Date.now();
+        const timeSinceLastHeartbeat = now - lastHeartbeat;
+        const currentBufferSize = this.audioAccumulationBuffer?.length || 0;
+        
+        // Update heartbeat if buffer is growing (indicates audio activity)
+        if (currentBufferSize > lastBufferSize) {
+          lastHeartbeat = now;
+          lastBufferSize = currentBufferSize;
+          console.log(`💓 HEARTBEAT: Audio buffer growing: ${currentBufferSize} chunks`);
+        }
+        
+        if (timeSinceLastHeartbeat > 5000) { // If no activity for 5 seconds
+          console.warn(`💔 HEARTBEAT: No audio processing activity for ${timeSinceLastHeartbeat}ms`);
+          console.warn(`💔 HEARTBEAT: Service state:`, {
+            isStreaming: this._isStreaming,
+            websocketState: this.websocket?.readyState,
+            audioContextState: this.audioContext?.state,
+            bufferSize: currentBufferSize,
+            intervalEvents: intervalEventCount,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }, 2000); // Check every 2 seconds
       
       // Set up a simple timer to check for audio and send it
       const simpleProcessor = window.setInterval(() => {
@@ -1081,8 +1131,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
             step: 'interval-start',
             log: (step: string) => {
               crashDetector.step = step;
-              if (audioEventCount <= 10 || audioEventCount % 100 === 0) {
-                debugLog(`🎵 SIMPLIFIED CRASH DETECTOR [${step}] event #${audioEventCount}`);
+              if (intervalEventCount <= 10 || intervalEventCount % 100 === 0) {
+                debugLog(`🎵 SIMPLIFIED CRASH DETECTOR [${step}] event #${intervalEventCount}`);
               }
             }
           };
@@ -1106,9 +1156,11 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           if (this.audioAccumulationBuffer.length > 0 && 
               (now - lastAudioSent) >= SEND_INTERVAL_MS) {
             
+            console.log(`🎵 PROCESSING: Found ${this.audioAccumulationBuffer.length} chunks, sending to API`);
+            
             crashDetector.log('logging-decision');
             // Only log occasionally to prevent console saturation
-            if (audioEventCount % 10 === 0) {
+            if (intervalEventCount % 10 === 0) {
               debugLog(`🎵 SIMPLIFIED: Processing ${this.audioAccumulationBuffer.length} audio chunks`);
             }
             
@@ -1121,14 +1173,20 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
             crashDetector.log('process-chunks-call');
             // Process immediately
             this.processAudioChunksSimplified(chunksToProcess);
+          } else {
+            // Log why we're not processing
+            if (intervalEventCount <= 10 || intervalEventCount % 100 === 0) {
+              const timeSinceLastSend = now - lastAudioSent;
+              console.log(`🎵 WAITING: Buffer=${this.audioAccumulationBuffer.length}, timeSince=${timeSinceLastSend}ms, threshold=${SEND_INTERVAL_MS}ms`);
+            }
           }
           
           crashDetector.log('event-counting');
           // Log audio event count very occasionally to reduce console spam
-          if (audioEventCount % 100 === 0) {
-            debugLog(`🎵 SIMPLIFIED: Audio events received: ${audioEventCount}, buffer size: ${this.audioAccumulationBuffer.length}`);
+          if (intervalEventCount % 100 === 0) {
+            debugLog(`🎵 SIMPLIFIED: Audio events received: ${intervalEventCount}, buffer size: ${this.audioAccumulationBuffer.length}`);
           }
-          audioEventCount++;
+          intervalEventCount++;
           
           crashDetector.log('interval-complete');
         } catch (processingError) {
@@ -1148,34 +1206,6 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       this.processingInterval = simpleProcessor;
       
       console.log('🎵 SIMPLIFIED: Simplified audio processing started');
-      
-      // Add heartbeat monitor to detect silent crashes
-      let lastHeartbeat = Date.now();
-      const heartbeatMonitor = window.setInterval(() => {
-        const now = Date.now();
-        const timeSinceLastHeartbeat = now - lastHeartbeat;
-        
-        if (timeSinceLastHeartbeat > 5000) { // If no activity for 5 seconds
-          console.warn(`💔 HEARTBEAT: No audio processing activity for ${timeSinceLastHeartbeat}ms`);
-          console.warn(`💔 HEARTBEAT: Service state:`, {
-            isStreaming: this._isStreaming,
-            websocketState: this.websocket?.readyState,
-            audioContextState: this.audioContext?.state,
-            bufferSize: this.audioAccumulationBuffer?.length || 0,
-            timestamp: new Date().toISOString()
-          });
-        }
-        
-        lastHeartbeat = now;
-      }, 2000); // Check every 2 seconds
-      
-      // Update heartbeat when audio events occur
-      const originalAudioEventCount = audioEventCount;
-      const heartbeatUpdater = window.setInterval(() => {
-        if (audioEventCount > originalAudioEventCount) {
-          lastHeartbeat = Date.now();
-        }
-      }, 500);
       
     } catch (error) {
       console.error('🚨 SIMPLIFIED: Failed to start simplified audio processing:', error);
@@ -1228,6 +1258,9 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       };
 
       this.websocket.send(JSON.stringify(message));
+      
+      // Add chunk sending counter for debugging
+      console.count('🎵 AUDIO CHUNKS SENT');
       
       if (Math.random() < 0.1) { // 10% chance to log
         console.log(`🎵 SIMPLIFIED: Sent ${base64Audio.length} characters of audio data`);
