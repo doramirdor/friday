@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API
+  - Real-time speech-to-text with speaker diarization using Gemini Live WebSocket connection
+  - Character-by-character typing animation (30-50ms delay) for natural "hand-typing" effect
+  - Rolling buffer system for speaker segments with automatic speaker change detection
+  - Live transcript toggle with mode selection between Gemini Live and Google Cloud Speech
+  - Automatic microphone capture with 100ms audio chunks streamed as base64 to Gemini Live
+  - Speaker-separated captions with color-coded visual indicators
+  - Graceful error handling with retry logic and exponential backoff
+  - Integration with existing meeting transcript system for seamless workflow
+  - Real-time confidence scores and speaker identification
+  - Markdown-formatted transcript output with bold speaker labels
+  - Auto-save functionality when adding live transcripts to meetings
+  - Browser-based implementation using WebSocket, MediaRecorder, and getUserMedia APIs
+  - Comprehensive availability checking for API keys and browser compatibility
 - **Enhanced AI Meeting Analysis**: Significantly enriched AI analysis capabilities with comprehensive meeting insights
   - Added detailed decision tracking with rationale and impact assessment
   - Integrated AI-identified action items with priority levels, owners, and due dates

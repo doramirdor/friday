@@ -33,6 +33,8 @@ import AudioPlayer from "@/components/AudioPlayer";
 import { useStreamingSpeech } from '@/hooks/useStreamingSpeech';
 import { StreamingSpeechOptions } from '@/services/streaming-speech';
 import { Switch } from "@/components/ui/switch";
+import GeminiLiveTranscript from '@/components/GeminiLiveTranscript';
+import { useGeminiLive } from '@/hooks/useGeminiLive';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
 // Simple debounce function
@@ -186,6 +188,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   // Add streaming speech hook
   const streamingSpeech = useStreamingSpeech();
   
+  // Add Gemini Live hook
+  const geminiLive = useGeminiLive();
+  
   // Determine which speech recognition method to use
   const speech = isElectron ? googleSpeech : webSpeech;
   
@@ -202,6 +207,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
 
   // Add state for live transcript toggle - default to false
   const [isLiveTranscript, setIsLiveTranscript] = useState(false);
+  
+  // Add state for Gemini Live mode
+  const [isGeminiLiveMode, setIsGeminiLiveMode] = useState(true);
   
   // Audio recording and playback references and states
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -715,6 +723,50 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         : "Live transcript disabled"
     );
   }, [isLiveTranscript]);
+  
+  // Handle adding Gemini Live transcript to meeting
+  const handleAddGeminiTranscript = useCallback((transcript: string) => {
+    if (!transcript.trim()) return;
+    
+    // Parse the markdown-formatted transcript into lines
+    const lines = transcript.split('\n').filter(line => line.trim());
+    const newTranscriptLines: TranscriptLine[] = [];
+    
+    lines.forEach((line, index) => {
+      const speakerMatch = line.match(/^\*\*Speaker (\d+)\*\*:\s*(.+)$/);
+      
+      if (speakerMatch) {
+        const speakerTag = parseInt(speakerMatch[1]);
+        const text = speakerMatch[2].trim();
+        
+        // Find or create speaker
+        const speakerId = `${speakerTag}`;
+        const existingSpeaker = speakers.find(s => s.id === speakerId);
+        
+        if (!existingSpeaker) {
+          // Create new speaker
+          const colors = ["#28C76F", "#7367F0", "#FF9F43", "#EA5455", "#00CFE8", "#9F44D3", "#666666", "#FE9900"];
+          const newSpeaker = {
+            id: speakerId,
+            name: `Speaker ${speakerTag}`,
+            color: colors[speakerTag % colors.length],
+          };
+          setSpeakers(prev => [...prev, newSpeaker]);
+        }
+        
+        newTranscriptLines.push({
+          id: `gemini-live-${Date.now()}-${index}`,
+          text: text,
+          speakerId: speakerId,
+        });
+      }
+    });
+    
+    if (newTranscriptLines.length > 0) {
+      setTranscriptLines(prev => [...prev, ...newTranscriptLines]);
+      toast.success(`Added ${newTranscriptLines.length} transcript lines from Gemini Live`);
+    }
+  }, [speakers]);
   
   // Change the current speaker
   const handleChangeSpeaker = useCallback((speakerId: string) => {
@@ -1775,131 +1827,173 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       </div>
                     </div>
                     
-                    {/* Add toggle for live transcript */}
-                    <div className="flex items-center justify-center mb-4 space-x-2">
-                      <Switch
-                        id="live-transcript"
-                        checked={isLiveTranscript}
-                        onCheckedChange={setIsLiveTranscript}
-                        disabled={!streamingSpeech.isAvailable}
-                      />
-                      <Label htmlFor="live-transcript" className="text-sm">
-                        Live Transcript {!streamingSpeech.isAvailable && "(Not Available)"}
-                      </Label>
+                    {/* Live transcript toggle and mode selection */}
+                    <div className="flex flex-col items-center gap-4 mb-4">
+                      <div className="flex items-center justify-center space-x-2">
+                        <Switch
+                          id="live-transcript"
+                          checked={isLiveTranscript}
+                          onCheckedChange={setIsLiveTranscript}
+                          disabled={!streamingSpeech.isAvailable && !geminiLive.isAvailable}
+                        />
+                        <Label htmlFor="live-transcript" className="text-sm">
+                          Live Transcript
+                        </Label>
+                      </div>
+                      
+                      {/* Mode selection */}
+                      {isLiveTranscript && (
+                        <div className="flex items-center gap-2 p-2 rounded-md border border-input">
+                          <Button
+                            variant={isGeminiLiveMode ? "secondary" : "ghost"}
+                            size="sm"
+                            onClick={() => setIsGeminiLiveMode(true)}
+                            className="flex gap-2 items-center"
+                            disabled={!geminiLive.isAvailable}
+                            title={!geminiLive.isAvailable ? "Gemini Live not available - check API key" : "Use Gemini Live for real-time transcription"}
+                          >
+                            <Sparkles className="h-4 w-4" />
+                            <span>Gemini Live</span>
+                          </Button>
+                          <Button
+                            variant={!isGeminiLiveMode ? "secondary" : "ghost"}
+                            size="sm"
+                            onClick={() => setIsGeminiLiveMode(false)}
+                            className="flex gap-2 items-center"
+                            disabled={!streamingSpeech.isAvailable}
+                            title={!streamingSpeech.isAvailable ? "Google Speech not available - check API key" : "Use Google Cloud Speech for streaming transcription"}
+                          >
+                            <Mic className="h-4 w-4" />
+                            <span>Google Speech</span>
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Live streaming controls */}
-                    {isLiveTranscript && streamingSpeech.isAvailable && (
-                      <div className="flex flex-col items-center gap-4 mb-4 p-4 border rounded-lg bg-blue-50">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant={streamingSpeech.isStreaming ? "destructive" : "default"}
-                            size="sm"
-                            onClick={() => {
-                              if (streamingSpeech.isStreaming) {
-                                streamingSpeech.stopStreaming();
-                              } else {
-                                const options: StreamingSpeechOptions = {
-                                  languageCode: 'en-US',
-                                  enableSpeakerDiarization: true,
-                                  diarizationSpeakerCount: maxSpeakers
-                                };
-                                streamingSpeech.startStreaming(options);
-                              }
-                            }}
-                            className="flex items-center gap-2"
-                          >
-                            {streamingSpeech.isStreaming ? (
-                              <>
-                                <Square className="h-4 w-4" />
-                                Stop Live Transcript
-                              </>
-                            ) : (
-                              <>
-                                <Mic className="h-4 w-4" />
-                                Start Live Transcript
-                              </>
-                            )}
-                          </Button>
-                          
-                          {streamingSpeech.isStreaming && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={streamingSpeech.clearTranscript}
-                            >
-                              Clear
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* Live transcript display */}
-                        {(streamingSpeech.transcript || streamingSpeech.interimTranscript) && (
-                          <div className="w-full max-w-2xl">
-                            <div className="p-3 border rounded bg-white min-h-[100px] max-h-[200px] overflow-y-auto">
-                              <div className="text-sm">
-                                {/* Final transcript */}
-                                {streamingSpeech.transcript && (
-                                  <span className="text-gray-900">
-                                    {streamingSpeech.transcript}
-                                  </span>
-                                )}
+                    {/* Live transcript interface */}
+                    {isLiveTranscript && (
+                      <>
+                        {isGeminiLiveMode ? (
+                          <GeminiLiveTranscript
+                            maxSpeakers={maxSpeakers}
+                            onTranscriptAdd={handleAddGeminiTranscript}
+                            className="mb-4"
+                          />
+                        ) : (
+                          streamingSpeech.isAvailable && (
+                            <div className="flex flex-col items-center gap-4 mb-4 p-4 border rounded-lg bg-blue-50">
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant={streamingSpeech.isStreaming ? "destructive" : "default"}
+                                  size="sm"
+                                  onClick={() => {
+                                    if (streamingSpeech.isStreaming) {
+                                      streamingSpeech.stopStreaming();
+                                    } else {
+                                      const options: StreamingSpeechOptions = {
+                                        languageCode: 'en-US',
+                                        enableSpeakerDiarization: true,
+                                        diarizationSpeakerCount: maxSpeakers
+                                      };
+                                      streamingSpeech.startStreaming(options);
+                                    }
+                                  }}
+                                  className="flex items-center gap-2"
+                                >
+                                  {streamingSpeech.isStreaming ? (
+                                    <>
+                                      <Square className="h-4 w-4" />
+                                      Stop Live Transcript
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Mic className="h-4 w-4" />
+                                      Start Live Transcript
+                                    </>
+                                  )}
+                                </Button>
                                 
-                                {/* Interim transcript */}
-                                {streamingSpeech.interimTranscript && (
-                                  <span className="text-gray-500 italic">
-                                    {streamingSpeech.transcript ? ' ' : ''}
-                                    {streamingSpeech.interimTranscript}
-                                  </span>
+                                {streamingSpeech.isStreaming && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={streamingSpeech.clearTranscript}
+                                  >
+                                    Clear
+                                  </Button>
                                 )}
                               </div>
-                            </div>
-                            
-                            {/* Confidence and speaker info */}
-                            <div className="flex justify-between items-center mt-2 text-xs text-gray-500">
-                              {streamingSpeech.confidence && (
-                                <span>Confidence: {Math.round(streamingSpeech.confidence * 100)}%</span>
-                              )}
-                              {streamingSpeech.speakerId && (
-                                <span>Speaker: {streamingSpeech.speakerId}</span>
-                              )}
-                            </div>
 
-                            {/* Button to add live transcript to meeting */}
-                            {streamingSpeech.transcript && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="mt-2 w-full"
-                                onClick={() => {
-                                  // Add the live transcript to the meeting transcript
-                                  const newLine: TranscriptLine = {
-                                    id: Date.now().toString(),
-                                    speakerId: streamingSpeech.speakerId || currentSpeakerId,
-                                    text: streamingSpeech.transcript
-                                  };
+                              {/* Live transcript display */}
+                              {(streamingSpeech.transcript || streamingSpeech.interimTranscript) && (
+                                <div className="w-full max-w-2xl">
+                                  <div className="p-3 border rounded bg-white min-h-[100px] max-h-[200px] overflow-y-auto">
+                                    <div className="text-sm">
+                                      {/* Final transcript */}
+                                      {streamingSpeech.transcript && (
+                                        <span className="text-gray-900">
+                                          {streamingSpeech.transcript}
+                                        </span>
+                                      )}
+                                      
+                                      {/* Interim transcript */}
+                                      {streamingSpeech.interimTranscript && (
+                                        <span className="text-gray-500 italic">
+                                          {streamingSpeech.transcript ? ' ' : ''}
+                                          {streamingSpeech.interimTranscript}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                   
-                                  setTranscriptLines(prev => [...prev, newLine]);
-                                  
-                                  // Clear the live transcript
-                                  streamingSpeech.clearTranscript();
-                                  
-                                  toast.success('Live transcript added to meeting');
-                                }}
-                              >
-                                Add to Meeting Transcript
-                              </Button>
-                            )}
-                          </div>
-                        )}
+                                  {/* Confidence and speaker info */}
+                                  <div className="flex justify-between items-center mt-2 text-xs text-gray-500">
+                                    {streamingSpeech.confidence && (
+                                      <span>Confidence: {Math.round(streamingSpeech.confidence * 100)}%</span>
+                                    )}
+                                    {streamingSpeech.speakerId && (
+                                      <span>Speaker: {streamingSpeech.speakerId}</span>
+                                    )}
+                                  </div>
 
-                        {/* Error display */}
-                        {streamingSpeech.error && (
-                          <div className="text-red-600 text-sm text-center">
-                            Error: {streamingSpeech.error.message}
-                          </div>
+                                  {/* Button to add live transcript to meeting */}
+                                  {streamingSpeech.transcript && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="mt-2 w-full"
+                                      onClick={() => {
+                                        // Add the live transcript to the meeting transcript
+                                        const newLine: TranscriptLine = {
+                                          id: Date.now().toString(),
+                                          speakerId: streamingSpeech.speakerId || currentSpeakerId,
+                                          text: streamingSpeech.transcript
+                                        };
+                                        
+                                        setTranscriptLines(prev => [...prev, newLine]);
+                                        
+                                        // Clear the live transcript
+                                        streamingSpeech.clearTranscript();
+                                        
+                                        toast.success('Live transcript added to meeting');
+                                      }}
+                                    >
+                                      Add to Meeting Transcript
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Error display */}
+                              {streamingSpeech.error && (
+                                <div className="text-red-600 text-sm text-center">
+                                  Error: {streamingSpeech.error.message}
+                                </div>
+                              )}
+                            </div>
+                          )
                         )}
-                      </div>
+                      </>
                     )}
                   </div>
                 )}

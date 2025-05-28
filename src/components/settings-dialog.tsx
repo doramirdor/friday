@@ -76,6 +76,10 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
       // Reinitialize Gemini service with new API key
       await geminiService.reinitialize()
       
+      // Reinitialize Gemini Live service
+      const geminiLiveService = (await import('@/services/gemini-live')).default;
+      await geminiLiveService.reinitialize();
+      
       toast.success("Gemini API key saved")
     } catch (err) {
       toast.error("Failed to save Gemini API key")
@@ -317,7 +321,7 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
                     <Button onClick={handleGeminiApiKeySave} size="sm">Save</Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Required for AI-powered meeting analysis. Get your API key from{" "}
+                    Required for AI-powered meeting analysis and Gemini Live real-time transcription. Get your API key from{" "}
                     <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline">
                       Google AI Studio
                     </a>
