@@ -1249,17 +1249,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
         type: 'meeting'
       };
       
-      // Try to get existing meeting first to determine if we should create or update
-      const existingMeeting = await DatabaseService.getMeeting(meetingId);
-      
-      if (existingMeeting) {
-        // Meeting exists, update it
-        meetingData._rev = existingMeeting._rev;
-        await DatabaseService.updateMeeting(meetingData);
-      } else {
-        // Meeting doesn't exist, create it
-        await DatabaseService.createMeeting(meetingData);
-      }
+      // Use the new createOrUpdateMeeting function that handles both scenarios gracefully
+      await DatabaseService.createOrUpdateMeeting(meetingData);
       
       // 2. Save transcript lines with required properties
       if (transcriptLines.length > 0) {

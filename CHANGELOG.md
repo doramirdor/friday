@@ -178,6 +178,13 @@ All notable changes to this project will be documented in this file.
   - Maintained auto-save on page unload/visibility change for data safety
 
 ### Fixed
+- **Database Document Update Conflicts**: Fixed "Document update conflict" errors when creating meetings
+  - Enhanced `createMeeting` function to automatically update existing meetings instead of throwing errors
+  - Added `createOrUpdateMeeting` helper function that gracefully handles both create and update scenarios
+  - Fixed race conditions where multiple save operations could conflict when creating the same meeting
+  - Improved conflict resolution to handle concurrent meeting creation attempts
+  - Updated TranscriptDetails component to use the new conflict-resistant meeting save logic
+  - Prevents 409 conflict errors that occurred when auto-save and manual save operations overlapped
 - **Notes Type Safety**: Fixed "notes.replace is not a function" error in TranscriptDetails component
   - Added type checking to ensure notes is always a string before calling string methods
   - Enhanced AI analysis result handling to validate notes field type

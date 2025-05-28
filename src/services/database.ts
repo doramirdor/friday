@@ -528,7 +528,15 @@ const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
     if (meeting._id) {
       const existing = await getMeeting(meeting._id);
       if (existing) {
-        throw new Error(`Meeting with ID ${meeting._id} already exists. Use updateMeeting instead.`);
+        // If meeting already exists, update it instead of throwing an error
+        console.log(`Meeting ${meeting._id} already exists, updating instead of creating`);
+        const updatedMeeting = {
+          ...meeting,
+          _rev: existing._rev,
+          createdAt: existing.createdAt, // Preserve original creation time
+          updatedAt: now
+        };
+        return await updateMeeting(updatedMeeting);
       }
     }
     
@@ -543,9 +551,29 @@ const createMeeting = async (meeting: Meeting): Promise<Meeting> => {
       type: 'meeting'
     };
 
-    // Use direct put instead of handleConflicts for creation to avoid duplicates
-    const response = await meetingsDb.put(docToSave);
-    return { ...docToSave, _rev: response.rev };
+    try {
+      // Use direct put instead of handleConflicts for creation to avoid duplicates
+      const response = await meetingsDb.put(docToSave);
+      return { ...docToSave, _rev: response.rev };
+    } catch (putError) {
+      // If we get a conflict error, the document was created by another process
+      // Try to get the existing document and update it instead
+      if ((putError as { status?: number }).status === 409) {
+        console.log(`Conflict creating meeting ${uniqueId}, attempting to update existing document`);
+        const existing = await getMeeting(uniqueId);
+        if (existing) {
+          const updatedMeeting = {
+            ...meeting,
+            _id: uniqueId,
+            _rev: existing._rev,
+            createdAt: existing.createdAt, // Preserve original creation time
+            updatedAt: now
+          };
+          return await updateMeeting(updatedMeeting);
+        }
+      }
+      throw putError;
+    }
   } catch (error) {
     console.error('Error creating meeting:', error);
     throw error;
@@ -581,6 +609,37 @@ const updateMeeting = async (meeting: Meeting): Promise<Meeting> => {
     return await handleConflicts(meetingsDb, docToSave);
   } catch (error) {
     console.error('Error updating meeting:', error);
+    throw error;
+  }
+};
+
+// Helper function that handles both create and update scenarios gracefully
+const createOrUpdateMeeting = async (meeting: Meeting): Promise<Meeting> => {
+  try {
+    await ensureDatabaseInitialized();
+    
+    if (!meeting._id) {
+      throw new Error('Meeting ID is required');
+    }
+
+    // Try to get existing meeting first
+    const existing = await getMeeting(meeting._id);
+    
+    if (existing) {
+      // Meeting exists, update it
+      const updatedMeeting = {
+        ...meeting,
+        _rev: existing._rev,
+        createdAt: existing.createdAt, // Preserve original creation time
+        updatedAt: new Date().toISOString()
+      };
+      return await updateMeeting(updatedMeeting);
+    } else {
+      // Meeting doesn't exist, create it
+      return await createMeeting(meeting);
+    }
+  } catch (error) {
+    console.error('Error creating or updating meeting:', error);
     throw error;
   }
 };
@@ -1574,6 +1633,7 @@ export const DatabaseService = {
   createMeeting,
   getMeeting,
   updateMeeting,
+  createOrUpdateMeeting,
   deleteMeeting,
   getAllMeetings,
   getMeetingsList,
