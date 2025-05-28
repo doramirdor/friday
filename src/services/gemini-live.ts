@@ -24,6 +24,9 @@ if (typeof window !== 'undefined') {
       });
     }
   });
+  
+  // Add additional monitoring for any crashes
+  console.log('🔍 GLOBAL: Gemini Live global error handlers installed');
 }
 
 // Interface for Gemini Live streaming results
@@ -249,6 +252,28 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       
       crashDetector.log('success', { timeElapsed: Date.now() - crashDetector.startTime });
       console.log('✅ Gemini Live streaming started successfully');
+
+      // Add immediate post-startup monitoring
+      console.log('🔍 POST-STARTUP: Service initialized successfully, starting monitoring...');
+      
+      // Check service state every 500ms for the first 10 seconds
+      let monitoringCount = 0;
+      const monitoringInterval = setInterval(() => {
+        monitoringCount++;
+        console.log(`🔍 POST-STARTUP MONITOR #${monitoringCount}:`, {
+          isStreaming: this._isStreaming,
+          websocketState: this.websocket?.readyState,
+          audioContextState: this.audioContext?.state,
+          processingIntervalActive: !!this.processingInterval,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Stop monitoring after 20 checks (10 seconds)
+        if (monitoringCount >= 20) {
+          clearInterval(monitoringInterval);
+          console.log('🔍 POST-STARTUP: Monitoring completed - service appears stable');
+        }
+      }, 500);
     } catch (error) {
       crashDetector.error(crashDetector.step, error);
       console.error('❌ Failed to start Gemini Live streaming:', error);
@@ -532,6 +557,28 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
               
               console.log('🔗 WebSocket setup complete, resolving promise');
               resolve();
+              
+              // Add immediate post-startup monitoring
+              console.log('🔍 POST-STARTUP: Service initialized successfully, starting monitoring...');
+              
+              // Check service state every 500ms for the first 10 seconds
+              let monitoringCount = 0;
+              const monitoringInterval = setInterval(() => {
+                monitoringCount++;
+                console.log(`🔍 POST-STARTUP MONITOR #${monitoringCount}:`, {
+                  isStreaming: this._isStreaming,
+                  websocketState: this.websocket?.readyState,
+                  audioContextState: this.audioContext?.state,
+                  processingIntervalActive: !!this.processingInterval,
+                  timestamp: new Date().toISOString()
+                });
+                
+                // Stop monitoring after 20 checks (10 seconds)
+                if (monitoringCount >= 20) {
+                  clearInterval(monitoringInterval);
+                  console.log('🔍 POST-STARTUP: Monitoring completed - service appears stable');
+                }
+              }, 500);
             } catch (setupError) {
               console.error('🚨 CRASH in WebSocket onopen handler:', {
                 error: setupError.message,
@@ -1210,6 +1257,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Handle setup complete
       if (response.setupComplete) {
         console.log('🔗 Gemini Live setup completed');
+        console.log('🔗 Setup completion received - API is ready for audio input');
         return;
       }
 
