@@ -104,6 +104,13 @@ All notable changes to this project will be documented in this file.
   - Improved error handling with detailed error messages and installation instructions
   - Added better error reporting for missing audio recording dependencies
   - Enhanced recording stream validation and automatic fallback on failure
+- **Gemini Live Stability**: Replaced crashing Gemini Live with stable semi-live implementation
+  - Created new GeminiSemiLiveTranscript component to replace unstable WebSocket-based Gemini Live
+  - Implemented chunk-based audio processing using Gemini 2.0 Flash REST API instead of WebSocket streaming
+  - Added configurable chunk duration (3-10 seconds) for optimal balance between latency and stability
+  - Maintained speaker diarization and real-time transcription capabilities
+  - Improved error handling and recovery from API failures
+  - Preserved existing interface compatibility for seamless component replacement
 
 ### Added
 - **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API

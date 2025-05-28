@@ -33,8 +33,8 @@ import AudioPlayer from "@/components/AudioPlayer";
 import { useStreamingSpeech } from '@/hooks/useStreamingSpeech';
 import { SemiLiveSpeechOptions } from '@/services/semi-live-speech';
 import { Switch } from "@/components/ui/switch";
-import GeminiLiveTranscript from '@/components/GeminiLiveTranscript';
-import { useGeminiLive } from '@/hooks/useGeminiLive';
+import GeminiSemiLiveTranscript from '@/components/GeminiSemiLiveTranscript';
+import { useGeminiSemiLive } from '@/hooks/useGeminiSemiLive';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
 // Simple debounce function
@@ -189,7 +189,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const streamingSpeech = useStreamingSpeech();
   
   // Add Gemini Live hook
-  const geminiLive = useGeminiLive();
+  const geminiLive = useGeminiSemiLive();
   
   // Determine which speech recognition method to use
   const speech = isElectron ? googleSpeech : webSpeech;
@@ -1865,7 +1865,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                     {isLiveTranscript && (
                       <>
                         {isGeminiLiveMode ? (
-                          <GeminiLiveTranscript
+                          <GeminiSemiLiveTranscript
                             maxSpeakers={maxSpeakers}
                             onTranscriptAdd={handleAddGeminiTranscript}
                             className="mb-4"
