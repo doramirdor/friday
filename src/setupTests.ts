@@ -2,9 +2,21 @@
 import '@testing-library/jest-dom';
 
 // Mock Web APIs that aren't available in Jest environment
-global.WebSocket = jest.fn();
-global.AudioContext = jest.fn();
-global.MediaRecorder = jest.fn();
+(global as any).WebSocket = jest.fn().mockImplementation(() => ({
+  CONNECTING: 0,
+  OPEN: 1,
+  CLOSING: 2,
+  CLOSED: 3,
+  readyState: 1,
+  send: jest.fn(),
+  close: jest.fn(),
+  addEventListener: jest.fn(),
+  removeEventListener: jest.fn(),
+}));
+
+(global as any).AudioContext = jest.fn();
+(global as any).MediaRecorder = jest.fn();
+(global as any).MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
 
 // Mock navigator.mediaDevices
 Object.defineProperty(global.navigator, 'mediaDevices', {

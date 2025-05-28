@@ -6,7 +6,7 @@
  * Run with: node test-gemini-live.js
  */
 
-import { geminiLiveService } from './src/services/gemini-live.js';
+import { geminiLiveService } from './src/services/gemini-live.ts';
 
 // Test configuration
 const TEST_TIMEOUT = 10000; // 10 seconds

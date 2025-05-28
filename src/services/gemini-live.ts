@@ -85,7 +85,6 @@ export interface GeminiLiveService {
 
 class GeminiLiveServiceImpl implements GeminiLiveService {
   private websocket: WebSocket | null = null;
-  private mediaRecorder: MediaRecorder | null = null;
   private audioStream: MediaStream | null = null;
   private resultCallback: ((result: GeminiLiveResult) => void) | null = null;
   private errorCallback: ((error: Error) => void) | null = null;
@@ -108,7 +107,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     try {
       // Check if we have the necessary APIs
       const hasWebSocket = typeof WebSocket !== 'undefined';
-      const hasMediaRecorder = typeof MediaRecorder !== 'undefined';
+      const hasAudioContext = typeof AudioContext !== 'undefined';
       const hasGetUserMedia = !!(navigator.mediaDevices?.getUserMedia);
 
       // Get API key from various sources
@@ -119,12 +118,12 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       
       this.apiKey = envApiKey || settingsApiKey || localStorageApiKey;
 
-      this._isAvailable = hasWebSocket && hasMediaRecorder && hasGetUserMedia && !!this.apiKey;
+      this._isAvailable = hasWebSocket && hasAudioContext && hasGetUserMedia && !!this.apiKey;
 
       if (!this._isAvailable) {
         console.warn('Gemini Live not available:', {
           hasWebSocket,
-          hasMediaRecorder,
+          hasAudioContext,
           hasGetUserMedia,
           hasApiKey: !!this.apiKey
         });
@@ -214,9 +213,9 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       
       processor.onaudioprocess = (event) => {
         const inputBuffer = event.inputBuffer;
-        const inputData = inputBuffer.getChannelData(0); // Get mono channel
+        const inputData = inputBuffer.getChannelData(0); // Get mono channel (Float32Array)
         
-        // Convert Float32 to 16-bit PCM
+        // Convert Float32Array to 16-bit PCM
         const pcmData = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           const sample = Math.max(-1, Math.min(1, inputData[i]));
