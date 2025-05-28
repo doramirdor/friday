@@ -909,6 +909,15 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       
       console.log('🎵 Audio processing prerequisites validated');
       
+      // Try a simplified approach first
+      const simplifiedMode = true; // Set to false to use original complex approach
+      
+      if (simplifiedMode) {
+        console.log('🎵 Using simplified audio processing approach...');
+        this.startSimplifiedAudioProcessing();
+        return;
+      }
+      
       let intervalCount = 0;
       
       console.log('🎵 Setting up audio processing interval...');
@@ -983,6 +992,102 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       
       // Re-throw the error so the calling function can handle it
       throw new Error(`Audio processing setup failed: ${audioProcessingError.message}`);
+    }
+  }
+
+  private startSimplifiedAudioProcessing(): void {
+    console.log('🎵 SIMPLIFIED: Starting simplified audio processing...');
+    
+    try {
+      // Instead of complex intervals, process audio immediately when it's available
+      let audioEventCount = 0;
+      let lastAudioSent = 0;
+      const SEND_INTERVAL_MS = 1000; // Send audio every 1 second
+      
+      // Set up a simple timer to check for audio and send it
+      const simpleProcessor = window.setInterval(() => {
+        try {
+          const now = Date.now();
+          
+          // Only process if we have audio and enough time has passed
+          if (this.audioAccumulationBuffer.length > 0 && 
+              (now - lastAudioSent) >= SEND_INTERVAL_MS) {
+            
+            console.log(`🎵 SIMPLIFIED: Processing ${this.audioAccumulationBuffer.length} audio chunks`);
+            
+            // Move all accumulated audio to processing buffer
+            const chunksToProcess = [...this.audioAccumulationBuffer];
+            this.audioAccumulationBuffer = [];
+            lastAudioSent = now;
+            
+            // Process immediately
+            this.processAudioChunksSimplified(chunksToProcess);
+          }
+          
+          // Log audio event count every 10 seconds
+          if (audioEventCount % 100 === 0) {
+            console.log(`🎵 SIMPLIFIED: Audio events received: ${audioEventCount}, buffer size: ${this.audioAccumulationBuffer.length}`);
+          }
+          audioEventCount++;
+          
+        } catch (processingError) {
+          console.error('🚨 SIMPLIFIED: Error in audio processing:', processingError);
+        }
+      }, 100); // Check every 100ms
+      
+      // Store the interval for cleanup
+      this.processingInterval = simpleProcessor;
+      
+      console.log('🎵 SIMPLIFIED: Simplified audio processing started');
+      
+    } catch (error) {
+      console.error('🚨 SIMPLIFIED: Failed to start simplified audio processing:', error);
+      throw error;
+    }
+  }
+
+  private async processAudioChunksSimplified(chunks: Blob[]): Promise<void> {
+    console.log('🎵 SIMPLIFIED: Processing audio chunks directly...');
+    
+    if (chunks.length === 0 || !this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      console.log('🎵 SIMPLIFIED: Skipping - no chunks or websocket not ready');
+      return;
+    }
+
+    try {
+      console.log(`🎵 SIMPLIFIED: Processing ${chunks.length} chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
+
+      // Combine all chunks into one buffer
+      const totalSize = chunks.reduce((sum, chunk) => sum + chunk.size, 0);
+      const combinedBuffer = new ArrayBuffer(totalSize);
+      const combinedView = new Uint8Array(combinedBuffer);
+      
+      let offset = 0;
+      for (const chunk of chunks) {
+        const chunkBuffer = await chunk.arrayBuffer();
+        const chunkView = new Uint8Array(chunkBuffer);
+        combinedView.set(chunkView, offset);
+        offset += chunkView.length;
+      }
+      
+      // Convert to base64
+      const base64Audio = this.arrayBufferToBase64(combinedBuffer);
+      
+      // Send to API
+      const message = {
+        realtimeInput: {
+          audio: {
+            data: base64Audio,
+            mimeType: "audio/pcm;rate=16000"
+          }
+        }
+      };
+
+      this.websocket.send(JSON.stringify(message));
+      console.log(`🎵 SIMPLIFIED: Sent ${base64Audio.length} characters of audio data`);
+      
+    } catch (error) {
+      console.error('🚨 SIMPLIFIED: Error processing audio chunks:', error);
     }
   }
 
