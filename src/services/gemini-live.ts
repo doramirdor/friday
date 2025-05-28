@@ -185,6 +185,13 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   async startStreaming(options: GeminiLiveOptions = {}): Promise<void> {
     console.log('🚀 GEMINI LIVE: Starting streaming with crash detection...');
     
+    // Add a simple test mode flag
+    const testMode = localStorage.getItem('gemini-live-test-mode') === 'true';
+    if (testMode) {
+      console.log('🧪 TEST MODE: Starting simplified Gemini Live test...');
+      return this.startTestMode(options);
+    }
+    
     // Add comprehensive crash detection
     const crashDetector = {
       step: 'initialization',
@@ -1336,7 +1343,90 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     }
   }
 
+  // Simplified test mode for debugging
+  private async startTestMode(options: GeminiLiveOptions = {}): Promise<void> {
+    console.log('🧪 TEST MODE: Starting simplified WebSocket test...');
+    
+    try {
+      if (!this._isAvailable) {
+        throw new Error('Gemini Live service is not available');
+      }
 
+      if (!this.apiKey) {
+        throw new Error('Gemini API key not configured');
+      }
+
+      console.log('🧪 TEST MODE: Creating WebSocket connection...');
+      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${this.apiKey}`;
+      
+      this.websocket = new WebSocket(wsUrl);
+      
+      return new Promise((resolve, reject) => {
+        if (!this.websocket) {
+          reject(new Error('Failed to create WebSocket'));
+          return;
+        }
+
+        this.websocket.onopen = () => {
+          console.log('🧪 TEST MODE: WebSocket connected');
+          
+          // Send simple setup message
+          const setupMessage = {
+            setup: {
+              model: "models/gemini-2.0-flash-live-001",
+              generationConfig: {
+                responseModalities: ["TEXT"]
+              }
+            }
+          };
+          
+          console.log('🧪 TEST MODE: Sending setup message...');
+          this.websocket!.send(JSON.stringify(setupMessage));
+          
+          this._isStreaming = true;
+          console.log('🧪 TEST MODE: Setup complete');
+          resolve();
+        };
+
+        this.websocket.onmessage = (event) => {
+          console.log('🧪 TEST MODE: Received message:', event.data);
+          
+          try {
+            const response = JSON.parse(event.data);
+            if (response.setupComplete) {
+              console.log('🧪 TEST MODE: Setup completed by API');
+            }
+            if (response.error) {
+              console.error('🧪 TEST MODE: API error:', response.error);
+            }
+          } catch (parseError) {
+            console.warn('🧪 TEST MODE: Could not parse message:', parseError);
+          }
+        };
+
+        this.websocket.onerror = (error) => {
+          console.error('🧪 TEST MODE: WebSocket error:', error);
+          reject(new Error('WebSocket connection failed'));
+        };
+
+        this.websocket.onclose = (event) => {
+          console.log('🧪 TEST MODE: WebSocket closed:', event.code, event.reason);
+          this._isStreaming = false;
+        };
+
+        // Set timeout
+        setTimeout(() => {
+          if (this.websocket?.readyState === WebSocket.CONNECTING) {
+            reject(new Error('Connection timeout'));
+          }
+        }, 10000);
+      });
+      
+    } catch (error) {
+      console.error('🧪 TEST MODE: Error:', error);
+      throw error;
+    }
+  }
 
   stopStreaming(): void {
     if (!this._isStreaming) {
