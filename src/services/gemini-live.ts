@@ -1416,19 +1416,46 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           resolve();
         };
 
-        this.websocket.onmessage = (event) => {
+        this.websocket.onmessage = async (event) => {
           console.log('🧪 TEST MODE: Received message:', event.data);
           
           try {
-            const response = JSON.parse(event.data);
+            let messageText: string;
+            
+            // Handle different data types
+            if (typeof event.data === 'string') {
+              messageText = event.data;
+              console.log('🧪 TEST MODE: Message is string, length:', event.data.length);
+            } else if (event.data instanceof Blob) {
+              console.log('🧪 TEST MODE: Message is Blob, converting to text...');
+              messageText = await event.data.text();
+              console.log('🧪 TEST MODE: Blob converted to text, length:', messageText.length);
+            } else {
+              console.warn('🧪 TEST MODE: Unknown message type:', typeof event.data);
+              return;
+            }
+            
+            // Skip empty messages
+            if (!messageText || messageText.trim() === '') {
+              console.log('🧪 TEST MODE: Skipping empty message');
+              return;
+            }
+            
+            console.log('🧪 TEST MODE: Message text:', messageText);
+            
+            const response = JSON.parse(messageText);
             if (response.setupComplete) {
               console.log('🧪 TEST MODE: Setup completed by API');
             }
             if (response.error) {
               console.error('🧪 TEST MODE: API error:', response.error);
             }
+            if (response.serverContent) {
+              console.log('🧪 TEST MODE: Server content received:', response.serverContent);
+            }
           } catch (parseError) {
             console.warn('🧪 TEST MODE: Could not parse message:', parseError);
+            console.warn('🧪 TEST MODE: Raw message data:', event.data);
           }
         };
 
