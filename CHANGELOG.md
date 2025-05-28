@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Gemini Live API Audio Architecture**: Completely redesigned audio capture to eliminate WebM decoding failures
+  - Replaced MediaRecorder with Web Audio API for direct PCM audio capture
+  - Eliminated problematic WebM-to-PCM conversion that was causing "Unable to decode audio data" errors
+  - Implemented ScriptProcessorNode to capture raw 16-bit PCM audio directly from microphone
+  - Removed convertToPCM method entirely - no longer needed with direct PCM capture
+  - Fixed all audio decoding issues by bypassing WebM format completely
+  - Audio data now flows: Microphone → Web Audio API → Raw PCM → Base64 → Gemini Live API
+  - Significantly improved reliability and reduced audio processing complexity
+  - Maintains 16kHz sample rate and mono channel as required by Gemini Live API
 - **Gemini Live API Audio Decoding**: Fixed WebM chunk decoding failure in PCM conversion
   - Implemented audio accumulation buffer to collect WebM chunks over 500ms intervals
   - Fixed "Unable to decode audio data" error by ensuring sufficient audio data for decoding

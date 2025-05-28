@@ -97,6 +97,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   private audioAccumulationBuffer: Blob[] = [];
   private lastProcessTime = 0;
   private readonly ACCUMULATION_TIME_MS = 500;
+  private audioContext: AudioContext | null = null;
+  private audioProcessor: ScriptProcessorNode | null = null;
 
   constructor() {
     this.checkAvailability();
@@ -196,85 +198,70 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         }
       });
 
-      // Create MediaRecorder for audio capture
-      // We'll record in WebM and convert to PCM for the API
-      const supportedMimeTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/mp4',
-        'audio/ogg;codecs=opus'
-      ];
-
-      let selectedMimeType = '';
-      for (const mimeType of supportedMimeTypes) {
-        if (MediaRecorder.isTypeSupported(mimeType)) {
-          selectedMimeType = mimeType;
-          console.log(`✅ Selected recording format: ${mimeType} (will convert to PCM for API)`);
-          break;
-        }
-      }
-
-      if (!selectedMimeType) {
-        throw new Error('No supported audio format found for recording');
-      }
-
-      this.mediaRecorder = new MediaRecorder(this.audioStream, {
-        mimeType: selectedMimeType,
-        audioBitsPerSecond: 128000 // Good quality for speech
+      // Instead of using MediaRecorder, use Web Audio API to capture raw PCM data directly
+      // This eliminates the need for WebM-to-PCM conversion
+      const audioContext = new AudioContext({
+        sampleRate: 16000 // Match Gemini Live API requirements
       });
 
-      this.audioChunksBuffer = [];
-
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          console.log(`🎤 Audio chunk received: ${event.data.size} bytes, type: ${event.data.type}`);
-          // Add to accumulation buffer instead of immediate processing
-          this.audioAccumulationBuffer.push(event.data);
-        } else {
-          console.log('🎤 Empty audio chunk received');
+      const source = audioContext.createMediaStreamSource(this.audioStream);
+      
+      // Create a ScriptProcessorNode to capture raw audio data
+      // Note: ScriptProcessorNode is deprecated but still widely supported
+      // We'll use it for now as AudioWorklet requires more complex setup
+      const bufferSize = 4096; // Process in 4KB chunks
+      const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+      
+      processor.onaudioprocess = (event) => {
+        const inputBuffer = event.inputBuffer;
+        const inputData = inputBuffer.getChannelData(0); // Get mono channel
+        
+        // Convert Float32 to 16-bit PCM
+        const pcmData = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          const sample = Math.max(-1, Math.min(1, inputData[i]));
+          pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
         }
+        
+        // Add PCM data directly to accumulation buffer
+        const pcmBlob = new Blob([pcmData.buffer]);
+        this.audioAccumulationBuffer.push(pcmBlob);
+        
+        console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes`);
       };
+      
+      // Connect the audio processing chain
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+      
+      // Store references for cleanup
+      this.audioContext = audioContext;
+      this.audioProcessor = processor;
 
-      this.mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-        if (this.errorCallback) {
-          this.errorCallback(new Error('Microphone recording error'));
-        }
-      };
-
-      // Start recording with small time slices for near real-time streaming
-      this.mediaRecorder.start(100); // 100ms chunks
-
-      console.log('🎤 Microphone capture started at 16kHz for Gemini Live API');
-      console.log('🎤 MediaRecorder state:', this.mediaRecorder.state);
-      console.log('🎤 MediaRecorder mimeType:', this.mediaRecorder.mimeType);
-      console.log('🎤 Selected MIME type:', selectedMimeType);
+      console.log('🎤 Direct PCM capture started at 16kHz for Gemini Live API');
+      console.log('🎤 AudioContext sample rate:', audioContext.sampleRate);
       
       // Add a test to see if we're getting audio levels
-      if (this.audioStream) {
-        const audioContext = new AudioContext();
-        const analyser = audioContext.createAnalyser();
-        const source = audioContext.createMediaStreamSource(this.audioStream);
-        source.connect(analyser);
-        
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        const checkAudioLevel = () => {
-          analyser.getByteFrequencyData(dataArray);
-          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-          if (average > 0) {
-            console.log('🔊 Audio level detected:', average);
-          }
-        };
-        
-        // Check audio level every 2 seconds for debugging
-        const levelCheckInterval = setInterval(checkAudioLevel, 2000);
-        
-        // Clean up after 10 seconds
-        setTimeout(() => {
-          clearInterval(levelCheckInterval);
-          audioContext.close();
-        }, 10000);
-      }
+      const analyser = audioContext.createAnalyser();
+      source.connect(analyser);
+      
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const checkAudioLevel = () => {
+        analyser.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        if (average > 0) {
+          console.log('🔊 Audio level detected:', average);
+        }
+      };
+      
+      // Check audio level every 2 seconds for debugging
+      const levelCheckInterval = setInterval(checkAudioLevel, 2000);
+      
+      // Clean up after 10 seconds
+      setTimeout(() => {
+        clearInterval(levelCheckInterval);
+      }, 10000);
+      
     } catch (error) {
       console.error('Failed to start microphone capture:', error);
       throw new Error(`Microphone access failed: ${error.message}`);
@@ -477,16 +464,24 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       const chunks = [...this.audioChunksBuffer];
       this.audioChunksBuffer = [];
 
-      console.log(`🎵 Processing ${chunks.length} accumulated audio chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
+      console.log(`🎵 Processing ${chunks.length} accumulated PCM chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
 
-      // Convert accumulated chunks to a single blob - this should be large enough to decode
-      const audioBlob = new Blob(chunks);
+      // Convert accumulated PCM chunks to a single ArrayBuffer
+      // Since we're now capturing raw PCM data, no conversion is needed
+      const totalSize = chunks.reduce((sum, chunk) => sum + chunk.size, 0);
+      const combinedBuffer = new ArrayBuffer(totalSize);
+      const combinedView = new Uint8Array(combinedBuffer);
       
-      // Convert WebM audio to PCM format as required by Gemini Live API
-      const pcmData = await this.convertToPCM(audioBlob);
+      let offset = 0;
+      for (const chunk of chunks) {
+        const chunkBuffer = await chunk.arrayBuffer();
+        const chunkView = new Uint8Array(chunkBuffer);
+        combinedView.set(chunkView, offset);
+        offset += chunkView.length;
+      }
       
       // Convert PCM data to base64 as required by Live API
-      const base64Audio = this.arrayBufferToBase64(pcmData);
+      const base64Audio = this.arrayBufferToBase64(combinedBuffer);
 
       // Send realtime input to Gemini Live API using PCM format
       const message = {
@@ -499,53 +494,14 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       };
 
       this.websocket.send(JSON.stringify(message));
-      console.log(`📤 Sent PCM audio chunk: ${base64Audio.length} characters (${pcmData.byteLength} bytes) as audio/pcm;rate=16000`);
+      console.log(`📤 Sent raw PCM audio chunk: ${base64Audio.length} characters (${combinedBuffer.byteLength} bytes) as audio/pcm;rate=16000`);
       
       // Add a small delay to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, 10));
 
     } catch (error) {
-      console.error('Error processing accumulated audio chunks:', error);
-      // If conversion fails, we'll try again with the next batch
-    }
-  }
-
-  private async convertToPCM(audioBlob: Blob): Promise<ArrayBuffer> {
-    try {
-      // Create audio context for conversion
-      const audioContext = new AudioContext({
-        sampleRate: 16000 // Gemini Live API expects 16kHz
-      });
-
-      // Convert blob to array buffer
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      
-      console.log(`🔄 Attempting to decode ${arrayBuffer.byteLength} bytes of accumulated WebM audio`);
-      
-      // Decode the audio data (WebM/Opus to raw audio)
-      // This should work now because we have accumulated enough data to form a decodable segment
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
-      // Get the audio data as Float32Array
-      const channelData = audioBuffer.getChannelData(0); // Use first channel (mono)
-      
-      // Convert Float32 to 16-bit PCM
-      const pcmData = new Int16Array(channelData.length);
-      for (let i = 0; i < channelData.length; i++) {
-        // Convert from [-1, 1] float to [-32768, 32767] int16
-        const sample = Math.max(-1, Math.min(1, channelData[i]));
-        pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-      }
-      
-      console.log(`✅ Successfully converted ${arrayBuffer.byteLength} bytes WebM to ${pcmData.byteLength} bytes PCM`);
-      
-      // Close audio context to free resources
-      await audioContext.close();
-      
-      return pcmData.buffer;
-    } catch (error) {
-      console.error('Error converting accumulated audio to PCM:', error);
-      throw new Error(`Audio conversion failed: ${error.message}`);
+      console.error('Error processing accumulated PCM chunks:', error);
+      // If processing fails, we'll try again with the next batch
     }
   }
 
@@ -682,11 +638,16 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       this.processingInterval = null;
     }
 
-    // Stop media recorder
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop();
+    // Clean up Web Audio API resources
+    if (this.audioProcessor) {
+      this.audioProcessor.disconnect();
+      this.audioProcessor = null;
     }
-    this.mediaRecorder = null;
+    
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
 
     // Stop audio stream
     if (this.audioStream) {
