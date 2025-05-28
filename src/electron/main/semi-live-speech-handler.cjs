@@ -7,6 +7,8 @@ const recorder = require('node-record-lpcm16');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
+const { promisify } = require('util');
 
 class SemiLiveSpeechHandler {
   constructor() {
@@ -52,6 +54,12 @@ class SemiLiveSpeechHandler {
         throw new Error('No Google Cloud Speech API key found. Please set GOOGLE_SPEECH_API_KEY environment variable.');
       }
 
+      // Check system recording capabilities
+      const systemCheck = await this.checkSystemRecordingCapabilities();
+      if (!systemCheck.success) {
+        throw new Error(systemCheck.error);
+      }
+
       const {
         sampleRateHertz = 16000,
         languageCode = 'en-US',
@@ -73,24 +81,43 @@ class SemiLiveSpeechHandler {
         audioChannelCount: 1
       };
 
-      // Start recording
-      this.recordingProcess = recorder
-        .record({
-          sampleRateHertz: sampleRateHertz,
-          threshold: 0,
-          silence: '0.5',
-          verbose: false,
-          recordProgram: 'rec', // Use SoX for better compatibility
-        })
-        .stream()
-        .on('error', (error) => {
-          console.error('Recording error:', error);
-          event.sender.send('semi-live-speech:error', `Recording error: ${error.message}`);
-          this.cleanup();
-        })
-        .on('data', (chunk) => {
-          this.audioChunks.push(chunk);
-        });
+      // Start recording with fallback options
+      const recordingOptions = {
+        sampleRateHertz: sampleRateHertz,
+        threshold: 0,
+        silence: '0.5',
+        verbose: false,
+        recordProgram: 'rec', // Use SoX for better compatibility
+      };
+
+      // Try to start recording with error handling
+      try {
+        this.recordingProcess = recorder
+          .record(recordingOptions)
+          .stream()
+          .on('error', (error) => {
+            const errorMessage = error?.message || error?.toString() || 'Unknown recording error';
+            console.error('Recording error:', errorMessage);
+            
+            // Try fallback recording method
+            this.tryFallbackRecording(event, sampleRateHertz);
+          })
+          .on('data', (chunk) => {
+            this.audioChunks.push(chunk);
+          });
+
+        // Test if the recording stream is working
+        setTimeout(() => {
+          if (this.recordingProcess && !this.recordingProcess.readable) {
+            console.warn('Recording stream not readable, trying fallback...');
+            this.tryFallbackRecording(event, sampleRateHertz);
+          }
+        }, 1000);
+
+      } catch (recordingError) {
+        console.error('Failed to start recording:', recordingError);
+        this.tryFallbackRecording(event, sampleRateHertz);
+      }
 
       // Set up interval to process chunks
       this.chunkInterval = setInterval(() => {
@@ -106,6 +133,122 @@ class SemiLiveSpeechHandler {
       this.cleanup();
       return { success: false, error: error.message };
     }
+  }
+
+  async checkSystemRecordingCapabilities() {
+    const execAsync = promisify(exec);
+
+    try {
+      // Check if we're on macOS and have the necessary permissions
+      if (process.platform === 'darwin') {
+        console.log('🔍 Checking macOS microphone permissions...');
+        // Note: This is a basic check. Full permission checking would require native code.
+      }
+
+      // Check if SoX (rec command) is available
+      try {
+        await execAsync('which rec');
+        console.log('✅ SoX (rec) is available');
+        return { success: true };
+      } catch (error) {
+        console.log('⚠️ SoX (rec) not found, checking alternatives...');
+      }
+
+      // Check if sox command is available
+      try {
+        await execAsync('which sox');
+        console.log('✅ SoX (sox) is available');
+        return { success: true };
+      } catch (error) {
+        console.log('⚠️ SoX (sox) not found, checking alternatives...');
+      }
+
+      // Check if ffmpeg is available
+      try {
+        await execAsync('which ffmpeg');
+        console.log('✅ ffmpeg is available');
+        return { success: true };
+      } catch (error) {
+        console.log('⚠️ ffmpeg not found, checking alternatives...');
+      }
+
+      // Check if arecord is available (Linux)
+      if (process.platform === 'linux') {
+        try {
+          await execAsync('which arecord');
+          console.log('✅ arecord is available');
+          return { success: true };
+        } catch (error) {
+          console.log('⚠️ arecord not found');
+        }
+      }
+
+      // If no recording programs found
+      return {
+        success: false,
+        error: 'No audio recording software found. Please install SoX (recommended) or ffmpeg:\n' +
+               '• macOS: brew install sox\n' +
+               '• Ubuntu/Debian: sudo apt-get install sox\n' +
+               '• Or install ffmpeg: https://ffmpeg.org/download.html'
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: `System check failed: ${error.message}`
+      };
+    }
+  }
+
+  tryFallbackRecording(event, sampleRateHertz) {
+    console.log('🔄 Trying fallback recording methods...');
+    
+    // List of fallback recording programs to try
+    const fallbackPrograms = ['sox', 'arecord', 'ffmpeg'];
+    
+    for (const program of fallbackPrograms) {
+      try {
+        console.log(`🔄 Trying recording with ${program}...`);
+        
+        const fallbackOptions = {
+          sampleRateHertz: sampleRateHertz,
+          threshold: 0,
+          silence: '0.5',
+          verbose: false,
+          recordProgram: program,
+        };
+
+        this.recordingProcess = recorder
+          .record(fallbackOptions)
+          .stream()
+          .on('error', (error) => {
+            const errorMessage = error?.message || error?.toString() || 'Unknown recording error';
+            console.error(`Recording error with ${program}:`, errorMessage);
+            
+            // If this was the last fallback, send error to renderer
+            if (program === fallbackPrograms[fallbackPrograms.length - 1]) {
+              event.sender.send('semi-live-speech:error', `Recording failed: ${errorMessage}. Please ensure you have audio recording permissions and SoX/ffmpeg installed.`);
+              this.cleanup();
+            }
+          })
+          .on('data', (chunk) => {
+            this.audioChunks.push(chunk);
+          });
+
+        // If we get here without error, the fallback worked
+        console.log(`✅ Successfully started recording with ${program}`);
+        return;
+        
+      } catch (error) {
+        console.error(`Failed to start recording with ${program}:`, error);
+        continue;
+      }
+    }
+    
+    // If all fallbacks failed
+    console.error('❌ All recording methods failed');
+    event.sender.send('semi-live-speech:error', 'Recording failed: Unable to start audio recording. Please ensure you have audio recording permissions and audio recording software (SoX, ffmpeg, or arecord) installed.');
+    this.cleanup();
   }
 
   async processAudioChunk(event) {

@@ -161,16 +161,16 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     console.log('🔍 CONSTRUCTOR: checkAvailability called');
     
     // Add buffer monitoring for crash prevention
-    if (isDevelopment) {
-      setInterval(() => {
-        debugLog('🔍 BUFFER MONITOR:', {
-          accumulation: this.audioAccumulationBuffer?.length || 0,
-          processing: this.audioChunksBuffer?.length || 0,
-          isStreaming: this._isStreaming,
-          timestamp: new Date().toISOString()
-        });
-      }, 5000);
-    }
+    // if (isDevelopment) {
+    //   setInterval(() => {
+    //     debugLog('🔍 BUFFER MONITOR:', {
+    //       accumulation: this.audioAccumulationBuffer?.length || 0,
+    //       processing: this.audioChunksBuffer?.length || 0,
+    //       isStreaming: this._isStreaming,
+    //       timestamp: new Date().toISOString()
+    //     });
+    //   }, 5000);
+    // }
   }
 
   private async checkAvailability() {

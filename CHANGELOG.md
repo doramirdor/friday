@@ -98,6 +98,12 @@ All notable changes to this project will be documented in this file.
   - Maintained real-time feel by processing audio in 3-second chunks with immediate transcription results
   - Updated UI tooltips to reflect semi-live approach instead of true streaming
   - All existing components continue to work without changes due to maintained interface compatibility
+- **Semi-Live Speech Recording**: Fixed "Recording error: undefined" in semi-live speech recognition
+  - Added comprehensive system check to verify audio recording software availability (SoX, ffmpeg, arecord)
+  - Implemented fallback recording methods to try different recording programs automatically
+  - Improved error handling with detailed error messages and installation instructions
+  - Added better error reporting for missing audio recording dependencies
+  - Enhanced recording stream validation and automatic fallback on failure
 
 ### Added
 - **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API
