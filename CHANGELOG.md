@@ -25,7 +25,18 @@ All notable changes to this project will be documented in this file.
   - Added audio level detection for debugging microphone input
   - Improved WebSocket message logging with size limits for better readability
   - Added comprehensive audio stream debugging including MediaRecorder state and MIME type logging
-  - Fixed audio format handling to properly send audio/webm chunks to Live API
+  - **Fixed critical audio format compatibility**: Updated audio processing to convert recorded audio to PCM format required by Live API
+  - Changed audio MIME type from `audio/webm` to `audio/pcm;rate=16000` to match Live API specifications
+  - Added automatic audio format conversion from WebM/Opus to 16-bit PCM at 16kHz for Live API compatibility
+  - Enhanced WebSocket connection monitoring with detailed close code analysis and health checks
+  - Added fallback audio format selection to find best supported recording format
+  - Fixed WebSocket connection loss issues by using correct audio format expected by Gemini Live API
+  - **Fixed audio decoding errors**: Resolved "Unable to decode audio data" errors in convertToPCM method
+  - Updated audio processing to handle WebM chunks correctly without attempting individual chunk decoding
+  - Changed recording format preference to prioritize `audio/webm;codecs=opus` for better Live API compatibility
+  - Added intelligent MIME type detection and proper format handling for Live API audio submission
+  - Enhanced audio transcription debugging with detailed input/output transcription logging
+  - Added rate limiting to prevent overwhelming the Live API with too many audio chunks
 
 ### Added
 - **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API

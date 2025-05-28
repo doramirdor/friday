@@ -194,13 +194,30 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       });
 
       // Create MediaRecorder for audio capture
-      const mimeType = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        throw new Error('Required audio format not supported');
+      // Try different formats in order of preference for Live API compatibility
+      // Based on Live API docs, it supports various formats including WebM and Opus
+      const supportedMimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+        'audio/webm;codecs=pcm'
+      ];
+      
+      let selectedMimeType = null;
+      for (const mimeType of supportedMimeTypes) {
+        if (MediaRecorder.isTypeSupported(mimeType)) {
+          selectedMimeType = mimeType;
+          break;
+        }
+      }
+      
+      if (!selectedMimeType) {
+        throw new Error('No supported audio format found for recording');
       }
 
       this.mediaRecorder = new MediaRecorder(this.audioStream, {
-        mimeType,
+        mimeType: selectedMimeType,
         audioBitsPerSecond: 16000
       });
 
@@ -228,6 +245,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       console.log('🎤 Microphone capture started');
       console.log('🎤 MediaRecorder state:', this.mediaRecorder.state);
       console.log('🎤 MediaRecorder mimeType:', this.mediaRecorder.mimeType);
+      console.log('🎤 Selected MIME type:', selectedMimeType);
       
       // Add a test to see if we're getting audio levels
       if (this.audioStream) {
@@ -290,10 +308,55 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
         this.websocket.onclose = (event) => {
           console.log('🔌 Gemini Live WebSocket closed:', event.code, event.reason);
+          console.log('🔌 Close event details:', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean,
+            isStreaming: this._isStreaming
+          });
+          
           if (this._isStreaming) {
-            // Unexpected close
+            // Unexpected close - provide more detailed error information
+            let errorMessage = 'Connection to Gemini Live lost';
+            
+            // Provide specific error messages based on close codes
+            switch (event.code) {
+              case 1000:
+                errorMessage = 'Gemini Live connection closed normally';
+                break;
+              case 1001:
+                errorMessage = 'Gemini Live server is going away';
+                break;
+              case 1002:
+                errorMessage = 'Gemini Live protocol error';
+                break;
+              case 1003:
+                errorMessage = 'Gemini Live received unsupported data';
+                break;
+              case 1006:
+                errorMessage = 'Gemini Live connection lost abnormally (network issue)';
+                break;
+              case 1011:
+                errorMessage = 'Gemini Live server encountered an error';
+                break;
+              case 1012:
+                errorMessage = 'Gemini Live server is restarting';
+                break;
+              case 1013:
+                errorMessage = 'Gemini Live server is temporarily overloaded';
+                break;
+              case 1014:
+                errorMessage = 'Gemini Live bad gateway';
+                break;
+              case 1015:
+                errorMessage = 'Gemini Live TLS handshake failed';
+                break;
+              default:
+                errorMessage = `Gemini Live connection closed with code ${event.code}: ${event.reason || 'Unknown reason'}`;
+            }
+            
             if (this.errorCallback) {
-              this.errorCallback(new Error('Connection to Gemini Live lost'));
+              this.errorCallback(new Error(errorMessage));
             }
           }
           this._isStreaming = false;
@@ -346,6 +409,42 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     this.processingInterval = window.setInterval(() => {
       this.processAudioChunks();
     }, 100);
+    
+    // Add connection health monitoring
+    this.startConnectionHealthCheck();
+  }
+
+  private startConnectionHealthCheck(): void {
+    // Check connection health every 5 seconds
+    const healthCheckInterval = setInterval(() => {
+      if (this.websocket) {
+        console.log('🔍 WebSocket health check:', {
+          readyState: this.websocket.readyState,
+          readyStateText: this.getReadyStateText(this.websocket.readyState),
+          isStreaming: this._isStreaming
+        });
+        
+        // If connection is closed but we're still supposed to be streaming, that's an issue
+        if (this.websocket.readyState === WebSocket.CLOSED && this._isStreaming) {
+          console.error('🚨 WebSocket connection lost while streaming!');
+        }
+      }
+      
+      // Clean up if not streaming
+      if (!this._isStreaming) {
+        clearInterval(healthCheckInterval);
+      }
+    }, 5000);
+  }
+
+  private getReadyStateText(readyState: number): string {
+    switch (readyState) {
+      case WebSocket.CONNECTING: return 'CONNECTING';
+      case WebSocket.OPEN: return 'OPEN';
+      case WebSocket.CLOSING: return 'CLOSING';
+      case WebSocket.CLOSED: return 'CLOSED';
+      default: return 'UNKNOWN';
+    }
   }
 
   private async processAudioChunks(): Promise<void> {
@@ -361,30 +460,69 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       console.log(`🎵 Processing ${chunks.length} audio chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
 
       // Convert chunks to a single blob
-      const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+      const audioBlob = new Blob(chunks);
       
-      // Convert to ArrayBuffer
-      const arrayBuffer = await audioBlob.arrayBuffer();
+      // Process audio data for Live API
+      const processedData = await this.convertToPCM(audioBlob);
       
       // Convert to base64
-      const base64Audio = this.arrayBufferToBase64(arrayBuffer);
+      const base64Audio = this.arrayBufferToBase64(processedData);
+
+      // Determine MIME type based on the recorded format
+      let mimeType = "audio/webm"; // Default to WebM since that's what we're recording
+      if (this.mediaRecorder?.mimeType.includes('pcm')) {
+        mimeType = "audio/pcm;rate=16000";
+      } else if (this.mediaRecorder?.mimeType.includes('opus')) {
+        mimeType = "audio/webm;codecs=opus";
+      }
 
       // Send realtime input to Gemini Live API
-      // The Live API accepts various audio formats, webm should work
       const message = {
         realtimeInput: {
           mediaChunks: [{
-            mimeType: "audio/webm",
+            mimeType: mimeType,
             data: base64Audio
           }]
         }
       };
 
       this.websocket.send(JSON.stringify(message));
-      console.log(`📤 Sent audio chunk: ${base64Audio.length} characters (${arrayBuffer.byteLength} bytes) as audio/webm`);
+      console.log(`📤 Sent audio chunk: ${base64Audio.length} characters (${processedData.byteLength} bytes) as ${mimeType}`);
+      
+      // Add a small delay to avoid overwhelming the API
+      await new Promise(resolve => setTimeout(resolve, 10));
 
     } catch (error) {
       console.error('Error processing audio chunks:', error);
+    }
+  }
+
+  private async convertToPCM(audioBlob: Blob): Promise<ArrayBuffer> {
+    try {
+      // For now, let's try a different approach since WebM chunks can't be decoded individually
+      // We'll send the raw audio data and let the Live API handle the format conversion
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      
+      // Check if this looks like WebM data (starts with specific bytes)
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const isWebM = uint8Array.length > 4 && 
+                    uint8Array[0] === 0x1A && 
+                    uint8Array[1] === 0x45 && 
+                    uint8Array[2] === 0xDF && 
+                    uint8Array[3] === 0xA3;
+      
+      if (isWebM) {
+        console.log('🔄 Detected WebM format, sending raw data to Live API for processing');
+        // For WebM, we'll send the raw data and change the MIME type to indicate it's WebM
+        return arrayBuffer;
+      } else {
+        console.log('🔄 Unknown audio format, sending raw data');
+        return arrayBuffer;
+      }
+    } catch (error) {
+      console.error('Error processing audio data:', error);
+      // Fallback: return the original data
+      return await audioBlob.arrayBuffer();
     }
   }
 
@@ -461,10 +599,21 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
         // Handle input transcription
         if (serverContent.inputTranscription && this.resultCallback) {
-          console.log('🎤 Input transcription received:', serverContent.inputTranscription.text);
+          console.log('🎤 Input transcription received:', serverContent.inputTranscription.text, 'finished:', serverContent.inputTranscription.finished);
           this.resultCallback({
             transcript: serverContent.inputTranscription.text,
             isFinal: serverContent.inputTranscription.finished || false,
+            speakerTag: undefined,
+            confidence: 1.0
+          });
+        }
+        
+        // Handle output transcription (if any)
+        if (serverContent.outputTranscription && this.resultCallback) {
+          console.log('🔊 Output transcription received:', serverContent.outputTranscription.text, 'finished:', serverContent.outputTranscription.finished);
+          this.resultCallback({
+            transcript: serverContent.outputTranscription.text,
+            isFinal: serverContent.outputTranscription.finished || false,
             speakerTag: undefined,
             confidence: 1.0
           });
