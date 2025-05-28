@@ -291,6 +291,15 @@ All notable changes to this project will be documented in this file.
   - Test categories and coverage explanation
   - Troubleshooting guide for common issues
   - Performance benchmarks and CI/CD configuration
+- **New Live Transcript Services**: Implemented clean, stable live transcription options
+  - **Gemini Live Transcript**: Fast transcription using Gemini 2.0 Flash with 2-second audio chunks for near real-time results
+  - **Google Live Transcript**: Real-time transcription using Google Cloud Speech-to-Text API with 1-second chunks
+  - **Dual Service UI**: Side-by-side interface allowing users to choose between services or run both simultaneously
+  - **Enhanced Speaker Diarization**: Both services support speaker identification with colored speaker badges
+  - **Configurable Options**: Adjustable chunk duration, language selection, encoding options, and max speaker limits
+  - **Live Transcript Tab**: New dedicated tab in TranscriptDetails for easy access to live transcription features
+  - **Error Handling**: Comprehensive error handling and user feedback for both services
+  - **Modern UI Components**: Clean, responsive design with real-time status indicators and transcript display
 
 ### Changed
 - **Speaker Management UI**: Simplified speaker management by removing manual speaker addition
