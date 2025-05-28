@@ -300,6 +300,12 @@ All notable changes to this project will be documented in this file.
   - **Live Transcript Tab**: New dedicated tab in TranscriptDetails for easy access to live transcription features
   - **Error Handling**: Comprehensive error handling and user feedback for both services
   - **Modern UI Components**: Clean, responsive design with real-time status indicators and transcript display
+- **Google Speech API Live Transcription Setup Documentation**: Added comprehensive setup instructions for enabling Google Cloud Speech-to-Text live transcription
+  - Document steps to configure Google Cloud Speech-to-Text API key in environment variables
+  - Explain GOOGLE_SPEECH_API_KEY environment variable setup and .env file configuration
+  - Add verification steps and troubleshooting guidance for API key issues
+  - Confirm Google Live Transcript service is ready for use with proper API key configuration
+  - Google Live service processes audio in 1-second chunks for near real-time transcription with speaker diarization
 
 ### Changed
 - **Speaker Management UI**: Simplified speaker management by removing manual speaker addition
