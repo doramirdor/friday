@@ -415,6 +415,31 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       
       console.log('🎤 Audio processing test result:', audioTestPassed ? 'PASSED' : 'FAILED');
       
+      // Add diagnostic check for audio processing events
+      setTimeout(() => {
+        console.log('🔍 AUDIO DIAGNOSTIC: Checking if audio events are being triggered...');
+        console.log('🔍 AUDIO DIAGNOSTIC: Audio event count so far:', audioEventCount);
+        console.log('🔍 AUDIO DIAGNOSTIC: Audio context state:', audioContext.state);
+        console.log('🔍 AUDIO DIAGNOSTIC: Audio stream tracks:', this.audioStream?.getTracks().length || 0);
+        
+        if (this.audioStream) {
+          this.audioStream.getTracks().forEach((track, index) => {
+            console.log(`🔍 AUDIO DIAGNOSTIC: Track ${index}:`, {
+              kind: track.kind,
+              enabled: track.enabled,
+              readyState: track.readyState,
+              muted: track.muted
+            });
+          });
+        }
+        
+        if (audioEventCount === 0) {
+          console.warn('⚠️ AUDIO DIAGNOSTIC: No audio events triggered yet - this may indicate an issue with the audio processing chain');
+        } else {
+          console.log('✅ AUDIO DIAGNOSTIC: Audio events are being triggered successfully');
+        }
+      }, 3000);
+      
     } catch (error) {
       console.error('Failed to start microphone capture:', error);
       
@@ -711,6 +736,20 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
         console.log('🔗 ✅ WebSocket connection setup completed successfully');
 
+        // Add diagnostic check for WebSocket messages
+        setTimeout(() => {
+          console.log('🔍 WEBSOCKET DIAGNOSTIC: Checking WebSocket message activity...');
+          console.log('🔍 WEBSOCKET DIAGNOSTIC: Total messages received:', this.messageCount || 0);
+          console.log('🔍 WEBSOCKET DIAGNOSTIC: WebSocket state:', this.websocket?.readyState, this.getReadyStateText(this.websocket?.readyState || -1));
+          
+          if ((this.messageCount || 0) <= 1) {
+            console.warn('⚠️ WEBSOCKET DIAGNOSTIC: Only setup message received - no subsequent API responses');
+            console.warn('⚠️ This may indicate the API is not responding to audio input or there\'s an issue with audio transmission');
+          } else {
+            console.log('✅ WEBSOCKET DIAGNOSTIC: WebSocket is receiving messages from the API');
+          }
+        }, 5000);
+
       } catch (error) {
         console.error('❌ Error creating WebSocket:', error);
         reject(new Error(`Failed to create WebSocket connection: ${error.message}`));
@@ -830,6 +869,29 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       console.log('🎵 ✅ Connection health monitoring started');
       
       console.log('🎵 ✅ Audio processing setup completed successfully');
+      
+      // Add immediate diagnostic check
+      setTimeout(() => {
+        console.log('🔍 DIAGNOSTIC: Checking audio processing state after 2 seconds...');
+        console.log('🔍 DIAGNOSTIC: Processing interval active:', !!this.processingInterval);
+        console.log('🔍 DIAGNOSTIC: Audio context state:', this.audioContext?.state);
+        console.log('🔍 DIAGNOSTIC: Audio processor connected:', !!this.audioProcessor);
+        console.log('🔍 DIAGNOSTIC: Audio stream active:', !!this.audioStream);
+        console.log('🔍 DIAGNOSTIC: Audio accumulation buffer size:', this.audioAccumulationBuffer?.length || 0);
+        console.log('🔍 DIAGNOSTIC: WebSocket state:', this.websocket?.readyState, this.getReadyStateText(this.websocket?.readyState || -1));
+        console.log('🔍 DIAGNOSTIC: Is streaming:', this._isStreaming);
+        
+        // Test if the interval is actually running
+        let testIntervalCount = 0;
+        const testInterval = setInterval(() => {
+          testIntervalCount++;
+          console.log(`🔍 DIAGNOSTIC: Test interval #${testIntervalCount} - intervals are working`);
+          if (testIntervalCount >= 3) {
+            clearInterval(testInterval);
+            console.log('🔍 DIAGNOSTIC: Test interval completed - intervals are functional');
+          }
+        }, 500);
+      }, 2000);
     } catch (audioProcessingError) {
       console.error('🚨 CRASH in startAudioProcessing:', {
         error: audioProcessingError.message,

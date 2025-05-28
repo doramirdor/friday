@@ -105,8 +105,9 @@ class StreamingSpeechServiceImpl implements StreamingSpeechService {
 
     try {
       // Get API key from settings
-      const settings = await DatabaseService.getSettings();
-      if (!settings?.apiKey) {
+      const electronAPIKeys = (window as { electronAPI?: { env?: { GOOGLE_SPEECH_API_KEY?: string } } }).electronAPI;
+      const envApiKey = electronAPIKeys?.env?.GOOGLE_SPEECH_API_KEY;
+      if (!envApiKey) {
         throw new Error('Google Cloud Speech API key not configured. Please add your Google Cloud Speech API key in Settings → Transcription.');
       }
 

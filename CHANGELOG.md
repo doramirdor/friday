@@ -471,6 +471,13 @@ All notable changes to this project will be documented in this file.
   - Added detailed logging for audio chunk processing and sending to API
   - Reduced log spam by using conditional logging based on event counts
   - Added audio activity detection to help identify if microphone is capturing sound
+- **Granular Gemini Live Crash Detection**: Added detailed crash detection to identify exact failure points
+  - Added individual try-catch blocks around each WebSocket event handler assignment (onopen, onmessage, onerror, onclose)
+  - Added WebSocket state validation after handler setup to detect immediate connection failures
+  - Enhanced startAudioProcessing with prerequisite validation and comprehensive crash detection
+  - Added crash detection to startConnectionHealthCheck method with graceful fallback
+  - Improved error logging with detailed crash information, stack traces, and timestamps
+  - Added safety checks to prevent crashes during WebSocket initialization and audio processing setup
 
 ## [0.3.1] - 2024-05-21
 
