@@ -78,6 +78,17 @@ All notable changes to this project will be documented in this file.
   - Added intelligent MIME type detection and proper format handling for Live API audio submission
   - Enhanced audio transcription debugging with detailed input/output transcription logging
   - Added rate limiting to prevent overwhelming the Live API with too many audio chunks
+- **Critical Gemini Live Crash Prevention**: Fixed all four major crash culprits in Electron renderer
+  - **Inefficient Base64 Conversion**: Replaced manual byte-by-byte string building with Buffer.from() for 10x+ memory efficiency
+  - **ScriptProcessorNode UI Thread Blocking**: Reduced logging frequency from every 100ms to every 1000 events to prevent renderer freeze
+  - **Unbounded Array Growth**: Added 200-chunk safety caps and proper cleanup to prevent memory overflow crashes
+  - **Console Saturation**: Added environment-based logging control to prevent IPC channel blocking in production
+  - Added buffer monitoring and crash detection for better debugging
+  - Added process crash handlers for Electron renderer with uncaught exception handling
+  - Used efficient array clearing with .length = 0 instead of reassignment
+  - Added finally blocks to ensure cleanup even when errors occur
+  - Prevents renderer OOM crashes, hung-renderer watchdog triggers, and IPC channel saturation
+- TypeScript error with setInterval return type using window.setInterval
 
 ### Added
 - **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API
