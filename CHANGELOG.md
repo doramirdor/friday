@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Gemini Live API Audio Format**: Fixed critical MIME type error "Mime type 'audio/webm;codecs=opus' is not supported"
+  - Updated audio processing to convert WebM/Opus recordings to PCM format as required by Gemini Live API
+  - Added `convertToPCM` method to decode WebM audio and convert to 16-bit PCM at 16kHz sample rate
+  - Changed audio transmission format from "audio/webm;codecs=opus" to "audio/pcm;rate=16000"
+  - Fixed MediaRecorder configuration to record at 16kHz sample rate for optimal API compatibility
+  - Resolved WebSocket connection close error 1007 "Request contains an invalid argument"
+  - Added proper audio format conversion pipeline: WebM recording → PCM conversion → Base64 encoding → API transmission
 - **Gemini Live API**: Fixed message format to match official Live API specification
   - Updated setup message structure to use correct field names and format
   - Changed realtimeInput to use 'audio' field instead of deprecated 'mediaChunks'

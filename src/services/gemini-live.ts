@@ -182,10 +182,10 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
   private async startMicrophoneCapture(options: Required<GeminiLiveOptions>): Promise<void> {
     try {
-      // Get microphone access
+      // Get microphone access with 16kHz sample rate to match Gemini Live API requirements
       this.audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: options.sampleRateHertz,
+          sampleRate: 16000, // Fixed to 16kHz for Gemini Live API compatibility
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
@@ -194,7 +194,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       });
 
       // Create MediaRecorder for audio capture
-      // Based on Live API docs, prioritize formats that work well with the API
+      // We'll record in WebM and convert to PCM for the API
       const supportedMimeTypes = [
         'audio/webm;codecs=opus',
         'audio/webm',
@@ -206,13 +206,13 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       for (const mimeType of supportedMimeTypes) {
         if (MediaRecorder.isTypeSupported(mimeType)) {
           selectedMimeType = mimeType;
-          console.log(`✅ Selected audio format: ${mimeType}`);
+          console.log(`✅ Selected recording format: ${mimeType} (will convert to PCM for API)`);
           break;
         }
       }
 
       if (!selectedMimeType) {
-        throw new Error('No supported audio format found for Live API');
+        throw new Error('No supported audio format found for recording');
       }
 
       this.mediaRecorder = new MediaRecorder(this.audioStream, {
@@ -241,7 +241,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Start recording with small time slices for near real-time streaming
       this.mediaRecorder.start(100); // 100ms chunks
 
-      console.log('🎤 Microphone capture started');
+      console.log('🎤 Microphone capture started at 16kHz for Gemini Live API');
       console.log('🎤 MediaRecorder state:', this.mediaRecorder.state);
       console.log('🎤 MediaRecorder mimeType:', this.mediaRecorder.mimeType);
       console.log('🎤 Selected MIME type:', selectedMimeType);
@@ -461,30 +461,66 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Convert chunks to a single blob
       const audioBlob = new Blob(chunks);
       
-      // Convert to ArrayBuffer for Live API
-      const audioData = await audioBlob.arrayBuffer();
+      // Convert WebM audio to PCM format as required by Gemini Live API
+      const pcmData = await this.convertToPCM(audioBlob);
       
-      // Convert to base64 as required by Live API
-      const base64Audio = this.arrayBufferToBase64(audioData);
+      // Convert PCM data to base64 as required by Live API
+      const base64Audio = this.arrayBufferToBase64(pcmData);
 
-      // Send realtime input to Gemini Live API using correct format from official docs
+      // Send realtime input to Gemini Live API using PCM format
       const message = {
         realtimeInput: {
           audio: {
             data: base64Audio,
-            mimeType: "audio/webm;codecs=opus"
+            mimeType: "audio/pcm;rate=16000"
           }
         }
       };
 
       this.websocket.send(JSON.stringify(message));
-      console.log(`📤 Sent audio chunk: ${base64Audio.length} characters (${audioData.byteLength} bytes) as audio/webm;codecs=opus`);
+      console.log(`📤 Sent PCM audio chunk: ${base64Audio.length} characters (${pcmData.byteLength} bytes) as audio/pcm;rate=16000`);
       
       // Add a small delay to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, 10));
 
     } catch (error) {
       console.error('Error processing audio chunks:', error);
+    }
+  }
+
+  private async convertToPCM(audioBlob: Blob): Promise<ArrayBuffer> {
+    try {
+      // Create audio context for conversion
+      const audioContext = new AudioContext({
+        sampleRate: 16000 // Gemini Live API expects 16kHz
+      });
+
+      // Convert blob to array buffer
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      
+      // Decode the audio data (WebM/Opus to raw audio)
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      // Get the audio data as Float32Array
+      const channelData = audioBuffer.getChannelData(0); // Use first channel (mono)
+      
+      // Convert Float32 to 16-bit PCM
+      const pcmData = new Int16Array(channelData.length);
+      for (let i = 0; i < channelData.length; i++) {
+        // Convert from [-1, 1] float to [-32768, 32767] int16
+        const sample = Math.max(-1, Math.min(1, channelData[i]));
+        pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      }
+      
+      console.log(`🔄 Converted ${arrayBuffer.byteLength} bytes WebM to ${pcmData.byteLength} bytes PCM`);
+      
+      // Close audio context to free resources
+      await audioContext.close();
+      
+      return pcmData.buffer;
+    } catch (error) {
+      console.error('Error converting audio to PCM:', error);
+      throw new Error(`Audio conversion failed: ${error.message}`);
     }
   }
 
