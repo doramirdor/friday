@@ -124,6 +124,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   private readonly ACCUMULATION_TIME_MS = 500;
   private audioContext: AudioContext | null = null;
   private audioProcessor: ScriptProcessorNode | null = null;
+  private messageCount = 0;
 
   constructor() {
     this.checkAvailability();
@@ -314,25 +315,43 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       const bufferSize = 4096; // Process in 4KB chunks
       const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
       
+      let audioEventCount = 0;
+      
       processor.onaudioprocess = (event) => {
         try {
-          console.log('🎤 Audio processing event triggered');
+          audioEventCount++;
+          
+          // Log more frequently at the beginning, then reduce frequency
+          const shouldLog = audioEventCount <= 10 || audioEventCount % 100 === 1;
+          
+          if (shouldLog) {
+            console.log(`🎤 Audio processing event #${audioEventCount} triggered`);
+          }
           
           const inputBuffer = event.inputBuffer;
           if (!inputBuffer) {
-            console.warn('⚠️ No input buffer in audio event');
+            if (shouldLog) {
+              console.warn('⚠️ No input buffer in audio event');
+            }
             return;
           }
           
-          console.log('🎤 Getting channel data...');
           const inputData = inputBuffer.getChannelData(0); // Get mono channel (Float32Array)
           
           if (!inputData || inputData.length === 0) {
-            console.warn('⚠️ No input data or empty input data');
+            if (shouldLog) {
+              console.warn('⚠️ No input data or empty input data');
+            }
             return;
           }
           
-          console.log(`🎤 Processing ${inputData.length} audio samples`);
+          // Check for actual audio activity (not just silence)
+          const audioLevel = this.calculateAudioLevel(inputData);
+          const hasAudioActivity = audioLevel > 0.001; // Threshold for detecting actual audio
+          
+          if (shouldLog) {
+            console.log(`🎤 Processing ${inputData.length} audio samples, level: ${audioLevel.toFixed(6)}, hasActivity: ${hasAudioActivity}`);
+          }
           
           // Convert Float32Array to 16-bit PCM
           const pcmData = new Int16Array(inputData.length);
@@ -341,15 +360,15 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
             pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
           }
           
-          console.log(`🎤 Converted to PCM: ${pcmData.byteLength} bytes`);
-          
           // Add PCM data directly to accumulation buffer
           const pcmBlob = new Blob([pcmData.buffer]);
           this.audioAccumulationBuffer.push(pcmBlob);
           
-          console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes, buffer size: ${this.audioAccumulationBuffer.length}`);
+          if (shouldLog) {
+            console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes, buffer size: ${this.audioAccumulationBuffer.length}, audioLevel: ${audioLevel.toFixed(6)}`);
+          }
         } catch (processingError) {
-          console.error('🚨 CRASH in audio processing:', {
+          console.error(`🚨 CRASH in audio processing event #${audioEventCount}:`, {
             error: processingError.message,
             stack: processingError.stack,
             timestamp: new Date().toISOString()
@@ -499,8 +518,17 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         this.websocket.onmessage = async (event) => {
           try {
             console.log('📥 WebSocket onmessage event triggered, data type:', typeof event.data);
+            console.log('📥 Message data size:', event.data instanceof Blob ? event.data.size : event.data instanceof ArrayBuffer ? event.data.byteLength : event.data.length);
+            
+            // Add a simple message counter
+            if (!this.messageCount) {
+              this.messageCount = 0;
+            }
+            this.messageCount++;
+            console.log(`📥 Processing message #${this.messageCount}`);
+            
             await this.handleWebSocketMessage(event.data);
-            console.log('📥 WebSocket message handled successfully');
+            console.log(`📥 Message #${this.messageCount} handled successfully`);
           } catch (messageError) {
             console.error('🚨 CRASH in WebSocket onmessage handler:', {
               error: messageError.message,
@@ -666,12 +694,28 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
   private startAudioProcessing(): void {
     console.log('🎵 Starting audio processing interval...');
+    
+    let intervalCount = 0;
+    
     // Process accumulated audio chunks every 100ms, but only send when enough time has passed
     this.processingInterval = window.setInterval(() => {
       try {
+        intervalCount++;
+        
+        // Only log every 10th interval to reduce spam, but always log the first few
+        if (intervalCount <= 5 || intervalCount % 10 === 0) {
+          console.log(`🎵 Audio processing interval #${intervalCount} triggered`);
+          console.log(`🎵 Current audio buffer state: accumulation=${this.audioAccumulationBuffer.length}, processing=${this.audioChunksBuffer.length}`);
+        }
+        
         this.checkAndProcessAccumulatedAudio();
+        
+        // Only log completion for first few intervals or every 10th
+        if (intervalCount <= 5 || intervalCount % 10 === 0) {
+          console.log(`🎵 Audio processing interval #${intervalCount} completed successfully`);
+        }
       } catch (intervalError) {
-        console.error('🚨 CRASH in audio processing interval:', {
+        console.error(`🚨 CRASH in audio processing interval #${intervalCount}:`, {
           error: intervalError.message,
           stack: intervalError.stack,
           timestamp: new Date().toISOString()
@@ -691,14 +735,20 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   private checkAndProcessAccumulatedAudio(): void {
     try {
       const now = Date.now();
+      const timeSinceLastProcess = now - this.lastProcessTime;
       
-      console.log(`🎵 Checking accumulated audio: ${this.audioAccumulationBuffer.length} chunks, last process: ${now - this.lastProcessTime}ms ago`);
+      // Log buffer state and timing every few checks
+      const shouldLogDetails = this.audioAccumulationBuffer.length > 0 || timeSinceLastProcess > this.ACCUMULATION_TIME_MS;
+      
+      if (shouldLogDetails) {
+        console.log(`🎵 Checking accumulated audio: ${this.audioAccumulationBuffer.length} chunks, last process: ${timeSinceLastProcess}ms ago (threshold: ${this.ACCUMULATION_TIME_MS}ms)`);
+      }
       
       // Only process if we have chunks and enough time has passed since last processing
       if (this.audioAccumulationBuffer.length > 0 && 
-          (now - this.lastProcessTime) >= this.ACCUMULATION_TIME_MS) {
+          timeSinceLastProcess >= this.ACCUMULATION_TIME_MS) {
         
-        console.log(`🎵 Processing ${this.audioAccumulationBuffer.length} accumulated chunks`);
+        console.log(`🎵 ✅ PROCESSING ${this.audioAccumulationBuffer.length} accumulated chunks (${timeSinceLastProcess}ms since last process)`);
         
         // Move accumulated chunks to processing buffer
         this.audioChunksBuffer = [...this.audioAccumulationBuffer];
@@ -707,6 +757,16 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         
         // Process the accumulated chunks
         this.processAudioChunks();
+      } else if (this.audioAccumulationBuffer.length === 0) {
+        // Only log this occasionally to avoid spam
+        if (Math.random() < 0.01) { // 1% chance to log
+          console.log('🎵 No audio chunks to process');
+        }
+      } else {
+        // Log when we're waiting for more time to pass
+        if (shouldLogDetails) {
+          console.log(`🎵 Waiting for accumulation time (${timeSinceLastProcess}ms < ${this.ACCUMULATION_TIME_MS}ms)`);
+        }
       }
     } catch (checkError) {
       console.error('🚨 CRASH in checkAndProcessAccumulatedAudio:', {
@@ -788,6 +848,15 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     }
   }
 
+  private calculateAudioLevel(audioData: Float32Array): number {
+    // Calculate RMS (Root Mean Square) to get audio level
+    let sum = 0;
+    for (let i = 0; i < audioData.length; i++) {
+      sum += audioData[i] * audioData[i];
+    }
+    return Math.sqrt(sum / audioData.length);
+  }
+
   private async processAudioChunks(): Promise<void> {
     console.log('🎵 processAudioChunks called');
     
@@ -850,6 +919,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       console.log('🎵 Sending audio message to WebSocket...');
       this.websocket.send(JSON.stringify(message));
       console.log(`📤 Sent raw PCM audio chunk: ${base64Audio.length} characters (${combinedBuffer.byteLength} bytes) as audio/pcm;rate=16000`);
+      console.log(`📤 WebSocket readyState after send: ${this.websocket.readyState} (${this.getReadyStateText(this.websocket.readyState)})`);
       
       // Add a small delay to avoid overwhelming the API
       console.log('🎵 Adding processing delay...');
