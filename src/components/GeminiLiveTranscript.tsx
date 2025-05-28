@@ -29,17 +29,27 @@ const GeminiLiveTranscript: React.FC<GeminiLiveTranscriptProps> = ({
 
   const handleStartStop = async () => {
     if (isStreaming) {
-      stopStreaming();
+      try {
+        stopStreaming();
+      } catch (error) {
+        console.error('Error stopping Gemini Live:', error);
+        // Don't show error toast for stop failures, just log them
+      }
     } else {
-      const options: GeminiLiveOptions = {
-        sampleRateHertz: 16000,
-        encoding: 'LINEAR16',
-        enableSpeakerDiarization: true,
-        maxSpeakerCount: maxSpeakers,
-        languageCode: 'en-US'
-      };
-      
-      await startStreaming(options);
+      try {
+        const options: GeminiLiveOptions = {
+          sampleRateHertz: 16000,
+          encoding: 'LINEAR16',
+          enableSpeakerDiarization: true,
+          maxSpeakerCount: maxSpeakers,
+          languageCode: 'en-US'
+        };
+        
+        await startStreaming(options);
+      } catch (error) {
+        console.error('Error starting Gemini Live:', error);
+        // Error handling is done in the hook, no need to show additional toast
+      }
     }
   };
 

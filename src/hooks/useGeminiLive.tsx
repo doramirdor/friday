@@ -235,6 +235,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
     }
 
     try {
+      console.log('🚀 Starting Gemini Live streaming...');
       setError(null);
       setIsStreaming(true);
       
@@ -248,14 +249,35 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
       setIsStreaming(false);
       setError(error instanceof Error ? error : new Error(String(error)));
       
-      // Provide more specific guidance for API key errors
-      const isApiKeyError = error instanceof Error && error.message.includes('API key');
+      // Provide more specific guidance for different types of errors
+      let errorMessage = 'Failed to start Gemini Live';
       
-      toast.error(
-        isApiKeyError 
-          ? 'Gemini API key not configured. Please add your API key in settings.'
-          : error instanceof Error ? error.message : String(error)
-      );
+      if (error instanceof Error) {
+        if (error.message.includes('API key')) {
+          errorMessage = 'Gemini API key not configured. Please add your API key in settings.';
+        } else if (error.message.includes('permission denied') || error.message.includes('NotAllowedError')) {
+          errorMessage = 'Microphone permission denied. Please allow microphone access and try again.';
+        } else if (error.message.includes('microphone') || error.message.includes('NotFoundError')) {
+          errorMessage = 'No microphone found. Please connect a microphone and try again.';
+        } else if (error.message.includes('AudioContext') || error.message.includes('not supported')) {
+          errorMessage = 'Audio recording not supported in this browser. Please try a different browser.';
+        } else if (error.message.includes('network') || error.message.includes('connection')) {
+          errorMessage = 'Network connection failed. Please check your internet connection and try again.';
+        } else if (error.message.includes('timeout')) {
+          errorMessage = 'Connection timeout. Please check your internet connection and API key.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast.error(errorMessage);
+      
+      // Clean up any partial state
+      try {
+        geminiLiveService.cleanup();
+      } catch (cleanupError) {
+        console.warn('Warning: Error during cleanup after failed start:', cleanupError);
+      }
     }
   }, [isAvailable, isStreaming]);
 

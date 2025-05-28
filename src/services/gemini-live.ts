@@ -113,7 +113,15 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Get API key from various sources
       const electronAPI = (window as { electronAPI?: { env?: { GEMINI_API_KEY?: string } } }).electronAPI;
       const envApiKey = electronAPI?.env?.GEMINI_API_KEY;
-      const settingsApiKey = (await DatabaseService.getSettings())?.geminiApiKey;
+      
+      let settingsApiKey = null;
+      try {
+        const settings = await DatabaseService.getSettings();
+        settingsApiKey = settings?.geminiApiKey;
+      } catch (dbError) {
+        console.warn('Could not access database for API key:', dbError);
+      }
+      
       const localStorageApiKey = localStorage.getItem('gemini-api-key');
       
       this.apiKey = envApiKey || settingsApiKey || localStorageApiKey;
@@ -186,7 +194,15 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
   private async startMicrophoneCapture(options: Required<GeminiLiveOptions>): Promise<void> {
     try {
+      console.log('🎤 Starting microphone capture for Gemini Live...');
+      
+      // Check if microphone access is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Microphone access not available in this browser');
+      }
+
       // Get microphone access with 16kHz sample rate to match Gemini Live API requirements
+      console.log('🎤 Requesting microphone permission...');
       this.audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: 16000, // Fixed to 16kHz for Gemini Live API compatibility
@@ -197,11 +213,26 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         }
       });
 
+      console.log('✅ Microphone access granted');
+
+      // Check if AudioContext is available
+      if (typeof AudioContext === 'undefined') {
+        throw new Error('AudioContext not available in this browser');
+      }
+
       // Instead of using MediaRecorder, use Web Audio API to capture raw PCM data directly
       // This eliminates the need for WebM-to-PCM conversion
+      console.log('🎤 Creating AudioContext...');
       const audioContext = new AudioContext({
         sampleRate: 16000 // Match Gemini Live API requirements
       });
+
+      // Check if AudioContext was created successfully
+      if (!audioContext) {
+        throw new Error('Failed to create AudioContext');
+      }
+
+      console.log('✅ AudioContext created successfully');
 
       const source = audioContext.createMediaStreamSource(this.audioStream);
       
@@ -212,26 +243,36 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
       
       processor.onaudioprocess = (event) => {
-        const inputBuffer = event.inputBuffer;
-        const inputData = inputBuffer.getChannelData(0); // Get mono channel (Float32Array)
-        
-        // Convert Float32Array to 16-bit PCM
-        const pcmData = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const sample = Math.max(-1, Math.min(1, inputData[i]));
-          pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        try {
+          const inputBuffer = event.inputBuffer;
+          const inputData = inputBuffer.getChannelData(0); // Get mono channel (Float32Array)
+          
+          // Convert Float32Array to 16-bit PCM
+          const pcmData = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            const sample = Math.max(-1, Math.min(1, inputData[i]));
+            pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+          }
+          
+          // Add PCM data directly to accumulation buffer
+          const pcmBlob = new Blob([pcmData.buffer]);
+          this.audioAccumulationBuffer.push(pcmBlob);
+          
+          console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes`);
+        } catch (processingError) {
+          console.error('Error processing audio chunk:', processingError);
         }
-        
-        // Add PCM data directly to accumulation buffer
-        const pcmBlob = new Blob([pcmData.buffer]);
-        this.audioAccumulationBuffer.push(pcmBlob);
-        
-        console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes`);
       };
       
       // Connect the audio processing chain
-      source.connect(processor);
-      processor.connect(audioContext.destination);
+      try {
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        console.log('✅ Audio processing chain connected');
+      } catch (connectionError) {
+        console.error('Error connecting audio processing chain:', connectionError);
+        throw new Error(`Failed to connect audio processing chain: ${connectionError.message}`);
+      }
       
       // Store references for cleanup
       this.audioContext = audioContext;
@@ -241,62 +282,123 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       console.log('🎤 AudioContext sample rate:', audioContext.sampleRate);
       
       // Add a test to see if we're getting audio levels
-      const analyser = audioContext.createAnalyser();
-      source.connect(analyser);
-      
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      const checkAudioLevel = () => {
-        analyser.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        if (average > 0) {
-          console.log('🔊 Audio level detected:', average);
-        }
-      };
-      
-      // Check audio level every 2 seconds for debugging
-      const levelCheckInterval = setInterval(checkAudioLevel, 2000);
-      
-      // Clean up after 10 seconds
-      setTimeout(() => {
-        clearInterval(levelCheckInterval);
-      }, 10000);
+      try {
+        const analyser = audioContext.createAnalyser();
+        source.connect(analyser);
+        
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const checkAudioLevel = () => {
+          try {
+            analyser.getByteFrequencyData(dataArray);
+            const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+            if (average > 0) {
+              console.log('🔊 Audio level detected:', average);
+            }
+          } catch (levelError) {
+            console.warn('Error checking audio level:', levelError);
+          }
+        };
+        
+        // Check audio level every 2 seconds for debugging
+        const levelCheckInterval = setInterval(checkAudioLevel, 2000);
+        
+        // Clean up after 10 seconds
+        setTimeout(() => {
+          clearInterval(levelCheckInterval);
+        }, 10000);
+      } catch (analyserError) {
+        console.warn('Could not create audio analyser:', analyserError);
+        // Continue without audio level monitoring
+      }
       
     } catch (error) {
       console.error('Failed to start microphone capture:', error);
-      throw new Error(`Microphone access failed: ${error.message}`);
+      
+      // Clean up any partially created resources
+      this.cleanup();
+      
+      // Provide more specific error messages
+      if (error.name === 'NotAllowedError') {
+        throw new Error('Microphone permission denied. Please allow microphone access and try again.');
+      } else if (error.name === 'NotFoundError') {
+        throw new Error('No microphone found. Please connect a microphone and try again.');
+      } else if (error.name === 'NotSupportedError') {
+        throw new Error('Microphone access not supported in this browser.');
+      } else if (error.name === 'NotReadableError') {
+        throw new Error('Microphone is already in use by another application.');
+      } else {
+        throw new Error(`Microphone access failed: ${error.message}`);
+      }
     }
   }
 
   private async connectWebSocket(options: Required<GeminiLiveOptions>): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        console.log('🔗 Connecting to Gemini Live WebSocket...');
+        
+        if (!this.apiKey) {
+          reject(new Error('API key is required for WebSocket connection'));
+          return;
+        }
+
         const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${this.apiKey}`;
+        console.log('🔗 WebSocket URL:', wsUrl.replace(this.apiKey, '[API_KEY_HIDDEN]'));
         
         this.websocket = new WebSocket(wsUrl);
 
+        // Set up connection timeout
+        const connectionTimeout = setTimeout(() => {
+          if (this.websocket && this.websocket.readyState === WebSocket.CONNECTING) {
+            console.error('❌ WebSocket connection timeout');
+            this.websocket.close();
+            reject(new Error('Connection timeout - please check your internet connection and API key'));
+          }
+        }, 10000); // 10 second timeout
+
         this.websocket.onopen = () => {
           console.log('🔗 Gemini Live WebSocket connected');
+          clearTimeout(connectionTimeout);
           
-          // Send initial configuration
-          this.sendInitialConfig(options);
-          
-          // Start processing audio chunks
-          this.startAudioProcessing();
-          
-          resolve();
+          try {
+            // Send initial configuration
+            this.sendInitialConfig(options);
+            
+            // Start processing audio chunks
+            this.startAudioProcessing();
+            
+            resolve();
+          } catch (setupError) {
+            console.error('❌ Error during WebSocket setup:', setupError);
+            reject(new Error(`WebSocket setup failed: ${setupError.message}`));
+          }
         };
 
         this.websocket.onmessage = async (event) => {
-          await this.handleWebSocketMessage(event.data);
+          try {
+            await this.handleWebSocketMessage(event.data);
+          } catch (messageError) {
+            console.error('❌ Error handling WebSocket message:', messageError);
+            // Don't reject here, just log the error to avoid crashing the connection
+          }
         };
 
         this.websocket.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          reject(new Error('Failed to connect to Gemini Live'));
+          console.error('❌ WebSocket error:', error);
+          clearTimeout(connectionTimeout);
+          
+          // Provide more specific error messages
+          if (this.websocket?.readyState === WebSocket.CONNECTING) {
+            reject(new Error('Failed to connect to Gemini Live. Please check your API key and internet connection.'));
+          } else {
+            reject(new Error('WebSocket connection error occurred'));
+          }
         };
 
         this.websocket.onclose = (event) => {
           console.log('🔌 Gemini Live WebSocket closed:', event.code, event.reason);
+          clearTimeout(connectionTimeout);
+          
           console.log('🔌 Close event details:', {
             code: event.code,
             reason: event.reason,
@@ -340,6 +442,12 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
               case 1015:
                 errorMessage = 'Gemini Live TLS handshake failed';
                 break;
+              case 4001:
+                errorMessage = 'Invalid API key for Gemini Live';
+                break;
+              case 4003:
+                errorMessage = 'API quota exceeded for Gemini Live';
+                break;
               default:
                 errorMessage = `Gemini Live connection closed with code ${event.code}: ${event.reason || 'Unknown reason'}`;
             }
@@ -352,7 +460,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         };
 
       } catch (error) {
-        reject(error);
+        console.error('❌ Error creating WebSocket:', error);
+        reject(new Error(`Failed to create WebSocket connection: ${error.message}`));
       }
     });
   }
@@ -627,40 +736,79 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   cleanup(): void {
-    // Clear audio buffers
-    this.audioChunksBuffer = [];
-    this.audioAccumulationBuffer = [];
+    console.log('🧹 Starting Gemini Live cleanup...');
     
-    // Stop audio processing
-    if (this.processingInterval) {
-      clearInterval(this.processingInterval);
-      this.processingInterval = null;
-    }
+    try {
+      // Clear audio buffers
+      this.audioChunksBuffer = [];
+      this.audioAccumulationBuffer = [];
+      
+      // Stop audio processing
+      if (this.processingInterval) {
+        clearInterval(this.processingInterval);
+        this.processingInterval = null;
+        console.log('✅ Audio processing interval cleared');
+      }
 
-    // Clean up Web Audio API resources
-    if (this.audioProcessor) {
-      this.audioProcessor.disconnect();
-      this.audioProcessor = null;
-    }
-    
-    if (this.audioContext) {
-      this.audioContext.close();
-      this.audioContext = null;
-    }
+      // Clean up Web Audio API resources
+      if (this.audioProcessor) {
+        try {
+          this.audioProcessor.disconnect();
+          this.audioProcessor = null;
+          console.log('✅ Audio processor disconnected');
+        } catch (processorError) {
+          console.warn('Warning: Error disconnecting audio processor:', processorError);
+        }
+      }
+      
+      if (this.audioContext) {
+        try {
+          // Check if context is not already closed
+          if (this.audioContext.state !== 'closed') {
+            this.audioContext.close();
+            console.log('✅ AudioContext closed');
+          }
+          this.audioContext = null;
+        } catch (contextError) {
+          console.warn('Warning: Error closing AudioContext:', contextError);
+        }
+      }
 
-    // Stop audio stream
-    if (this.audioStream) {
-      this.audioStream.getTracks().forEach(track => track.stop());
-      this.audioStream = null;
-    }
+      // Stop audio stream
+      if (this.audioStream) {
+        try {
+          this.audioStream.getTracks().forEach(track => {
+            try {
+              track.stop();
+            } catch (trackError) {
+              console.warn('Warning: Error stopping audio track:', trackError);
+            }
+          });
+          this.audioStream = null;
+          console.log('✅ Audio stream stopped');
+        } catch (streamError) {
+          console.warn('Warning: Error stopping audio stream:', streamError);
+        }
+      }
 
-    // Close WebSocket
-    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-      this.websocket.close();
-    }
-    this.websocket = null;
+      // Close WebSocket
+      if (this.websocket) {
+        try {
+          if (this.websocket.readyState === WebSocket.OPEN || this.websocket.readyState === WebSocket.CONNECTING) {
+            this.websocket.close();
+            console.log('✅ WebSocket closed');
+          }
+          this.websocket = null;
+        } catch (wsError) {
+          console.warn('Warning: Error closing WebSocket:', wsError);
+        }
+      }
 
-    console.log('🧹 Gemini Live cleanup completed');
+      console.log('🧹 Gemini Live cleanup completed');
+    } catch (error) {
+      console.error('❌ Error during cleanup:', error);
+      // Continue cleanup even if there are errors
+    }
   }
 
   onResult(callback: (result: GeminiLiveResult) => void): void {
