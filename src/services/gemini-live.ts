@@ -311,8 +311,23 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       
       processor.onaudioprocess = (event) => {
         try {
+          console.log('🎤 Audio processing event triggered');
+          
           const inputBuffer = event.inputBuffer;
+          if (!inputBuffer) {
+            console.warn('⚠️ No input buffer in audio event');
+            return;
+          }
+          
+          console.log('🎤 Getting channel data...');
           const inputData = inputBuffer.getChannelData(0); // Get mono channel (Float32Array)
+          
+          if (!inputData || inputData.length === 0) {
+            console.warn('⚠️ No input data or empty input data');
+            return;
+          }
+          
+          console.log(`🎤 Processing ${inputData.length} audio samples`);
           
           // Convert Float32Array to 16-bit PCM
           const pcmData = new Int16Array(inputData.length);
@@ -321,13 +336,24 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
             pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
           }
           
+          console.log(`🎤 Converted to PCM: ${pcmData.byteLength} bytes`);
+          
           // Add PCM data directly to accumulation buffer
           const pcmBlob = new Blob([pcmData.buffer]);
           this.audioAccumulationBuffer.push(pcmBlob);
           
-          console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes`);
+          console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes, buffer size: ${this.audioAccumulationBuffer.length}`);
         } catch (processingError) {
-          console.error('Error processing audio chunk:', processingError);
+          console.error('🚨 CRASH in audio processing:', {
+            error: processingError.message,
+            stack: processingError.stack,
+            timestamp: new Date().toISOString()
+          });
+          
+          // Try to continue processing despite the error
+          if (this.errorCallback) {
+            this.errorCallback(new Error(`Audio processing error: ${processingError.message}`));
+          }
         }
       };
       
@@ -570,9 +596,23 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   private startAudioProcessing(): void {
+    console.log('🎵 Starting audio processing interval...');
     // Process accumulated audio chunks every 100ms, but only send when enough time has passed
     this.processingInterval = window.setInterval(() => {
-      this.checkAndProcessAccumulatedAudio();
+      try {
+        this.checkAndProcessAccumulatedAudio();
+      } catch (intervalError) {
+        console.error('🚨 CRASH in audio processing interval:', {
+          error: intervalError.message,
+          stack: intervalError.stack,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Try to continue processing despite the error
+        if (this.errorCallback) {
+          this.errorCallback(new Error(`Audio processing interval error: ${intervalError.message}`));
+        }
+      }
     }, 100);
     
     // Add connection health monitoring
@@ -580,41 +620,91 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   private checkAndProcessAccumulatedAudio(): void {
-    const now = Date.now();
-    
-    // Only process if we have chunks and enough time has passed since last processing
-    if (this.audioAccumulationBuffer.length > 0 && 
-        (now - this.lastProcessTime) >= this.ACCUMULATION_TIME_MS) {
+    try {
+      const now = Date.now();
       
-      // Move accumulated chunks to processing buffer
-      this.audioChunksBuffer = [...this.audioAccumulationBuffer];
-      this.audioAccumulationBuffer = [];
-      this.lastProcessTime = now;
+      console.log(`🎵 Checking accumulated audio: ${this.audioAccumulationBuffer.length} chunks, last process: ${now - this.lastProcessTime}ms ago`);
       
-      // Process the accumulated chunks
-      this.processAudioChunks();
+      // Only process if we have chunks and enough time has passed since last processing
+      if (this.audioAccumulationBuffer.length > 0 && 
+          (now - this.lastProcessTime) >= this.ACCUMULATION_TIME_MS) {
+        
+        console.log(`🎵 Processing ${this.audioAccumulationBuffer.length} accumulated chunks`);
+        
+        // Move accumulated chunks to processing buffer
+        this.audioChunksBuffer = [...this.audioAccumulationBuffer];
+        this.audioAccumulationBuffer = [];
+        this.lastProcessTime = now;
+        
+        // Process the accumulated chunks
+        this.processAudioChunks();
+      }
+    } catch (checkError) {
+      console.error('🚨 CRASH in checkAndProcessAccumulatedAudio:', {
+        error: checkError.message,
+        stack: checkError.stack,
+        timestamp: new Date().toISOString(),
+        bufferLength: this.audioAccumulationBuffer?.length || 0
+      });
+      
+      // Try to continue processing despite the error
+      if (this.errorCallback) {
+        this.errorCallback(new Error(`Audio accumulation check error: ${checkError.message}`));
+      }
     }
   }
 
   private startConnectionHealthCheck(): void {
     // Check connection health every 5 seconds
     const healthCheckInterval = setInterval(() => {
-      if (this.websocket) {
-        console.log('🔍 WebSocket health check:', {
-          readyState: this.websocket.readyState,
-          readyStateText: this.getReadyStateText(this.websocket.readyState),
-          isStreaming: this._isStreaming
-        });
-        
-        // If connection is closed but we're still supposed to be streaming, that's an issue
-        if (this.websocket.readyState === WebSocket.CLOSED && this._isStreaming) {
-          console.error('🚨 WebSocket connection lost while streaming!');
+      try {
+        if (this.websocket) {
+          console.log('🔍 WebSocket health check:', {
+            readyState: this.websocket.readyState,
+            readyStateText: this.getReadyStateText(this.websocket.readyState),
+            isStreaming: this._isStreaming
+          });
+          
+          // If connection is closed but we're still supposed to be streaming, that's an issue
+          if (this.websocket.readyState === WebSocket.CLOSED && this._isStreaming) {
+            console.error('🚨 WebSocket connection lost while streaming!');
+          }
         }
-      }
-      
-      // Clean up if not streaming
-      if (!this._isStreaming) {
-        clearInterval(healthCheckInterval);
+        
+        // Memory usage monitoring
+        if (typeof performance !== 'undefined' && 'memory' in performance) {
+          const memory = (performance as { memory: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
+          const memInfo = {
+            usedJSHeapSize: Math.round(memory.usedJSHeapSize / 1024 / 1024),
+            totalJSHeapSize: Math.round(memory.totalJSHeapSize / 1024 / 1024),
+            jsHeapSizeLimit: Math.round(memory.jsHeapSizeLimit / 1024 / 1024),
+            audioBufferLength: this.audioAccumulationBuffer?.length || 0,
+            processingBufferLength: this.audioChunksBuffer?.length || 0
+          };
+          
+          console.log('💾 Memory usage:', memInfo);
+          
+          // Warn if memory usage is getting high
+          if (memInfo.usedJSHeapSize > memInfo.jsHeapSizeLimit * 0.8) {
+            console.warn('⚠️ High memory usage detected! This could cause crashes.');
+          }
+          
+          // Warn if audio buffers are getting too large
+          if (memInfo.audioBufferLength > 100) {
+            console.warn('⚠️ Audio accumulation buffer is getting large:', memInfo.audioBufferLength);
+          }
+          
+          if (memInfo.processingBufferLength > 50) {
+            console.warn('⚠️ Audio processing buffer is getting large:', memInfo.processingBufferLength);
+          }
+        }
+        
+        // Clean up if not streaming
+        if (!this._isStreaming) {
+          clearInterval(healthCheckInterval);
+        }
+      } catch (healthCheckError) {
+        console.error('🚨 Error in health check:', healthCheckError);
       }
     }, 5000);
   }
@@ -630,11 +720,16 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   private async processAudioChunks(): Promise<void> {
+    console.log('🎵 processAudioChunks called');
+    
     if (this.audioChunksBuffer.length === 0 || !this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      console.log('🎵 Skipping audio processing - no chunks or websocket not ready');
       return;
     }
 
     try {
+      console.log('🎵 Starting audio chunk processing...');
+      
       // Get all pending chunks
       const chunks = [...this.audioChunksBuffer];
       this.audioChunksBuffer = [];
@@ -644,19 +739,34 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Convert accumulated PCM chunks to a single ArrayBuffer
       // Since we're now capturing raw PCM data, no conversion is needed
       const totalSize = chunks.reduce((sum, chunk) => sum + chunk.size, 0);
+      console.log(`🎵 Creating combined buffer of size: ${totalSize}`);
+      
       const combinedBuffer = new ArrayBuffer(totalSize);
       const combinedView = new Uint8Array(combinedBuffer);
       
+      console.log('🎵 Combining chunks into single buffer...');
       let offset = 0;
-      for (const chunk of chunks) {
-        const chunkBuffer = await chunk.arrayBuffer();
-        const chunkView = new Uint8Array(chunkBuffer);
-        combinedView.set(chunkView, offset);
-        offset += chunkView.length;
+      for (let i = 0; i < chunks.length; i++) {
+        try {
+          const chunk = chunks[i];
+          console.log(`🎵 Processing chunk ${i + 1}/${chunks.length}, size: ${chunk.size}`);
+          
+          const chunkBuffer = await chunk.arrayBuffer();
+          const chunkView = new Uint8Array(chunkBuffer);
+          combinedView.set(chunkView, offset);
+          offset += chunkView.length;
+          
+          console.log(`🎵 Chunk ${i + 1} processed, offset now: ${offset}`);
+        } catch (chunkError) {
+          console.error(`🚨 Error processing chunk ${i + 1}:`, chunkError);
+          // Continue with other chunks
+        }
       }
       
+      console.log('🎵 Converting to base64...');
       // Convert PCM data to base64 as required by Live API
       const base64Audio = this.arrayBufferToBase64(combinedBuffer);
+      console.log(`🎵 Base64 conversion complete: ${base64Audio.length} characters`);
 
       // Send realtime input to Gemini Live API using PCM format
       const message = {
@@ -668,25 +778,60 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         }
       };
 
+      console.log('🎵 Sending audio message to WebSocket...');
       this.websocket.send(JSON.stringify(message));
       console.log(`📤 Sent raw PCM audio chunk: ${base64Audio.length} characters (${combinedBuffer.byteLength} bytes) as audio/pcm;rate=16000`);
       
       // Add a small delay to avoid overwhelming the API
+      console.log('🎵 Adding processing delay...');
       await new Promise(resolve => setTimeout(resolve, 10));
+      console.log('🎵 Audio chunk processing complete');
 
     } catch (error) {
-      console.error('Error processing accumulated PCM chunks:', error);
+      console.error('🚨 CRASH in processAudioChunks:', {
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString(),
+        chunksLength: this.audioChunksBuffer?.length || 0,
+        websocketState: this.websocket?.readyState || 'null'
+      });
+      
       // If processing fails, we'll try again with the next batch
+      if (this.errorCallback) {
+        this.errorCallback(new Error(`Audio chunk processing error: ${error.message}`));
+      }
     }
   }
 
   private arrayBufferToBase64(buffer: ArrayBuffer): string {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    try {
+      console.log(`🔄 Converting ArrayBuffer to base64: ${buffer.byteLength} bytes`);
+      
+      const bytes = new Uint8Array(buffer);
+      console.log(`🔄 Created Uint8Array with ${bytes.byteLength} bytes`);
+      
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      
+      console.log(`🔄 Created binary string: ${binary.length} characters`);
+      
+      const result = btoa(binary);
+      console.log(`🔄 Base64 conversion complete: ${result.length} characters`);
+      
+      return result;
+    } catch (conversionError) {
+      console.error('🚨 CRASH in arrayBufferToBase64:', {
+        error: conversionError.message,
+        stack: conversionError.stack,
+        bufferSize: buffer?.byteLength || 0,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Return empty string to prevent further crashes
+      return '';
     }
-    return btoa(binary);
   }
 
   private async handleWebSocketMessage(data: string | Blob | ArrayBuffer): Promise<void> {
