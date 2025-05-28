@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Gemini Live Service Interference**: Fixed crashes caused by old gemini-live service interfering with new semi-live implementation
+  - **Removed Old Crashing Service**: Deleted the old `gemini-live.ts` service that had global error handlers causing interference
+  - **Cleaned Up Dependencies**: Removed old `useGeminiLive` hook and `GeminiLiveTranscript` component that depended on the crashing service
+  - **Updated Settings Dialog**: Fixed settings dialog to use the new stable `gemini-semi-live` service instead of the old crashing one
+  - **Removed Global Event Handler Conflicts**: Eliminated global error handlers from old service that were interfering with the new implementation
+  - **Cleaned Up Test Files**: Removed test files and debug scripts for the old service to prevent confusion
 - **Gemini Semi-Live Crash Prevention**: Fixed critical crashes in Gemini Semi-Live transcription service
   - **Fixed Base64 Conversion Memory Issues**: Replaced inefficient manual string building with chunked Base64 conversion to prevent browser crashes with large audio buffers
   - **Added Memory Management**: Implemented safety checks to prevent audio chunk accumulation overflow (limited to 200-300 chunks)

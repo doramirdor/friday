@@ -63,6 +63,23 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
             event.preventDefault(); // Prevent the error from crashing the app
           }
         });
+        
+        // Add specific error handler for our service
+        window.addEventListener('error', (event) => {
+          if (event.error && event.error.stack && event.error.stack.includes('gemini-semi-live')) {
+            console.error('🚨 GEMINI SEMI-LIVE CRASH DETECTED:', {
+              message: event.error.message,
+              stack: event.error.stack,
+              filename: event.filename,
+              lineno: event.lineno,
+              colno: event.colno,
+              timestamp: new Date().toISOString()
+            });
+            if (this.errorCallback) {
+              this.errorCallback(new Error(`Service crashed: ${event.error.message}`));
+            }
+          }
+        });
       }
     } catch (error) {
       console.error('❌ Error initializing Gemini Semi-Live service:', error);
@@ -127,14 +144,17 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       await this.startMicrophoneCapture();
 
       // Set up interval to process chunks
+      console.log('🔄 Setting up audio processing interval...');
       this.chunkInterval = window.setInterval(() => {
         try {
+          console.log('🔄 Audio processing interval triggered');
           this.processAudioChunk().catch(error => {
             console.error('❌ Unhandled error in processAudioChunk:', error);
             if (this.errorCallback) {
               this.errorCallback(new Error(`Audio processing failed: ${error.message}`));
             }
           });
+          console.log('🔄 Audio processing interval completed');
         } catch (error) {
           console.error('❌ Error setting up audio chunk processing:', error);
           if (this.errorCallback) {
@@ -142,9 +162,43 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
           }
         }
       }, this.options.chunkDurationMs);
+      
+      console.log('✅ Audio processing interval set successfully');
 
       this._isRecording = true;
       console.log('✅ Gemini Semi-Live recording started successfully');
+      
+      // Add monitoring to detect if the service crashes after startup
+      setTimeout(() => {
+        console.log('🔍 POST-STARTUP CHECK: Service status after 2 seconds:', {
+          isRecording: this._isRecording,
+          hasInterval: !!this.chunkInterval,
+          audioChunksLength: this.audioChunks.length,
+          hasAudioContext: !!this.audioContext,
+          audioContextState: this.audioContext?.state,
+          hasProcessor: !!this.processor,
+          hasMediaStream: !!this.mediaStream,
+          timestamp: new Date().toISOString()
+        });
+      }, 2000);
+      
+      // Add longer-term monitoring
+      setTimeout(() => {
+        console.log('🔍 EXTENDED CHECK: Service status after 10 seconds:', {
+          isRecording: this._isRecording,
+          hasInterval: !!this.chunkInterval,
+          audioChunksLength: this.audioChunks.length,
+          hasAudioContext: !!this.audioContext,
+          audioContextState: this.audioContext?.state,
+          hasProcessor: !!this.processor,
+          hasMediaStream: !!this.mediaStream,
+          timestamp: new Date().toISOString()
+        });
+        
+        if (!this._isRecording) {
+          console.error('🚨 SERVICE CRASHED: Recording stopped unexpectedly!');
+        }
+      }, 10000);
     } catch (error) {
       console.error('❌ Failed to start Gemini Semi-Live recording:', error);
       this.cleanup();
@@ -184,13 +238,20 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       
       this.processor.onaudioprocess = (event) => {
         try {
+          console.log('🎵 Audio processing event triggered');
           const inputBuffer = event.inputBuffer;
           const inputData = inputBuffer.getChannelData(0);
           
           // Safety check: ensure we have valid audio data
           if (!inputData || inputData.length === 0) {
+            console.log('⚠️ No audio data in processing event');
             return;
           }
+          
+          console.log('🎵 Processing audio data:', {
+            length: inputData.length,
+            currentChunks: this.audioChunks.length
+          });
           
           // Safety check: prevent excessive chunk accumulation
           if (this.audioChunks.length > 300) {
@@ -200,8 +261,14 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
           
           // Store audio chunk (create a copy to avoid reference issues)
           this.audioChunks.push(new Float32Array(inputData));
+          console.log('🎵 Audio chunk stored, total chunks:', this.audioChunks.length);
         } catch (error) {
           console.error('❌ Error in audio processing event:', error);
+          console.error('🚨 AUDIO PROCESSING CRASH:', {
+            error: error.message,
+            stack: error.stack,
+            timestamp: new Date().toISOString()
+          });
           // Don't throw here as it would crash the audio processing
         }
       };
@@ -218,6 +285,8 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
   }
 
   private async processAudioChunk(): Promise<void> {
+    console.log('🔄 processAudioChunk called');
+    
     if (this.audioChunks.length === 0) {
       console.log('⚠️ No audio chunks to process');
       return;
@@ -232,8 +301,10 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
         this.audioChunks = this.audioChunks.slice(-100); // Keep only the last 100 chunks
       }
 
+      console.log('🔄 Step 1: Calculating total length...');
       // Combine all chunks into a single buffer
       const totalLength = this.audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+      console.log('🔄 Step 1 complete: Total length =', totalLength);
       
       // Safety check: prevent processing extremely large buffers
       if (totalLength > 1000000) { // More than ~60 seconds at 16kHz
@@ -242,16 +313,21 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
         return;
       }
       
+      console.log('🔄 Step 2: Creating combined buffer...');
       const combinedBuffer = new Float32Array(totalLength);
+      console.log('🔄 Step 2 complete: Combined buffer created');
       
+      console.log('🔄 Step 3: Copying chunks to combined buffer...');
       let offset = 0;
       for (const chunk of this.audioChunks) {
         combinedBuffer.set(chunk, offset);
         offset += chunk.length;
       }
+      console.log('🔄 Step 3 complete: Chunks copied');
 
       // Clear chunks for next interval
       this.audioChunks.length = 0; // More efficient than reassigning
+      console.log('🔄 Step 4: Chunks cleared');
 
       // Skip if buffer is too small (less than 0.5 seconds of audio)
       const minSamples = (this.options.sampleRateHertz || 16000) * 0.5;
@@ -260,18 +336,32 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
         return;
       }
 
+      console.log('🔄 Step 5: Converting audio for Gemini...');
       // Convert to the format expected by Gemini
       const audioData = this.convertAudioForGemini(combinedBuffer);
+      console.log('🔄 Step 5 complete: Audio converted, length =', audioData.length);
 
+      console.log('🔄 Step 6: Calling Gemini API...');
       // Send to Gemini API
       const result = await this.callGeminiAPI(audioData);
+      console.log('🔄 Step 6 complete: API call finished');
       
       if (result && this.resultCallback) {
+        console.log('🔄 Step 7: Calling result callback...');
         this.resultCallback(result);
+        console.log('🔄 Step 7 complete: Result callback finished');
       }
+
+      console.log('✅ processAudioChunk completed successfully');
 
     } catch (error) {
       console.error('❌ Error processing audio chunk:', error);
+      console.error('🚨 PROCESS AUDIO CHUNK CRASH:', {
+        error: error.message,
+        stack: error.stack,
+        audioChunksLength: this.audioChunks.length,
+        timestamp: new Date().toISOString()
+      });
       
       // Clear chunks on error to prevent accumulation
       this.audioChunks.length = 0;
@@ -284,18 +374,24 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
 
   private convertAudioForGemini(audioBuffer: Float32Array): string {
     try {
+      console.log('🔄 convertAudioForGemini called with buffer length:', audioBuffer.length);
+      
+      console.log('🔄 Converting Float32Array to 16-bit PCM...');
       // Convert Float32Array to 16-bit PCM
       const pcmBuffer = new Int16Array(audioBuffer.length);
       for (let i = 0; i < audioBuffer.length; i++) {
         // Convert from [-1, 1] to [-32768, 32767]
         pcmBuffer[i] = Math.max(-32768, Math.min(32767, audioBuffer[i] * 32767));
       }
+      console.log('🔄 PCM conversion complete, buffer size:', pcmBuffer.length);
 
       // Convert to base64 using more efficient approach
       const bytes = new Uint8Array(pcmBuffer.buffer);
+      console.log('🔄 Created Uint8Array, size:', bytes.length);
       
       // Use browser's built-in btoa with chunked processing for large buffers
       if (bytes.length > 50000) { // If buffer is large, process in chunks
+        console.log('🔄 Using chunked Base64 conversion for large buffer');
         const chunkSize = 50000;
         let base64 = '';
         
@@ -306,19 +402,30 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
             binary += String.fromCharCode(chunk[j]);
           }
           base64 += btoa(binary);
+          console.log(`🔄 Processed chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(bytes.length / chunkSize)}`);
         }
         
+        console.log('🔄 Chunked Base64 conversion complete, length:', base64.length);
         return base64;
       } else {
+        console.log('🔄 Using direct Base64 conversion for small buffer');
         // For smaller buffers, use the direct approach
         let binary = '';
         for (let i = 0; i < bytes.length; i++) {
           binary += String.fromCharCode(bytes[i]);
         }
-        return btoa(binary);
+        const result = btoa(binary);
+        console.log('🔄 Direct Base64 conversion complete, length:', result.length);
+        return result;
       }
     } catch (error) {
       console.error('❌ Error converting audio to Base64:', error);
+      console.error('🚨 BASE64 CONVERSION CRASH:', {
+        error: error.message,
+        stack: error.stack,
+        bufferLength: audioBuffer?.length || 0,
+        timestamp: new Date().toISOString()
+      });
       throw new Error(`Audio conversion failed: ${error.message}`);
     }
   }
