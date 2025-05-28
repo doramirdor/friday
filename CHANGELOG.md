@@ -464,25 +464,13 @@ All notable changes to this project will be documented in this file.
   - Users can add context files as needed for each meeting
 
 ### Added
-- **Enhanced Gemini Live Crash Detection and Logging**: Comprehensive crash detection throughout the audio processing pipeline
-  - Added detailed step-by-step logging in audio processing callback (`onaudioprocess`)
-  - Enhanced crash detection in audio processing intervals with try-catch blocks
-  - Added comprehensive logging to `processAudioChunks` method with individual chunk processing tracking
-  - Enhanced `arrayBufferToBase64` conversion with crash detection and detailed logging
-  - Added memory usage monitoring in health checks to detect potential memory-related crashes
-  - Implemented detailed error reporting with timestamps, stack traces, and context information
-  - Added buffer size monitoring and warnings for large audio accumulation buffers
-  - Enhanced WebSocket health monitoring with memory usage tracking
-  - Added graceful error handling to prevent cascading failures in audio processing
-  - Implemented detailed logging for each phase of audio chunk combination and base64 conversion
-  - **Enhanced WebSocket crash detection**: Added comprehensive crash detection to all WebSocket event handlers
-  - Added detailed logging to WebSocket `onopen`, `onmessage`, and `onerror` handlers
-  - Enhanced `sendInitialConfig` method with step-by-step logging and crash detection
-  - Added comprehensive crash detection to `handleWebSocketMessage` method with data type tracking
-  - Implemented detailed message processing logging to identify exact crash points during WebSocket communication
-  - Added graceful error handling in WebSocket message processing to prevent connection crashes
-
-- **Gemini Live Crash Debugging Tools**: Comprehensive debugging suite to identify and prevent crashes
+- **Enhanced Gemini Live Debugging**: Added comprehensive logging to diagnose transcription issues
+  - Enhanced audio processing interval logging with buffer state tracking
+  - Added audio level calculation to detect actual audio activity vs silence  
+  - Improved WebSocket message reception logging with size and type information
+  - Added detailed logging for audio chunk processing and sending to API
+  - Reduced log spam by using conditional logging based on event counts
+  - Added audio activity detection to help identify if microphone is capturing sound
 
 ## [0.3.1] - 2024-05-21
 

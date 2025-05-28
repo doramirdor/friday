@@ -486,149 +486,230 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         }, 10000); // 10 second timeout
 
         console.log('🔗 Setting up WebSocket event handlers...');
-        this.websocket.onopen = () => {
-          try {
-            console.log('🔗 WebSocket onopen event triggered');
-            console.log('🔗 Gemini Live WebSocket connected');
+        
+        try {
+          console.log('🔗 Setting up onopen handler...');
+          this.websocket.onopen = () => {
+            try {
+              console.log('🔗 WebSocket onopen event triggered');
+              console.log('🔗 Gemini Live WebSocket connected');
+              clearTimeout(connectionTimeout);
+              
+              console.log('🔗 Sending initial configuration...');
+              // Send initial configuration
+              this.sendInitialConfig(options);
+              console.log('🔗 Initial configuration sent successfully');
+              
+              console.log('🔗 Starting audio processing...');
+              // Start processing audio chunks
+              this.startAudioProcessing();
+              console.log('🔗 Audio processing started successfully');
+              
+              console.log('🔗 WebSocket setup complete, resolving promise');
+              resolve();
+            } catch (setupError) {
+              console.error('🚨 CRASH in WebSocket onopen handler:', {
+                error: setupError.message,
+                stack: setupError.stack,
+                timestamp: new Date().toISOString()
+              });
+              clearTimeout(connectionTimeout);
+              reject(new Error(`WebSocket setup failed: ${setupError.message}`));
+            }
+          };
+          console.log('🔗 ✅ onopen handler set successfully');
+        } catch (onopenError) {
+          console.error('🚨 CRASH setting onopen handler:', {
+            error: onopenError.message,
+            stack: onopenError.stack,
+            timestamp: new Date().toISOString()
+          });
+          reject(new Error(`Failed to set onopen handler: ${onopenError.message}`));
+          return;
+        }
+
+        try {
+          console.log('🔗 Setting up onmessage handler...');
+          this.websocket.onmessage = async (event) => {
+            try {
+              console.log('📥 WebSocket onmessage event triggered, data type:', typeof event.data);
+              console.log('📥 Message data size:', event.data instanceof Blob ? event.data.size : event.data instanceof ArrayBuffer ? event.data.byteLength : event.data.length);
+              
+              // Add a simple message counter
+              if (!this.messageCount) {
+                this.messageCount = 0;
+              }
+              this.messageCount++;
+              console.log(`📥 Processing message #${this.messageCount}`);
+              
+              await this.handleWebSocketMessage(event.data);
+              console.log(`📥 Message #${this.messageCount} handled successfully`);
+            } catch (messageError) {
+              console.error('🚨 CRASH in WebSocket onmessage handler:', {
+                error: messageError.message,
+                stack: messageError.stack,
+                dataType: typeof event.data,
+                timestamp: new Date().toISOString()
+              });
+              // Don't reject here, just log the error to avoid crashing the connection
+              if (this.errorCallback) {
+                this.errorCallback(new Error(`WebSocket message handling error: ${messageError.message}`));
+              }
+            }
+          };
+          console.log('🔗 ✅ onmessage handler set successfully');
+        } catch (onmessageError) {
+          console.error('🚨 CRASH setting onmessage handler:', {
+            error: onmessageError.message,
+            stack: onmessageError.stack,
+            timestamp: new Date().toISOString()
+          });
+          reject(new Error(`Failed to set onmessage handler: ${onmessageError.message}`));
+          return;
+        }
+
+        try {
+          console.log('🔗 Setting up onerror handler...');
+          this.websocket.onerror = (error) => {
+            try {
+              console.error('🚨 WebSocket onerror event triggered:', error);
+              console.error('❌ WebSocket error:', error);
+              clearTimeout(connectionTimeout);
+              
+              // Provide more specific error messages
+              if (this.websocket?.readyState === WebSocket.CONNECTING) {
+                reject(new Error('Failed to connect to Gemini Live. Please check your API key and internet connection.'));
+              } else {
+                reject(new Error('WebSocket connection error occurred'));
+              }
+            } catch (errorHandlerError) {
+              console.error('🚨 CRASH in WebSocket onerror handler:', {
+                error: errorHandlerError.message,
+                stack: errorHandlerError.stack,
+                originalError: error,
+                timestamp: new Date().toISOString()
+              });
+              reject(new Error(`WebSocket error handler failed: ${errorHandlerError.message}`));
+            }
+          };
+          console.log('🔗 ✅ onerror handler set successfully');
+        } catch (onerrorError) {
+          console.error('🚨 CRASH setting onerror handler:', {
+            error: onerrorError.message,
+            stack: onerrorError.stack,
+            timestamp: new Date().toISOString()
+          });
+          reject(new Error(`Failed to set onerror handler: ${onerrorError.message}`));
+          return;
+        }
+
+        try {
+          console.log('🔗 Setting up onclose handler...');
+          this.websocket.onclose = (event) => {
+            console.log('🔌 Gemini Live WebSocket closed:', event.code, event.reason);
             clearTimeout(connectionTimeout);
             
-            console.log('🔗 Sending initial configuration...');
-            // Send initial configuration
-            this.sendInitialConfig(options);
-            console.log('🔗 Initial configuration sent successfully');
-            
-            console.log('🔗 Starting audio processing...');
-            // Start processing audio chunks
-            this.startAudioProcessing();
-            console.log('🔗 Audio processing started successfully');
-            
-            console.log('🔗 WebSocket setup complete, resolving promise');
-            resolve();
-          } catch (setupError) {
-            console.error('🚨 CRASH in WebSocket onopen handler:', {
-              error: setupError.message,
-              stack: setupError.stack,
-              timestamp: new Date().toISOString()
+            console.log('🔌 Close event details:', {
+              code: event.code,
+              reason: event.reason,
+              wasClean: event.wasClean,
+              isStreaming: this._isStreaming
             });
-            clearTimeout(connectionTimeout);
-            reject(new Error(`WebSocket setup failed: ${setupError.message}`));
-          }
-        };
-
-        this.websocket.onmessage = async (event) => {
-          try {
-            console.log('📥 WebSocket onmessage event triggered, data type:', typeof event.data);
-            console.log('📥 Message data size:', event.data instanceof Blob ? event.data.size : event.data instanceof ArrayBuffer ? event.data.byteLength : event.data.length);
             
-            // Add a simple message counter
-            if (!this.messageCount) {
-              this.messageCount = 0;
+            if (this._isStreaming) {
+              // Unexpected close - provide more detailed error information
+              let errorMessage = 'Connection to Gemini Live lost';
+              
+              // Provide specific error messages based on close codes
+              switch (event.code) {
+                case 1000:
+                  errorMessage = 'Gemini Live connection closed normally';
+                  break;
+                case 1001:
+                  errorMessage = 'Gemini Live server is going away';
+                  break;
+                case 1002:
+                  errorMessage = 'Gemini Live protocol error';
+                  break;
+                case 1003:
+                  errorMessage = 'Gemini Live received unsupported data';
+                  break;
+                case 1006:
+                  errorMessage = 'Gemini Live connection lost abnormally (network issue)';
+                  break;
+                case 1011:
+                  errorMessage = 'Gemini Live server encountered an error';
+                  break;
+                case 1012:
+                  errorMessage = 'Gemini Live server is restarting';
+                  break;
+                case 1013:
+                  errorMessage = 'Gemini Live server is temporarily overloaded';
+                  break;
+                case 1014:
+                  errorMessage = 'Gemini Live bad gateway';
+                  break;
+                case 1015:
+                  errorMessage = 'Gemini Live TLS handshake failed';
+                  break;
+                case 4001:
+                  errorMessage = 'Invalid API key for Gemini Live';
+                  break;
+                case 4003:
+                  errorMessage = 'API quota exceeded for Gemini Live';
+                  break;
+                default:
+                  errorMessage = `Gemini Live connection closed with code ${event.code}: ${event.reason || 'Unknown reason'}`;
+              }
+              
+              if (this.errorCallback) {
+                this.errorCallback(new Error(errorMessage));
+              }
             }
-            this.messageCount++;
-            console.log(`📥 Processing message #${this.messageCount}`);
-            
-            await this.handleWebSocketMessage(event.data);
-            console.log(`📥 Message #${this.messageCount} handled successfully`);
-          } catch (messageError) {
-            console.error('🚨 CRASH in WebSocket onmessage handler:', {
-              error: messageError.message,
-              stack: messageError.stack,
-              dataType: typeof event.data,
-              timestamp: new Date().toISOString()
-            });
-            // Don't reject here, just log the error to avoid crashing the connection
-            if (this.errorCallback) {
-              this.errorCallback(new Error(`WebSocket message handling error: ${messageError.message}`));
-            }
-          }
-        };
+            this._isStreaming = false;
+          };
+          console.log('🔗 ✅ onclose handler set successfully');
+        } catch (oncloseError) {
+          console.error('🚨 CRASH setting onclose handler:', {
+            error: oncloseError.message,
+            stack: oncloseError.stack,
+            timestamp: new Date().toISOString()
+          });
+          reject(new Error(`Failed to set onclose handler: ${oncloseError.message}`));
+          return;
+        }
 
-        this.websocket.onerror = (error) => {
-          try {
-            console.error('🚨 WebSocket onerror event triggered:', error);
-            console.error('❌ WebSocket error:', error);
-            clearTimeout(connectionTimeout);
-            
-            // Provide more specific error messages
-            if (this.websocket?.readyState === WebSocket.CONNECTING) {
-              reject(new Error('Failed to connect to Gemini Live. Please check your API key and internet connection.'));
-            } else {
-              reject(new Error('WebSocket connection error occurred'));
-            }
-          } catch (errorHandlerError) {
-            console.error('🚨 CRASH in WebSocket onerror handler:', {
-              error: errorHandlerError.message,
-              stack: errorHandlerError.stack,
-              originalError: error,
-              timestamp: new Date().toISOString()
-            });
-            reject(new Error(`WebSocket error handler failed: ${errorHandlerError.message}`));
-          }
-        };
+        console.log('🔗 ✅ All WebSocket event handlers set successfully');
 
-        this.websocket.onclose = (event) => {
-          console.log('🔌 Gemini Live WebSocket closed:', event.code, event.reason);
-          clearTimeout(connectionTimeout);
+        // Validate WebSocket state after setting handlers
+        try {
+          console.log('🔗 Validating WebSocket state after handler setup...');
+          if (!this.websocket) {
+            throw new Error('WebSocket instance became null after handler setup');
+          }
           
-          console.log('🔌 Close event details:', {
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean,
-            isStreaming: this._isStreaming
+          console.log('🔗 WebSocket validation:', {
+            readyState: this.websocket.readyState,
+            readyStateText: this.getReadyStateText(this.websocket.readyState),
+            url: this.websocket.url ? this.websocket.url.replace(this.apiKey, '[API_KEY_HIDDEN]') : 'undefined'
           });
           
-          if (this._isStreaming) {
-            // Unexpected close - provide more detailed error information
-            let errorMessage = 'Connection to Gemini Live lost';
-            
-            // Provide specific error messages based on close codes
-            switch (event.code) {
-              case 1000:
-                errorMessage = 'Gemini Live connection closed normally';
-                break;
-              case 1001:
-                errorMessage = 'Gemini Live server is going away';
-                break;
-              case 1002:
-                errorMessage = 'Gemini Live protocol error';
-                break;
-              case 1003:
-                errorMessage = 'Gemini Live received unsupported data';
-                break;
-              case 1006:
-                errorMessage = 'Gemini Live connection lost abnormally (network issue)';
-                break;
-              case 1011:
-                errorMessage = 'Gemini Live server encountered an error';
-                break;
-              case 1012:
-                errorMessage = 'Gemini Live server is restarting';
-                break;
-              case 1013:
-                errorMessage = 'Gemini Live server is temporarily overloaded';
-                break;
-              case 1014:
-                errorMessage = 'Gemini Live bad gateway';
-                break;
-              case 1015:
-                errorMessage = 'Gemini Live TLS handshake failed';
-                break;
-              case 4001:
-                errorMessage = 'Invalid API key for Gemini Live';
-                break;
-              case 4003:
-                errorMessage = 'API quota exceeded for Gemini Live';
-                break;
-              default:
-                errorMessage = `Gemini Live connection closed with code ${event.code}: ${event.reason || 'Unknown reason'}`;
-            }
-            
-            if (this.errorCallback) {
-              this.errorCallback(new Error(errorMessage));
-            }
+          if (this.websocket.readyState === WebSocket.CLOSED) {
+            throw new Error('WebSocket closed immediately after creation');
           }
-          this._isStreaming = false;
-        };
+          
+          console.log('🔗 ✅ WebSocket state validation passed');
+        } catch (validationError) {
+          console.error('🚨 CRASH during WebSocket validation:', {
+            error: validationError.message,
+            stack: validationError.stack,
+            timestamp: new Date().toISOString()
+          });
+          reject(new Error(`WebSocket validation failed: ${validationError.message}`));
+          return;
+        }
+
+        console.log('🔗 ✅ WebSocket connection setup completed successfully');
 
       } catch (error) {
         console.error('❌ Error creating WebSocket:', error);
@@ -693,43 +774,72 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   private startAudioProcessing(): void {
-    console.log('🎵 Starting audio processing interval...');
-    
-    let intervalCount = 0;
-    
-    // Process accumulated audio chunks every 100ms, but only send when enough time has passed
-    this.processingInterval = window.setInterval(() => {
-      try {
-        intervalCount++;
-        
-        // Only log every 10th interval to reduce spam, but always log the first few
-        if (intervalCount <= 5 || intervalCount % 10 === 0) {
-          console.log(`🎵 Audio processing interval #${intervalCount} triggered`);
-          console.log(`🎵 Current audio buffer state: accumulation=${this.audioAccumulationBuffer.length}, processing=${this.audioChunksBuffer.length}`);
-        }
-        
-        this.checkAndProcessAccumulatedAudio();
-        
-        // Only log completion for first few intervals or every 10th
-        if (intervalCount <= 5 || intervalCount % 10 === 0) {
-          console.log(`🎵 Audio processing interval #${intervalCount} completed successfully`);
-        }
-      } catch (intervalError) {
-        console.error(`🚨 CRASH in audio processing interval #${intervalCount}:`, {
-          error: intervalError.message,
-          stack: intervalError.stack,
-          timestamp: new Date().toISOString()
-        });
-        
-        // Try to continue processing despite the error
-        if (this.errorCallback) {
-          this.errorCallback(new Error(`Audio processing interval error: ${intervalError.message}`));
-        }
+    try {
+      console.log('🎵 Starting audio processing interval...');
+      
+      // Validate prerequisites
+      if (!this.audioAccumulationBuffer) {
+        throw new Error('Audio accumulation buffer not initialized');
       }
-    }, 100);
-    
-    // Add connection health monitoring
-    this.startConnectionHealthCheck();
+      
+      if (!this.audioChunksBuffer) {
+        throw new Error('Audio chunks buffer not initialized');
+      }
+      
+      console.log('🎵 Audio processing prerequisites validated');
+      
+      let intervalCount = 0;
+      
+      console.log('🎵 Setting up audio processing interval...');
+      // Process accumulated audio chunks every 100ms, but only send when enough time has passed
+      this.processingInterval = window.setInterval(() => {
+        try {
+          intervalCount++;
+          
+          // Only log every 10th interval to reduce spam, but always log the first few
+          if (intervalCount <= 5 || intervalCount % 10 === 0) {
+            console.log(`🎵 Audio processing interval #${intervalCount} triggered`);
+            console.log(`🎵 Current audio buffer state: accumulation=${this.audioAccumulationBuffer.length}, processing=${this.audioChunksBuffer.length}`);
+          }
+          
+          this.checkAndProcessAccumulatedAudio();
+          
+          // Only log completion for first few intervals or every 10th
+          if (intervalCount <= 5 || intervalCount % 10 === 0) {
+            console.log(`🎵 Audio processing interval #${intervalCount} completed successfully`);
+          }
+        } catch (intervalError) {
+          console.error(`🚨 CRASH in audio processing interval #${intervalCount}:`, {
+            error: intervalError.message,
+            stack: intervalError.stack,
+            timestamp: new Date().toISOString()
+          });
+          
+          // Try to continue processing despite the error
+          if (this.errorCallback) {
+            this.errorCallback(new Error(`Audio processing interval error: ${intervalError.message}`));
+          }
+        }
+      }, 100);
+      
+      console.log('🎵 ✅ Audio processing interval set successfully');
+      
+      console.log('🎵 Starting connection health monitoring...');
+      // Add connection health monitoring
+      this.startConnectionHealthCheck();
+      console.log('🎵 ✅ Connection health monitoring started');
+      
+      console.log('🎵 ✅ Audio processing setup completed successfully');
+    } catch (audioProcessingError) {
+      console.error('🚨 CRASH in startAudioProcessing:', {
+        error: audioProcessingError.message,
+        stack: audioProcessingError.stack,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Re-throw the error so the calling function can handle it
+      throw new Error(`Audio processing setup failed: ${audioProcessingError.message}`);
+    }
   }
 
   private checkAndProcessAccumulatedAudio(): void {
@@ -784,58 +894,73 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   private startConnectionHealthCheck(): void {
-    // Check connection health every 5 seconds
-    const healthCheckInterval = setInterval(() => {
-      try {
-        if (this.websocket) {
-          console.log('🔍 WebSocket health check:', {
-            readyState: this.websocket.readyState,
-            readyStateText: this.getReadyStateText(this.websocket.readyState),
-            isStreaming: this._isStreaming
-          });
-          
-          // If connection is closed but we're still supposed to be streaming, that's an issue
-          if (this.websocket.readyState === WebSocket.CLOSED && this._isStreaming) {
-            console.error('🚨 WebSocket connection lost while streaming!');
+    try {
+      console.log('🔍 Setting up connection health check...');
+      
+      // Check connection health every 5 seconds
+      const healthCheckInterval = setInterval(() => {
+        try {
+          if (this.websocket) {
+            console.log('🔍 WebSocket health check:', {
+              readyState: this.websocket.readyState,
+              readyStateText: this.getReadyStateText(this.websocket.readyState),
+              isStreaming: this._isStreaming
+            });
+            
+            // If connection is closed but we're still supposed to be streaming, that's an issue
+            if (this.websocket.readyState === WebSocket.CLOSED && this._isStreaming) {
+              console.error('🚨 WebSocket connection lost while streaming!');
+            }
           }
+          
+          // Memory usage monitoring
+          if (typeof performance !== 'undefined' && 'memory' in performance) {
+            const memory = (performance as { memory: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
+            const memInfo = {
+              usedJSHeapSize: Math.round(memory.usedJSHeapSize / 1024 / 1024),
+              totalJSHeapSize: Math.round(memory.totalJSHeapSize / 1024 / 1024),
+              jsHeapSizeLimit: Math.round(memory.jsHeapSizeLimit / 1024 / 1024),
+              audioBufferLength: this.audioAccumulationBuffer?.length || 0,
+              processingBufferLength: this.audioChunksBuffer?.length || 0
+            };
+            
+            console.log('💾 Memory usage:', memInfo);
+            
+            // Warn if memory usage is getting high
+            if (memInfo.usedJSHeapSize > memInfo.jsHeapSizeLimit * 0.8) {
+              console.warn('⚠️ High memory usage detected! This could cause crashes.');
+            }
+            
+            // Warn if audio buffers are getting too large
+            if (memInfo.audioBufferLength > 100) {
+              console.warn('⚠️ Audio accumulation buffer is getting large:', memInfo.audioBufferLength);
+            }
+            
+            if (memInfo.processingBufferLength > 50) {
+              console.warn('⚠️ Audio processing buffer is getting large:', memInfo.processingBufferLength);
+            }
+          }
+          
+          // Clean up if not streaming
+          if (!this._isStreaming) {
+            clearInterval(healthCheckInterval);
+          }
+        } catch (healthCheckError) {
+          console.error('🚨 Error in health check:', healthCheckError);
         }
-        
-        // Memory usage monitoring
-        if (typeof performance !== 'undefined' && 'memory' in performance) {
-          const memory = (performance as { memory: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number } }).memory;
-          const memInfo = {
-            usedJSHeapSize: Math.round(memory.usedJSHeapSize / 1024 / 1024),
-            totalJSHeapSize: Math.round(memory.totalJSHeapSize / 1024 / 1024),
-            jsHeapSizeLimit: Math.round(memory.jsHeapSizeLimit / 1024 / 1024),
-            audioBufferLength: this.audioAccumulationBuffer?.length || 0,
-            processingBufferLength: this.audioChunksBuffer?.length || 0
-          };
-          
-          console.log('💾 Memory usage:', memInfo);
-          
-          // Warn if memory usage is getting high
-          if (memInfo.usedJSHeapSize > memInfo.jsHeapSizeLimit * 0.8) {
-            console.warn('⚠️ High memory usage detected! This could cause crashes.');
-          }
-          
-          // Warn if audio buffers are getting too large
-          if (memInfo.audioBufferLength > 100) {
-            console.warn('⚠️ Audio accumulation buffer is getting large:', memInfo.audioBufferLength);
-          }
-          
-          if (memInfo.processingBufferLength > 50) {
-            console.warn('⚠️ Audio processing buffer is getting large:', memInfo.processingBufferLength);
-          }
-        }
-        
-        // Clean up if not streaming
-        if (!this._isStreaming) {
-          clearInterval(healthCheckInterval);
-        }
-      } catch (healthCheckError) {
-        console.error('🚨 Error in health check:', healthCheckError);
-      }
-    }, 5000);
+      }, 5000);
+      
+      console.log('🔍 ✅ Connection health check setup completed');
+    } catch (healthCheckSetupError) {
+      console.error('🚨 CRASH in startConnectionHealthCheck:', {
+        error: healthCheckSetupError.message,
+        stack: healthCheckSetupError.stack,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Don't re-throw this error as health check is not critical
+      console.warn('⚠️ Health check setup failed, continuing without health monitoring');
+    }
   }
 
   private getReadyStateText(readyState: number): string {
