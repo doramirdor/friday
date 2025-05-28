@@ -248,8 +248,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           resolve();
         };
 
-        this.websocket.onmessage = (event) => {
-          this.handleWebSocketMessage(event.data);
+        this.websocket.onmessage = async (event) => {
+          await this.handleWebSocketMessage(event.data);
         };
 
         this.websocket.onerror = (error) => {
@@ -359,9 +359,32 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     return btoa(binary);
   }
 
-  private handleWebSocketMessage(data: string): void {
+  private async handleWebSocketMessage(data: string | Blob | ArrayBuffer): Promise<void> {
     try {
-      const response: GeminiLiveResponse = JSON.parse(data);
+      let messageText: string;
+
+      // Handle different data types
+      if (typeof data === 'string') {
+        messageText = data;
+      } else if (data instanceof Blob) {
+        // Convert Blob to text
+        messageText = await data.text();
+      } else if (data instanceof ArrayBuffer) {
+        // Convert ArrayBuffer to text
+        const decoder = new TextDecoder();
+        messageText = decoder.decode(data);
+      } else {
+        console.warn('Received unknown message type from Gemini Live:', typeof data);
+        return;
+      }
+
+      // Skip empty messages
+      if (!messageText || messageText.trim() === '') {
+        return;
+      }
+
+      // Parse JSON response
+      const response: GeminiLiveResponse = JSON.parse(messageText);
 
       // Handle setup complete
       if (response.setupComplete) {
@@ -409,6 +432,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
     } catch (error) {
       console.error('Error parsing Gemini Live response:', error);
+      console.error('Raw data type:', typeof data);
+      console.error('Raw data:', data);
     }
   }
 

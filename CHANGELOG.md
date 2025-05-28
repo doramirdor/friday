@@ -13,6 +13,12 @@ All notable changes to this project will be documented in this file.
   - Updated TypeScript interfaces to match Live API response format
   - Removed deprecated audio and text configuration in favor of Live API setup message
   - Fixed 404 WebSocket handshake errors that prevented Gemini Live transcription from working
+- **Gemini Live WebSocket Message Handling**: Fixed JSON parsing errors when receiving binary data from WebSocket
+  - Enhanced `handleWebSocketMessage` method to properly handle text, Blob, and ArrayBuffer message types
+  - Added automatic conversion of Blob and ArrayBuffer messages to text before JSON parsing
+  - Fixed "Unexpected token 'o', '[object Blob]' is not valid JSON" errors
+  - Added proper error logging with message type information for debugging
+  - Improved message validation to skip empty or invalid messages gracefully
 
 ### Added
 - **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API
