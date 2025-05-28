@@ -475,6 +475,12 @@ All notable changes to this project will be documented in this file.
   - Enhanced WebSocket health monitoring with memory usage tracking
   - Added graceful error handling to prevent cascading failures in audio processing
   - Implemented detailed logging for each phase of audio chunk combination and base64 conversion
+  - **Enhanced WebSocket crash detection**: Added comprehensive crash detection to all WebSocket event handlers
+  - Added detailed logging to WebSocket `onopen`, `onmessage`, and `onerror` handlers
+  - Enhanced `sendInitialConfig` method with step-by-step logging and crash detection
+  - Added comprehensive crash detection to `handleWebSocketMessage` method with data type tracking
+  - Implemented detailed message processing logging to identify exact crash points during WebSocket communication
+  - Added graceful error handling in WebSocket message processing to prevent connection crashes
 
 - **Gemini Live Crash Debugging Tools**: Comprehensive debugging suite to identify and prevent crashes
 

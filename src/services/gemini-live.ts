@@ -450,41 +450,73 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         }, 10000); // 10 second timeout
 
         this.websocket.onopen = () => {
-          console.log('🔗 Gemini Live WebSocket connected');
-          clearTimeout(connectionTimeout);
-          
           try {
+            console.log('🔗 WebSocket onopen event triggered');
+            console.log('🔗 Gemini Live WebSocket connected');
+            clearTimeout(connectionTimeout);
+            
+            console.log('🔗 Sending initial configuration...');
             // Send initial configuration
             this.sendInitialConfig(options);
+            console.log('🔗 Initial configuration sent successfully');
             
+            console.log('🔗 Starting audio processing...');
             // Start processing audio chunks
             this.startAudioProcessing();
+            console.log('🔗 Audio processing started successfully');
             
+            console.log('🔗 WebSocket setup complete, resolving promise');
             resolve();
           } catch (setupError) {
-            console.error('❌ Error during WebSocket setup:', setupError);
+            console.error('🚨 CRASH in WebSocket onopen handler:', {
+              error: setupError.message,
+              stack: setupError.stack,
+              timestamp: new Date().toISOString()
+            });
+            clearTimeout(connectionTimeout);
             reject(new Error(`WebSocket setup failed: ${setupError.message}`));
           }
         };
 
         this.websocket.onmessage = async (event) => {
           try {
+            console.log('📥 WebSocket onmessage event triggered, data type:', typeof event.data);
             await this.handleWebSocketMessage(event.data);
+            console.log('📥 WebSocket message handled successfully');
           } catch (messageError) {
-            console.error('❌ Error handling WebSocket message:', messageError);
+            console.error('🚨 CRASH in WebSocket onmessage handler:', {
+              error: messageError.message,
+              stack: messageError.stack,
+              dataType: typeof event.data,
+              timestamp: new Date().toISOString()
+            });
             // Don't reject here, just log the error to avoid crashing the connection
+            if (this.errorCallback) {
+              this.errorCallback(new Error(`WebSocket message handling error: ${messageError.message}`));
+            }
           }
         };
 
         this.websocket.onerror = (error) => {
-          console.error('❌ WebSocket error:', error);
-          clearTimeout(connectionTimeout);
-          
-          // Provide more specific error messages
-          if (this.websocket?.readyState === WebSocket.CONNECTING) {
-            reject(new Error('Failed to connect to Gemini Live. Please check your API key and internet connection.'));
-          } else {
-            reject(new Error('WebSocket connection error occurred'));
+          try {
+            console.error('🚨 WebSocket onerror event triggered:', error);
+            console.error('❌ WebSocket error:', error);
+            clearTimeout(connectionTimeout);
+            
+            // Provide more specific error messages
+            if (this.websocket?.readyState === WebSocket.CONNECTING) {
+              reject(new Error('Failed to connect to Gemini Live. Please check your API key and internet connection.'));
+            } else {
+              reject(new Error('WebSocket connection error occurred'));
+            }
+          } catch (errorHandlerError) {
+            console.error('🚨 CRASH in WebSocket onerror handler:', {
+              error: errorHandlerError.message,
+              stack: errorHandlerError.stack,
+              originalError: error,
+              timestamp: new Date().toISOString()
+            });
+            reject(new Error(`WebSocket error handler failed: ${errorHandlerError.message}`));
           }
         };
 
@@ -560,39 +592,58 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   private sendInitialConfig(options: Required<GeminiLiveOptions>): void {
-    if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
-    // Send setup message for Live API - corrected format based on official docs
-    const setupMessage = {
-      setup: {
-        model: "models/gemini-2.0-flash-live-001",
-        generationConfig: {
-          responseModalities: ["TEXT"],
-          candidateCount: 1,
-          maxOutputTokens: 8192,
-          temperature: 0.7,
-          topP: 0.95,
-          topK: 40
-        },
-        realtimeInputConfig: {
-          automaticActivityDetection: {
-            disabled: false,
-            startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
-            endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
-            prefixPaddingMs: 300,
-            silenceDurationMs: 1000
-          },
-          activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
-          turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY"
-        },
-        inputAudioTranscription: {}
+    try {
+      console.log('📤 sendInitialConfig called');
+      
+      if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+        console.warn('⚠️ WebSocket not ready for initial config');
+        return;
       }
-    };
 
-    this.websocket.send(JSON.stringify(setupMessage));
-    console.log('📤 Sent initial setup to Gemini Live API with corrected format');
+      console.log('📤 Creating setup message...');
+      // Send setup message for Live API - corrected format based on official docs
+      const setupMessage = {
+        setup: {
+          model: "models/gemini-2.0-flash-live-001",
+          generationConfig: {
+            responseModalities: ["TEXT"],
+            candidateCount: 1,
+            maxOutputTokens: 8192,
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40
+          },
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+              endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+              prefixPaddingMs: 300,
+              silenceDurationMs: 1000
+            },
+            activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
+            turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY"
+          },
+          inputAudioTranscription: {}
+        }
+      };
+
+      console.log('📤 Setup message created:', JSON.stringify(setupMessage, null, 2));
+      console.log('📤 Sending setup message to WebSocket...');
+      
+      this.websocket.send(JSON.stringify(setupMessage));
+      console.log('📤 Sent initial setup to Gemini Live API with corrected format');
+    } catch (configError) {
+      console.error('🚨 CRASH in sendInitialConfig:', {
+        error: configError.message,
+        stack: configError.stack,
+        websocketState: this.websocket?.readyState || 'null',
+        timestamp: new Date().toISOString()
+      });
+      
+      // Re-throw the error so the calling function can handle it
+      throw new Error(`Initial config failed: ${configError.message}`);
+    }
   }
 
   private startAudioProcessing(): void {
@@ -836,30 +887,41 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
   private async handleWebSocketMessage(data: string | Blob | ArrayBuffer): Promise<void> {
     try {
+      console.log('📥 handleWebSocketMessage called, data type:', typeof data);
+      
       let messageText: string;
 
+      console.log('📥 Converting message data to text...');
       // Handle different data types
       if (typeof data === 'string') {
         messageText = data;
+        console.log('📥 Data is already string, length:', data.length);
       } else if (data instanceof Blob) {
+        console.log('📥 Converting Blob to text, size:', data.size);
         // Convert Blob to text
         messageText = await data.text();
+        console.log('📥 Blob converted to text, length:', messageText.length);
       } else if (data instanceof ArrayBuffer) {
+        console.log('📥 Converting ArrayBuffer to text, byteLength:', data.byteLength);
         // Convert ArrayBuffer to text
         const decoder = new TextDecoder();
         messageText = decoder.decode(data);
+        console.log('📥 ArrayBuffer converted to text, length:', messageText.length);
       } else {
-        console.warn('Received unknown message type from Gemini Live:', typeof data);
+        console.warn('📥 Received unknown message type from Gemini Live:', typeof data);
         return;
       }
 
       // Skip empty messages
       if (!messageText || messageText.trim() === '') {
+        console.log('📥 Skipping empty message');
         return;
       }
 
+      console.log('📥 Parsing JSON response...');
       // Parse JSON response
       const response: GeminiLiveResponse = JSON.parse(messageText);
+      console.log('📥 JSON parsed successfully');
       
       // Log all responses for debugging (but limit size for readability)
       const responseStr = JSON.stringify(response, null, 2);
@@ -869,6 +931,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         console.log('📥 Received Gemini Live response:', responseStr);
       }
 
+      console.log('📥 Processing response content...');
       // Handle setup complete
       if (response.setupComplete) {
         console.log('🔗 Gemini Live setup completed');
@@ -877,6 +940,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
       // Handle server content
       if (response.serverContent) {
+        console.log('📥 Processing server content...');
         const serverContent = response.serverContent;
         console.log('📋 Server content received:', JSON.stringify(serverContent, null, 2));
         
@@ -921,17 +985,31 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
       // Handle errors
       if (response.error) {
-        console.error('Gemini Live error:', response.error);
+        console.error('📥 Gemini Live API error received:', response.error);
         if (this.errorCallback) {
           this.errorCallback(new Error(response.error.message || 'Unknown error'));
         }
         return;
       }
 
+      console.log('📥 Message processing completed successfully');
+
     } catch (error) {
-      console.error('Error parsing Gemini Live response:', error);
-      console.error('Raw data type:', typeof data);
-      console.error('Raw data:', data);
+      console.error('🚨 CRASH in handleWebSocketMessage:', {
+        error: error.message,
+        stack: error.stack,
+        dataType: typeof data,
+        dataSize: data instanceof Blob ? data.size : data instanceof ArrayBuffer ? data.byteLength : typeof data === 'string' ? data.length : 'unknown',
+        timestamp: new Date().toISOString()
+      });
+      
+      console.error('📥 Raw data type:', typeof data);
+      console.error('📥 Raw data (first 200 chars):', typeof data === 'string' ? data.substring(0, 200) : 'Non-string data');
+      
+      // Don't re-throw the error to avoid crashing the WebSocket connection
+      if (this.errorCallback) {
+        this.errorCallback(new Error(`Message handling error: ${error.message}`));
+      }
     }
   }
 
