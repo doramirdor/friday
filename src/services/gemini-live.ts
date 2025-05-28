@@ -130,15 +130,25 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   private messageCount = 0;
 
   constructor() {
+    console.log('🔍 CONSTRUCTOR: Initializing GeminiLiveServiceImpl...');
     this.checkAvailability();
+    console.log('🔍 CONSTRUCTOR: checkAvailability called');
   }
 
   private async checkAvailability() {
+    console.log('🔍 AVAILABILITY: Starting availability check...');
+    
     try {
       // Check if we have the necessary APIs
       const hasWebSocket = typeof WebSocket !== 'undefined';
       const hasAudioContext = typeof AudioContext !== 'undefined';
       const hasGetUserMedia = !!(navigator.mediaDevices?.getUserMedia);
+
+      console.log('🔍 AVAILABILITY: API checks:', {
+        hasWebSocket,
+        hasAudioContext,
+        hasGetUserMedia
+      });
 
       // Get API key from various sources
       const electronAPI = (window as { electronAPI?: { env?: { GEMINI_API_KEY?: string } } }).electronAPI;
@@ -148,28 +158,38 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       try {
         const settings = await DatabaseService.getSettings();
         settingsApiKey = settings?.geminiApiKey;
+        console.log('🔍 AVAILABILITY: Database settings loaded, has API key:', !!settingsApiKey);
       } catch (dbError) {
-        console.warn('Could not access database for API key:', dbError);
+        console.warn('🔍 AVAILABILITY: Could not access database for API key:', dbError);
       }
       
       const localStorageApiKey = localStorage.getItem('gemini-api-key');
       
       this.apiKey = envApiKey || settingsApiKey || localStorageApiKey;
 
+      console.log('🔍 AVAILABILITY: API key sources:', {
+        envApiKey: !!envApiKey,
+        settingsApiKey: !!settingsApiKey,
+        localStorageApiKey: !!localStorageApiKey,
+        finalApiKey: !!this.apiKey
+      });
+
       this._isAvailable = hasWebSocket && hasAudioContext && hasGetUserMedia && !!this.apiKey;
 
+      console.log('🔍 AVAILABILITY: Final availability result:', this._isAvailable);
+
       if (!this._isAvailable) {
-        console.warn('Gemini Live not available:', {
+        console.warn('🔍 AVAILABILITY: Gemini Live not available:', {
           hasWebSocket,
           hasAudioContext,
           hasGetUserMedia,
           hasApiKey: !!this.apiKey
         });
       } else {
-        console.log('Gemini Live service available');
+        console.log('🔍 AVAILABILITY: Gemini Live service available');
       }
     } catch (error) {
-      console.error('Error checking Gemini Live availability:', error);
+      console.error('🔍 AVAILABILITY: Error checking Gemini Live availability:', error);
       this._isAvailable = false;
     }
   }
@@ -184,9 +204,17 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
   async startStreaming(options: GeminiLiveOptions = {}): Promise<void> {
     console.log('🚀 GEMINI LIVE: Starting streaming with crash detection...');
+    console.log('🔍 IMMEDIATE: startStreaming method called with options:', options);
+    console.log('🔍 IMMEDIATE: Current service state:', {
+      isAvailable: this._isAvailable,
+      isStreaming: this._isStreaming,
+      hasApiKey: !!this.apiKey
+    });
     
     // Add a simple test mode flag
     const testMode = localStorage.getItem('gemini-live-test-mode') === 'true';
+    console.log('🔍 IMMEDIATE: Test mode check:', testMode);
+    
     if (testMode) {
       console.log('🧪 TEST MODE: Starting simplified Gemini Live test...');
       return this.startTestMode(options);
