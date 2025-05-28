@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Gemini Live API Integration**: Fixed WebSocket connection errors by updating to correct Live API endpoint
+  - Updated WebSocket URL from deprecated `streamGenerateContent` to correct Live API endpoint
+  - Fixed WebSocket URL to use `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`
+  - Updated message format to match Live API specification with proper setup and realtimeInput messages
+  - Fixed response handling to process Live API server content structure
+  - Updated TypeScript interfaces to match Live API response format
+  - Removed deprecated audio and text configuration in favor of Live API setup message
+  - Fixed 404 WebSocket handshake errors that prevented Gemini Live transcription from working
+
 ### Added
 - **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API
   - Real-time speech-to-text with speaker diarization using Gemini Live WebSocket connection

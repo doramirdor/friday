@@ -17,29 +17,55 @@ export interface GeminiLiveOptions {
   languageCode?: string;
 }
 
-// Interface for audio config message
-interface AudioConfig {
-  sample_rate_hertz: number;
-  encoding: string;
-  diarization_config?: {
-    enableSpeakerDiarization: boolean;
-    maxSpeakerCount?: number;
-  };
-}
 
-// Interface for text config message
-interface TextConfig {
-  partial_results: boolean;
-}
 
 // Interface for Gemini Live response
 interface GeminiLiveResponse {
-  choices?: Array<{
-    partial: boolean;
-    text: string;
-    speakerTag?: number;
-    confidence?: number;
-  }>;
+  setupComplete?: boolean;
+  serverContent?: {
+    modelTurn?: {
+      parts: Array<{
+        text?: string;
+        inlineData?: {
+          mimeType: string;
+          data: string;
+        };
+      }>;
+    };
+    inputTranscription?: {
+      text: string;
+      finished?: boolean;
+    };
+    outputTranscription?: {
+      text: string;
+      finished?: boolean;
+    };
+    turnComplete?: boolean;
+    interrupted?: boolean;
+    generationComplete?: boolean;
+  };
+  toolCall?: {
+    functionCalls: Array<{
+      id: string;
+      name: string;
+      args: Record<string, unknown>;
+    }>;
+  };
+  toolCallCancellation?: {
+    ids: string[];
+  };
+  usageMetadata?: {
+    totalTokenCount: number;
+    promptTokenCount: number;
+    responseTokenCount: number;
+  };
+  goAway?: {
+    timeLeft: string;
+  };
+  sessionResumptionUpdate?: {
+    newHandle: string;
+    resumable: boolean;
+  };
   error?: {
     message: string;
     code?: number;
@@ -68,9 +94,6 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   private apiKey: string | null = null;
   private audioChunksBuffer: Blob[] = [];
   private processingInterval: number | null = null;
-
-  // Rolling buffer for speaker segments
-  private speakerBuffers = new Map<number, string>();
 
   constructor() {
     this.checkAvailability();
@@ -209,7 +232,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   private async connectWebSocket(options: Required<GeminiLiveOptions>): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const wsUrl = `wss://generativelanguage.googleapis.com/v1beta/models/gemini-pro:streamGenerateContent?key=${this.apiKey}`;
+        const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${this.apiKey}`;
         
         this.websocket = new WebSocket(wsUrl);
 
@@ -256,33 +279,34 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       return;
     }
 
-    // Send audio configuration
-    const audioConfig: AudioConfig = {
-      sample_rate_hertz: options.sampleRateHertz,
-      encoding: options.encoding,
-      ...(options.enableSpeakerDiarization && {
-        diarization_config: {
-          enableSpeakerDiarization: true,
-          maxSpeakerCount: options.maxSpeakerCount
+    // Send setup message for Live API
+    const setupMessage = {
+      setup: {
+        model: "models/gemini-2.0-flash-live-001",
+        generationConfig: {
+          responseModalities: ["TEXT"],
+          candidateCount: 1,
+          maxOutputTokens: 8192,
+          temperature: 0.7,
+          topP: 0.95,
+          topK: 40
+        },
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            disabled: false,
+            startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+            endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+            prefixPaddingMs: 300,
+            silenceDurationMs: 1000
+          },
+          activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
+          turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY"
         }
-      })
+      }
     };
 
-    // Send text configuration
-    const textConfig: TextConfig = {
-      partial_results: true
-    };
-
-    // Send configuration messages
-    this.websocket.send(JSON.stringify({
-      audio_config: audioConfig
-    }));
-
-    this.websocket.send(JSON.stringify({
-      text_config: textConfig
-    }));
-
-    console.log('📤 Sent initial configuration to Gemini Live');
+    this.websocket.send(JSON.stringify(setupMessage));
+    console.log('📤 Sent initial setup to Gemini Live API');
   }
 
   private startAudioProcessing(): void {
@@ -311,10 +335,13 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Convert to base64
       const base64Audio = this.arrayBufferToBase64(arrayBuffer);
 
-      // Send audio frame to Gemini Live
+      // Send realtime input to Gemini Live API
       this.websocket.send(JSON.stringify({
-        audio: {
-          audio: base64Audio
+        realtimeInput: {
+          mediaChunks: [{
+            mimeType: "audio/pcm;rate=16000",
+            data: base64Audio
+          }]
         }
       }));
 
@@ -336,46 +363,56 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     try {
       const response: GeminiLiveResponse = JSON.parse(data);
 
+      // Handle setup complete
+      if (response.setupComplete) {
+        console.log('🔗 Gemini Live setup completed');
+        return;
+      }
+
+      // Handle server content
+      if (response.serverContent) {
+        const serverContent = response.serverContent;
+        
+        // Handle model turn (text response)
+        if (serverContent.modelTurn && serverContent.modelTurn.parts) {
+          for (const part of serverContent.modelTurn.parts) {
+            if (part.text && this.resultCallback) {
+              this.resultCallback({
+                transcript: part.text,
+                isFinal: serverContent.turnComplete || false,
+                speakerTag: undefined,
+                confidence: 1.0
+              });
+            }
+          }
+        }
+
+        // Handle input transcription
+        if (serverContent.inputTranscription && this.resultCallback) {
+          this.resultCallback({
+            transcript: serverContent.inputTranscription.text,
+            isFinal: serverContent.inputTranscription.finished || false,
+            speakerTag: undefined,
+            confidence: 1.0
+          });
+        }
+      }
+
+      // Handle errors
       if (response.error) {
         console.error('Gemini Live error:', response.error);
         if (this.errorCallback) {
-          this.errorCallback(new Error(response.error.message));
+          this.errorCallback(new Error(response.error.message || 'Unknown error'));
         }
         return;
       }
 
-      if (response.choices && response.choices.length > 0) {
-        const choice = response.choices[0];
-        
-        // Handle speaker diarization with rolling buffer
-        if (choice.speakerTag !== undefined) {
-          this.updateSpeakerBuffer(choice.speakerTag, choice.text, choice.partial);
-        }
-
-        // Send result to callback
-        if (this.resultCallback) {
-          this.resultCallback({
-            transcript: choice.text,
-            isFinal: !choice.partial,
-            speakerTag: choice.speakerTag,
-            confidence: choice.confidence
-          });
-        }
-      }
     } catch (error) {
       console.error('Error parsing Gemini Live response:', error);
     }
   }
 
-  private updateSpeakerBuffer(speakerTag: number, text: string, isPartial: boolean): void {
-    if (isPartial) {
-      // Update the rolling buffer for this speaker
-      this.speakerBuffers.set(speakerTag, text);
-    } else {
-      // Final result - commit the segment and clear buffer
-      this.speakerBuffers.delete(speakerTag);
-    }
-  }
+
 
   stopStreaming(): void {
     if (!this._isStreaming) {
@@ -414,7 +451,6 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
     // Clear buffers
     this.audioChunksBuffer = [];
-    this.speakerBuffers.clear();
 
     console.log('🧹 Gemini Live cleanup completed');
   }
