@@ -208,7 +208,10 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
+          console.log(`🎤 Audio chunk received: ${event.data.size} bytes, type: ${event.data.type}`);
           this.audioChunksBuffer.push(event.data);
+        } else {
+          console.log('🎤 Empty audio chunk received');
         }
       };
 
@@ -223,6 +226,34 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       this.mediaRecorder.start(100); // 100ms chunks
 
       console.log('🎤 Microphone capture started');
+      console.log('🎤 MediaRecorder state:', this.mediaRecorder.state);
+      console.log('🎤 MediaRecorder mimeType:', this.mediaRecorder.mimeType);
+      
+      // Add a test to see if we're getting audio levels
+      if (this.audioStream) {
+        const audioContext = new AudioContext();
+        const analyser = audioContext.createAnalyser();
+        const source = audioContext.createMediaStreamSource(this.audioStream);
+        source.connect(analyser);
+        
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const checkAudioLevel = () => {
+          analyser.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          if (average > 0) {
+            console.log('🔊 Audio level detected:', average);
+          }
+        };
+        
+        // Check audio level every 2 seconds for debugging
+        const levelCheckInterval = setInterval(checkAudioLevel, 2000);
+        
+        // Clean up after 10 seconds
+        setTimeout(() => {
+          clearInterval(levelCheckInterval);
+          audioContext.close();
+        }, 10000);
+      }
     } catch (error) {
       console.error('Failed to start microphone capture:', error);
       throw new Error(`Microphone access failed: ${error.message}`);
@@ -301,12 +332,13 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           },
           activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
           turnCoverage: "TURN_INCLUDES_ONLY_ACTIVITY"
-        }
+        },
+        inputAudioTranscription: {}
       }
     };
 
     this.websocket.send(JSON.stringify(setupMessage));
-    console.log('📤 Sent initial setup to Gemini Live API');
+    console.log('📤 Sent initial setup to Gemini Live API with input audio transcription enabled');
   }
 
   private startAudioProcessing(): void {
@@ -326,6 +358,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       const chunks = [...this.audioChunksBuffer];
       this.audioChunksBuffer = [];
 
+      console.log(`🎵 Processing ${chunks.length} audio chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
+
       // Convert chunks to a single blob
       const audioBlob = new Blob(chunks, { type: 'audio/webm' });
       
@@ -336,14 +370,18 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       const base64Audio = this.arrayBufferToBase64(arrayBuffer);
 
       // Send realtime input to Gemini Live API
-      this.websocket.send(JSON.stringify({
+      // The Live API accepts various audio formats, webm should work
+      const message = {
         realtimeInput: {
           mediaChunks: [{
-            mimeType: "audio/pcm;rate=16000",
+            mimeType: "audio/webm",
             data: base64Audio
           }]
         }
-      }));
+      };
+
+      this.websocket.send(JSON.stringify(message));
+      console.log(`📤 Sent audio chunk: ${base64Audio.length} characters (${arrayBuffer.byteLength} bytes) as audio/webm`);
 
     } catch (error) {
       console.error('Error processing audio chunks:', error);
@@ -385,6 +423,14 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
       // Parse JSON response
       const response: GeminiLiveResponse = JSON.parse(messageText);
+      
+      // Log all responses for debugging (but limit size for readability)
+      const responseStr = JSON.stringify(response, null, 2);
+      if (responseStr.length > 500) {
+        console.log('📥 Received Gemini Live response (truncated):', responseStr.substring(0, 500) + '...');
+      } else {
+        console.log('📥 Received Gemini Live response:', responseStr);
+      }
 
       // Handle setup complete
       if (response.setupComplete) {
@@ -395,11 +441,14 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Handle server content
       if (response.serverContent) {
         const serverContent = response.serverContent;
+        console.log('📋 Server content received:', JSON.stringify(serverContent, null, 2));
         
         // Handle model turn (text response)
         if (serverContent.modelTurn && serverContent.modelTurn.parts) {
+          console.log('🤖 Model turn detected with parts:', serverContent.modelTurn.parts);
           for (const part of serverContent.modelTurn.parts) {
             if (part.text && this.resultCallback) {
+              console.log('📝 Calling result callback with model text:', part.text);
               this.resultCallback({
                 transcript: part.text,
                 isFinal: serverContent.turnComplete || false,
@@ -412,6 +461,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
         // Handle input transcription
         if (serverContent.inputTranscription && this.resultCallback) {
+          console.log('🎤 Input transcription received:', serverContent.inputTranscription.text);
           this.resultCallback({
             transcript: serverContent.inputTranscription.text,
             isFinal: serverContent.inputTranscription.finished || false,

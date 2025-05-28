@@ -19,6 +19,13 @@ All notable changes to this project will be documented in this file.
   - Fixed "Unexpected token 'o', '[object Blob]' is not valid JSON" errors
   - Added proper error logging with message type information for debugging
   - Improved message validation to skip empty or invalid messages gracefully
+- **Gemini Live Audio Transcription**: Enhanced audio processing and transcription capabilities
+  - Added `inputAudioTranscription` configuration to Live API setup to enable speech-to-text
+  - Enhanced audio chunk processing with better logging and format information
+  - Added audio level detection for debugging microphone input
+  - Improved WebSocket message logging with size limits for better readability
+  - Added comprehensive audio stream debugging including MediaRecorder state and MIME type logging
+  - Fixed audio format handling to properly send audio/webm chunks to Live API
 
 ### Added
 - **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API
