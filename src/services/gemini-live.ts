@@ -326,7 +326,14 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       crashDetector.log('success', { timeElapsed: Date.now() - crashDetector.startTime });
       console.log('✅ Gemini Live streaming started successfully');
 
-      // Add immediate post-startup monitoring
+      // Verify audio processing is actually working
+      setTimeout(() => {
+        console.log('🔍 AUDIO VERIFICATION: Checking if audio processing started...');
+        console.log('🔍 AUDIO VERIFICATION: Buffer size:', this.audioAccumulationBuffer?.length || 0);
+        console.log('🔍 AUDIO VERIFICATION: AudioContext state:', this.audioContext?.state);
+        console.log('🔍 AUDIO VERIFICATION: Processing interval active:', !!this.processingInterval);
+      }, 2000);
+      
       console.log('🔍 POST-STARTUP: Service initialized successfully, starting monitoring...');
       
       // Check service state every 500ms for the first 10 seconds
@@ -614,6 +621,14 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           console.log('🔗 WebSocket instance created successfully');
           console.log('🔗 WebSocket readyState:', this.websocket.readyState);
           console.log('🔗 WebSocket URL property:', this.websocket.url ? this.websocket.url.replace(this.apiKey, '[API_KEY_HIDDEN]') : 'undefined');
+          
+          // Check for immediate errors
+          setTimeout(() => {
+            if (this.websocket?.readyState === WebSocket.CLOSED) {
+              console.error('🚨 WebSocket closed immediately after creation!');
+            }
+          }, 100);
+          
         } catch (wsCreationError) {
           console.error('🚨 CRASH during WebSocket creation:', {
             error: wsCreationError.message,
@@ -659,7 +674,14 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
               console.log('🔗 WebSocket setup complete, resolving promise');
               resolve();
               
-              // Add immediate post-startup monitoring
+              // Verify audio processing is actually working
+              setTimeout(() => {
+                console.log('🔍 AUDIO VERIFICATION: Checking if audio processing started...');
+                console.log('🔍 AUDIO VERIFICATION: Buffer size:', this.audioAccumulationBuffer?.length || 0);
+                console.log('🔍 AUDIO VERIFICATION: AudioContext state:', this.audioContext?.state);
+                console.log('🔍 AUDIO VERIFICATION: Processing interval active:', !!this.processingInterval);
+              }, 2000);
+              
               console.log('🔍 POST-STARTUP: Service initialized successfully, starting monitoring...');
               
               // Check service state every 500ms for the first 10 seconds
@@ -760,6 +782,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
             try {
               console.error('🚨 WebSocket onerror event triggered:', error);
               console.error('❌ WebSocket error:', error);
+              console.error('🔗 WebSocket state when error occurred:', this.websocket?.readyState);
               clearTimeout(connectionTimeout);
               
               // Provide more specific error messages
@@ -908,19 +931,29 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
 
         console.log('🔗 ✅ WebSocket connection setup completed successfully');
 
-        // Add diagnostic check for WebSocket messages
-        setTimeout(() => {
-          console.log('🔍 WEBSOCKET DIAGNOSTIC: Checking WebSocket message activity...');
-          console.log('🔍 WEBSOCKET DIAGNOSTIC: Total messages received:', this.messageCount || 0);
-          console.log('🔍 WEBSOCKET DIAGNOSTIC: WebSocket state:', this.websocket?.readyState, this.getReadyStateText(this.websocket?.readyState || -1));
+        // Add immediate connection monitoring
+        console.log('🔗 Starting immediate connection monitoring...');
+        let connectionCheckCount = 0;
+        const connectionMonitor = setInterval(() => {
+          connectionCheckCount++;
+          console.log(`🔗 CONNECTION CHECK #${connectionCheckCount}:`, {
+            readyState: this.websocket?.readyState,
+            readyStateText: this.getReadyStateText(this.websocket?.readyState || -1),
+            timestamp: new Date().toISOString()
+          });
           
-          if ((this.messageCount || 0) <= 1) {
-            console.warn('⚠️ WEBSOCKET DIAGNOSTIC: Only setup message received - no subsequent API responses');
-            console.warn('⚠️ This may indicate the API is not responding to audio input or there\'s an issue with audio transmission');
-          } else {
-            console.log('✅ WEBSOCKET DIAGNOSTIC: WebSocket is receiving messages from the API');
+          // Stop monitoring after connection is established or fails
+          if (this.websocket?.readyState === WebSocket.OPEN) {
+            console.log('🔗 ✅ Connection established, stopping monitor');
+            clearInterval(connectionMonitor);
+          } else if (this.websocket?.readyState === WebSocket.CLOSED) {
+            console.error('🔗 ❌ Connection failed, stopping monitor');
+            clearInterval(connectionMonitor);
+          } else if (connectionCheckCount >= 20) { // 10 seconds
+            console.error('🔗 ⏰ Connection timeout, stopping monitor');
+            clearInterval(connectionMonitor);
           }
-        }, 5000);
+        }, 500); // Check every 500ms
 
       } catch (error) {
         console.error('❌ Error creating WebSocket:', error);
