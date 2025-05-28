@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Gemini Live API**: Fixed message format to match official Live API specification
+  - Updated setup message structure to use correct field names and format
+  - Changed realtimeInput to use 'audio' field instead of deprecated 'mediaChunks'
+  - Fixed MIME type format for audio data transmission
+  - Improved MediaRecorder configuration for better Live API compatibility
+  - Removed unnecessary PCM conversion that was causing audio decoding errors
+  - Updated audio format selection to prioritize WebM with Opus codec
 - **Gemini Live API Integration**: Fixed WebSocket connection errors by updating to correct Live API endpoint
   - Updated WebSocket URL from deprecated `streamGenerateContent` to correct Live API endpoint
   - Fixed WebSocket URL to use `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`
@@ -527,3 +534,5 @@ All notable changes to this project will be documented in this file.
 - Implemented streaming speech handler in Electron main process
 - Added preload script methods for streaming speech IPC
 - Created TypeScript interfaces for streaming speech results and options 
+
+## [1.0.0] - 2024-12-XX 

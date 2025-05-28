@@ -194,31 +194,30 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       });
 
       // Create MediaRecorder for audio capture
-      // Try different formats in order of preference for Live API compatibility
-      // Based on Live API docs, it supports various formats including WebM and Opus
+      // Based on Live API docs, prioritize formats that work well with the API
       const supportedMimeTypes = [
         'audio/webm;codecs=opus',
         'audio/webm',
-        'audio/ogg;codecs=opus',
         'audio/mp4',
-        'audio/webm;codecs=pcm'
+        'audio/ogg;codecs=opus'
       ];
-      
-      let selectedMimeType = null;
+
+      let selectedMimeType = '';
       for (const mimeType of supportedMimeTypes) {
         if (MediaRecorder.isTypeSupported(mimeType)) {
           selectedMimeType = mimeType;
+          console.log(`✅ Selected audio format: ${mimeType}`);
           break;
         }
       }
-      
+
       if (!selectedMimeType) {
-        throw new Error('No supported audio format found for recording');
+        throw new Error('No supported audio format found for Live API');
       }
 
       this.mediaRecorder = new MediaRecorder(this.audioStream, {
         mimeType: selectedMimeType,
-        audioBitsPerSecond: 16000
+        audioBitsPerSecond: 128000 // Good quality for speech
       });
 
       this.audioChunksBuffer = [];
@@ -373,7 +372,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       return;
     }
 
-    // Send setup message for Live API
+    // Send setup message for Live API - corrected format based on official docs
     const setupMessage = {
       setup: {
         model: "models/gemini-2.0-flash-live-001",
@@ -401,7 +400,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     };
 
     this.websocket.send(JSON.stringify(setupMessage));
-    console.log('📤 Sent initial setup to Gemini Live API with input audio transcription enabled');
+    console.log('📤 Sent initial setup to Gemini Live API with corrected format');
   }
 
   private startAudioProcessing(): void {
@@ -462,67 +461,30 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Convert chunks to a single blob
       const audioBlob = new Blob(chunks);
       
-      // Process audio data for Live API
-      const processedData = await this.convertToPCM(audioBlob);
+      // Convert to ArrayBuffer for Live API
+      const audioData = await audioBlob.arrayBuffer();
       
-      // Convert to base64
-      const base64Audio = this.arrayBufferToBase64(processedData);
+      // Convert to base64 as required by Live API
+      const base64Audio = this.arrayBufferToBase64(audioData);
 
-      // Determine MIME type based on the recorded format
-      let mimeType = "audio/webm"; // Default to WebM since that's what we're recording
-      if (this.mediaRecorder?.mimeType.includes('pcm')) {
-        mimeType = "audio/pcm;rate=16000";
-      } else if (this.mediaRecorder?.mimeType.includes('opus')) {
-        mimeType = "audio/webm;codecs=opus";
-      }
-
-      // Send realtime input to Gemini Live API
+      // Send realtime input to Gemini Live API using correct format from official docs
       const message = {
         realtimeInput: {
-          mediaChunks: [{
-            mimeType: mimeType,
-            data: base64Audio
-          }]
+          audio: {
+            data: base64Audio,
+            mimeType: "audio/webm;codecs=opus"
+          }
         }
       };
 
       this.websocket.send(JSON.stringify(message));
-      console.log(`📤 Sent audio chunk: ${base64Audio.length} characters (${processedData.byteLength} bytes) as ${mimeType}`);
+      console.log(`📤 Sent audio chunk: ${base64Audio.length} characters (${audioData.byteLength} bytes) as audio/webm;codecs=opus`);
       
       // Add a small delay to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, 10));
 
     } catch (error) {
       console.error('Error processing audio chunks:', error);
-    }
-  }
-
-  private async convertToPCM(audioBlob: Blob): Promise<ArrayBuffer> {
-    try {
-      // For now, let's try a different approach since WebM chunks can't be decoded individually
-      // We'll send the raw audio data and let the Live API handle the format conversion
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      
-      // Check if this looks like WebM data (starts with specific bytes)
-      const uint8Array = new Uint8Array(arrayBuffer);
-      const isWebM = uint8Array.length > 4 && 
-                    uint8Array[0] === 0x1A && 
-                    uint8Array[1] === 0x45 && 
-                    uint8Array[2] === 0xDF && 
-                    uint8Array[3] === 0xA3;
-      
-      if (isWebM) {
-        console.log('🔄 Detected WebM format, sending raw data to Live API for processing');
-        // For WebM, we'll send the raw data and change the MIME type to indicate it's WebM
-        return arrayBuffer;
-      } else {
-        console.log('🔄 Unknown audio format, sending raw data');
-        return arrayBuffer;
-      }
-    } catch (error) {
-      console.error('Error processing audio data:', error);
-      // Fallback: return the original data
-      return await audioBlob.arrayBuffer();
     }
   }
 
