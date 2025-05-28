@@ -1413,6 +1413,21 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           
           this._isStreaming = true;
           console.log('🧪 TEST MODE: Setup complete');
+          
+          // Send a test audio message to verify the API can process audio
+          console.log('🧪 TEST MODE: Sending test audio message...');
+          const testAudioMessage = {
+            realtimeInput: {
+              audio: {
+                data: "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=", // Empty WAV file in base64
+                mimeType: "audio/pcm;rate=16000"
+              }
+            }
+          };
+          
+          this.websocket!.send(JSON.stringify(testAudioMessage));
+          console.log('🧪 TEST MODE: Test audio message sent');
+          
           resolve();
         };
 
@@ -1446,6 +1461,20 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
             const response = JSON.parse(messageText);
             if (response.setupComplete) {
               console.log('🧪 TEST MODE: Setup completed by API');
+              
+              // Send a test audio message to verify the API can process audio
+              console.log('🧪 TEST MODE: Sending test audio message...');
+              const testAudioMessage = {
+                realtimeInput: {
+                  audio: {
+                    data: "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=", // Empty WAV file in base64
+                    mimeType: "audio/pcm;rate=16000"
+                  }
+                }
+              };
+              
+              this.websocket!.send(JSON.stringify(testAudioMessage));
+              console.log('🧪 TEST MODE: Test audio message sent');
             }
             if (response.error) {
               console.error('🧪 TEST MODE: API error:', response.error);
