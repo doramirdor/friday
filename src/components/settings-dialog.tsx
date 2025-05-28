@@ -76,9 +76,9 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
       // Reinitialize Gemini service with new API key
       await geminiService.reinitialize()
       
-      // Reinitialize Gemini Live service
-      const geminiLiveService = (await import('@/services/gemini-live')).default;
-      await geminiLiveService.reinitialize();
+      // Reinitialize Gemini Semi-Live service (replaced old gemini-live)
+      const geminiSemiLiveService = (await import('@/services/gemini-semi-live')).geminiSemiLiveService;
+      // Note: gemini-semi-live doesn't need reinitialize method as it checks API key on each use
       
       toast.success("Gemini API key saved")
     } catch (err) {

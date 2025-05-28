@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Gemini Semi-Live Crash Prevention**: Fixed critical crashes in Gemini Semi-Live transcription service
+  - **Fixed Base64 Conversion Memory Issues**: Replaced inefficient manual string building with chunked Base64 conversion to prevent browser crashes with large audio buffers
+  - **Added Memory Management**: Implemented safety checks to prevent audio chunk accumulation overflow (limited to 200-300 chunks)
+  - **Enhanced Audio Processing Safety**: Added comprehensive error handling to ScriptProcessorNode event handlers to prevent crashes
+  - **Improved Resource Cleanup**: Enhanced cleanup method with individual try-catch blocks for each resource to prevent cleanup failures
+  - **Added Buffer Size Limits**: Prevented processing of extremely large audio buffers (>60 seconds) that could cause memory crashes
+  - **Enhanced Error Recovery**: Added global error handlers and promise rejection handling to prevent unhandled errors from crashing the app
+  - **Optimized Array Operations**: Used efficient array clearing (.length = 0) instead of reassignment to reduce memory pressure
+  - **Added API Key Validation**: Ensured API key availability before making API calls to prevent null reference errors
+  - **Improved Interval Error Handling**: Wrapped interval callbacks with error handling to prevent timer-related crashes
 - **Gemini Live Crash Prevention**: Fixed critical crashes when starting Gemini Live transcription
   - Added comprehensive error handling for microphone permission failures (NotAllowedError, NotFoundError, NotSupportedError, NotReadableError)
   - Enhanced AudioContext creation with proper error handling and browser compatibility checks
