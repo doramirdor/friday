@@ -94,6 +94,9 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   private apiKey: string | null = null;
   private audioChunksBuffer: Blob[] = [];
   private processingInterval: number | null = null;
+  private audioAccumulationBuffer: Blob[] = [];
+  private lastProcessTime = 0;
+  private readonly ACCUMULATION_TIME_MS = 500;
 
   constructor() {
     this.checkAvailability();
@@ -225,7 +228,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           console.log(`🎤 Audio chunk received: ${event.data.size} bytes, type: ${event.data.type}`);
-          this.audioChunksBuffer.push(event.data);
+          // Add to accumulation buffer instead of immediate processing
+          this.audioAccumulationBuffer.push(event.data);
         } else {
           console.log('🎤 Empty audio chunk received');
         }
@@ -404,13 +408,30 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   private startAudioProcessing(): void {
-    // Process audio chunks every 100ms
+    // Process accumulated audio chunks every 100ms, but only send when enough time has passed
     this.processingInterval = window.setInterval(() => {
-      this.processAudioChunks();
+      this.checkAndProcessAccumulatedAudio();
     }, 100);
     
     // Add connection health monitoring
     this.startConnectionHealthCheck();
+  }
+
+  private checkAndProcessAccumulatedAudio(): void {
+    const now = Date.now();
+    
+    // Only process if we have chunks and enough time has passed since last processing
+    if (this.audioAccumulationBuffer.length > 0 && 
+        (now - this.lastProcessTime) >= this.ACCUMULATION_TIME_MS) {
+      
+      // Move accumulated chunks to processing buffer
+      this.audioChunksBuffer = [...this.audioAccumulationBuffer];
+      this.audioAccumulationBuffer = [];
+      this.lastProcessTime = now;
+      
+      // Process the accumulated chunks
+      this.processAudioChunks();
+    }
   }
 
   private startConnectionHealthCheck(): void {
@@ -456,9 +477,9 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       const chunks = [...this.audioChunksBuffer];
       this.audioChunksBuffer = [];
 
-      console.log(`🎵 Processing ${chunks.length} audio chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
+      console.log(`🎵 Processing ${chunks.length} accumulated audio chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
 
-      // Convert chunks to a single blob
+      // Convert accumulated chunks to a single blob - this should be large enough to decode
       const audioBlob = new Blob(chunks);
       
       // Convert WebM audio to PCM format as required by Gemini Live API
@@ -484,7 +505,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       await new Promise(resolve => setTimeout(resolve, 10));
 
     } catch (error) {
-      console.error('Error processing audio chunks:', error);
+      console.error('Error processing accumulated audio chunks:', error);
+      // If conversion fails, we'll try again with the next batch
     }
   }
 
@@ -498,7 +520,10 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Convert blob to array buffer
       const arrayBuffer = await audioBlob.arrayBuffer();
       
+      console.log(`🔄 Attempting to decode ${arrayBuffer.byteLength} bytes of accumulated WebM audio`);
+      
       // Decode the audio data (WebM/Opus to raw audio)
+      // This should work now because we have accumulated enough data to form a decodable segment
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
       
       // Get the audio data as Float32Array
@@ -512,14 +537,14 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         pcmData[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
       }
       
-      console.log(`🔄 Converted ${arrayBuffer.byteLength} bytes WebM to ${pcmData.byteLength} bytes PCM`);
+      console.log(`✅ Successfully converted ${arrayBuffer.byteLength} bytes WebM to ${pcmData.byteLength} bytes PCM`);
       
       // Close audio context to free resources
       await audioContext.close();
       
       return pcmData.buffer;
     } catch (error) {
-      console.error('Error converting audio to PCM:', error);
+      console.error('Error converting accumulated audio to PCM:', error);
       throw new Error(`Audio conversion failed: ${error.message}`);
     }
   }
@@ -647,6 +672,10 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   cleanup(): void {
+    // Clear audio buffers
+    this.audioChunksBuffer = [];
+    this.audioAccumulationBuffer = [];
+    
     // Stop audio processing
     if (this.processingInterval) {
       clearInterval(this.processingInterval);
@@ -670,9 +699,6 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       this.websocket.close();
     }
     this.websocket = null;
-
-    // Clear buffers
-    this.audioChunksBuffer = [];
 
     console.log('🧹 Gemini Live cleanup completed');
   }

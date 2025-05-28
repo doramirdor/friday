@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Gemini Live API Audio Decoding**: Fixed WebM chunk decoding failure in PCM conversion
+  - Implemented audio accumulation buffer to collect WebM chunks over 500ms intervals
+  - Fixed "Unable to decode audio data" error by ensuring sufficient audio data for decoding
+  - Updated audio processing pipeline to accumulate chunks before attempting PCM conversion
+  - Individual WebM chunks from MediaRecorder cannot be decoded independently - now accumulating larger segments
+  - Added proper buffer management with separate accumulation and processing buffers
+  - Improved audio conversion success rate by processing larger, decodable audio segments
 - **Gemini Live API Audio Format**: Fixed critical MIME type error "Mime type 'audio/webm;codecs=opus' is not supported"
   - Updated audio processing to convert WebM/Opus recordings to PCM format as required by Gemini Live API
   - Added `convertToPCM` method to decode WebM audio and convert to 16-bit PCM at 16kHz sample rate
