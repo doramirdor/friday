@@ -1,4 +1,5 @@
 import { DatabaseService } from './database';
+import { Buffer } from 'buffer';
 
 // Add global error handler for unhandled crashes
 if (typeof window !== 'undefined') {
@@ -27,7 +28,32 @@ if (typeof window !== 'undefined') {
   
   // Add additional monitoring for any crashes
   console.log('🔍 GLOBAL: Gemini Live global error handlers installed');
+  
+  // Add process crash detection for Electron renderer
+  if (typeof process !== 'undefined') {
+    process.on('uncaughtException', (err) => {
+      console.error('[renderer] uncaught exception:', err);
+    });
+    
+    process.on('unhandledRejection', (err) => {
+      console.error('[renderer] unhandled rejection:', err);
+    });
+  }
 }
+
+// Environment-based logging control
+const isDevelopment = process.env.NODE_ENV === 'development';
+const debugLog = (...args: unknown[]) => {
+  if (isDevelopment) {
+    console.log(...args);
+  }
+};
+
+const debugWarn = (...args: unknown[]) => {
+  if (isDevelopment) {
+    console.warn(...args);
+  }
+};
 
 // Interface for Gemini Live streaming results
 export interface GeminiLiveResult {
@@ -133,6 +159,18 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     console.log('🔍 CONSTRUCTOR: Initializing GeminiLiveServiceImpl...');
     this.checkAvailability();
     console.log('🔍 CONSTRUCTOR: checkAvailability called');
+    
+    // Add buffer monitoring for crash prevention
+    if (isDevelopment) {
+      setInterval(() => {
+        debugLog('🔍 BUFFER MONITOR:', {
+          accumulation: this.audioAccumulationBuffer?.length || 0,
+          processing: this.audioChunksBuffer?.length || 0,
+          isStreaming: this._isStreaming,
+          timestamp: new Date().toISOString()
+        });
+      }, 5000);
+    }
   }
 
   private async checkAvailability() {
@@ -381,8 +419,9 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         try {
           audioEventCount++;
           
-          // Log more frequently at the beginning, then reduce frequency
-          const shouldLog = audioEventCount <= 10 || audioEventCount % 100 === 1;
+          // Drastically reduce logging to prevent UI thread blocking and console saturation
+          // Only log the first few events and then very occasionally
+          const shouldLog = audioEventCount <= 3 || audioEventCount % 1000 === 1;
           
           if (shouldLog) {
             console.log(`🎤 Audio processing event #${audioEventCount} triggered`);
@@ -405,11 +444,12 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
             return;
           }
           
-          // Check for actual audio activity (not just silence)
-          const audioLevel = this.calculateAudioLevel(inputData);
-          const hasAudioActivity = audioLevel > 0.001; // Threshold for detecting actual audio
-          
+          // Only calculate audio level occasionally to reduce CPU usage
+          let audioLevel = 0;
+          let hasAudioActivity = false;
           if (shouldLog) {
+            audioLevel = this.calculateAudioLevel(inputData);
+            hasAudioActivity = audioLevel > 0.001;
             console.log(`🎤 Processing ${inputData.length} audio samples, level: ${audioLevel.toFixed(6)}, hasActivity: ${hasAudioActivity}`);
           }
           
@@ -425,7 +465,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           this.audioAccumulationBuffer.push(pcmBlob);
           
           if (shouldLog) {
-            console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes, buffer size: ${this.audioAccumulationBuffer.length}, audioLevel: ${audioLevel.toFixed(6)}`);
+            console.log(`🎤 Raw PCM chunk captured: ${pcmData.byteLength} bytes, buffer size: ${this.audioAccumulationBuffer.length}`);
           }
         } catch (processingError) {
           console.error(`🚨 CRASH in audio processing event #${audioEventCount}:`, {
@@ -1003,28 +1043,42 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       let audioEventCount = 0;
       let lastAudioSent = 0;
       const SEND_INTERVAL_MS = 1000; // Send audio every 1 second
+      const MAX_BUFFER_SIZE = 200; // Safety cap to prevent unbounded growth
       
       // Set up a simple timer to check for audio and send it
       const simpleProcessor = window.setInterval(() => {
         try {
           const now = Date.now();
           
+          // Safety check: if buffers are getting too large, force a flush
+          if (this.audioAccumulationBuffer.length > MAX_BUFFER_SIZE) {
+            console.warn(`⚠️ BUFFER OVERFLOW: Forcing flush of ${this.audioAccumulationBuffer.length} chunks`);
+            const chunksToProcess = [...this.audioAccumulationBuffer];
+            this.audioAccumulationBuffer.length = 0; // Clear array efficiently
+            this.processAudioChunksSimplified(chunksToProcess);
+            lastAudioSent = now;
+            return;
+          }
+          
           // Only process if we have audio and enough time has passed
           if (this.audioAccumulationBuffer.length > 0 && 
               (now - lastAudioSent) >= SEND_INTERVAL_MS) {
             
-            console.log(`🎵 SIMPLIFIED: Processing ${this.audioAccumulationBuffer.length} audio chunks`);
+            // Only log occasionally to prevent console saturation
+            if (audioEventCount % 10 === 0) {
+              console.log(`🎵 SIMPLIFIED: Processing ${this.audioAccumulationBuffer.length} audio chunks`);
+            }
             
             // Move all accumulated audio to processing buffer
             const chunksToProcess = [...this.audioAccumulationBuffer];
-            this.audioAccumulationBuffer = [];
+            this.audioAccumulationBuffer.length = 0; // Clear array efficiently
             lastAudioSent = now;
             
             // Process immediately
             this.processAudioChunksSimplified(chunksToProcess);
           }
           
-          // Log audio event count every 10 seconds
+          // Log audio event count very occasionally to reduce console spam
           if (audioEventCount % 100 === 0) {
             console.log(`🎵 SIMPLIFIED: Audio events received: ${audioEventCount}, buffer size: ${this.audioAccumulationBuffer.length}`);
           }
@@ -1032,6 +1086,9 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           
         } catch (processingError) {
           console.error('🚨 SIMPLIFIED: Error in audio processing:', processingError);
+          
+          // Clear buffers on error to prevent corruption
+          this.audioAccumulationBuffer.length = 0;
         }
       }, 100); // Check every 100ms
       
@@ -1047,15 +1104,22 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   private async processAudioChunksSimplified(chunks: Blob[]): Promise<void> {
-    console.log('🎵 SIMPLIFIED: Processing audio chunks directly...');
+    // Only log occasionally to prevent console saturation
+    if (Math.random() < 0.1) { // 10% chance to log
+      console.log('🎵 SIMPLIFIED: Processing audio chunks directly...');
+    }
     
     if (chunks.length === 0 || !this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
-      console.log('🎵 SIMPLIFIED: Skipping - no chunks or websocket not ready');
+      if (Math.random() < 0.01) { // 1% chance to log
+        console.log('🎵 SIMPLIFIED: Skipping - no chunks or websocket not ready');
+      }
       return;
     }
 
     try {
-      console.log(`🎵 SIMPLIFIED: Processing ${chunks.length} chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
+      if (Math.random() < 0.1) { // 10% chance to log
+        console.log(`🎵 SIMPLIFIED: Processing ${chunks.length} chunks, total size: ${chunks.reduce((sum, chunk) => sum + chunk.size, 0)} bytes`);
+      }
 
       // Combine all chunks into one buffer
       const totalSize = chunks.reduce((sum, chunk) => sum + chunk.size, 0);
@@ -1084,10 +1148,16 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       };
 
       this.websocket.send(JSON.stringify(message));
-      console.log(`🎵 SIMPLIFIED: Sent ${base64Audio.length} characters of audio data`);
+      
+      if (Math.random() < 0.1) { // 10% chance to log
+        console.log(`🎵 SIMPLIFIED: Sent ${base64Audio.length} characters of audio data`);
+      }
       
     } catch (error) {
       console.error('🚨 SIMPLIFIED: Error processing audio chunks:', error);
+    } finally {
+      // Always clear the chunks array to prevent memory leaks
+      chunks.length = 0;
     }
   }
 
@@ -1320,17 +1390,8 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
     try {
       console.log(`🔄 Converting ArrayBuffer to base64: ${buffer.byteLength} bytes`);
       
-      const bytes = new Uint8Array(buffer);
-      console.log(`🔄 Created Uint8Array with ${bytes.byteLength} bytes`);
-      
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      
-      console.log(`🔄 Created binary string: ${binary.length} characters`);
-      
-      const result = btoa(binary);
+      // Use Buffer for efficient base64 conversion instead of manual byte-by-byte string building
+      const result = Buffer.from(buffer).toString('base64');
       console.log(`🔄 Base64 conversion complete: ${result.length} characters`);
       
       return result;
