@@ -360,7 +360,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
             setFilePathUrl(meetingDetails.meeting.recordingPath);
           }
           
-          if (meetingDetails.meeting.recordingDuration) {
+          if (meetingDetails.meeting.recordingDuration !== undefined) {
             setRecordingDuration(meetingDetails.meeting.recordingDuration);
           }
           
@@ -1315,6 +1315,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     description, 
     tags, 
     recordedAudioUrl, 
+    recordingDuration,
     isLiveTranscript,
     transcriptLines,
     speakers,

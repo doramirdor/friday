@@ -171,6 +171,8 @@ All notable changes to this project will be documented in this file.
   - Prevents runtime errors when notes field contains non-string values
   - Added fallback to empty string when notes data is invalid or missing
 - **Recording Duration Display**: Fixed recording duration always showing 0:00 in the library table
+  - Fixed handleSave function dependencies to include recordingDuration for proper state capture
+  - Enhanced meeting data loading to properly handle recordingDuration of 0 (changed condition from truthy check to !== undefined)
   - Preserved final recording duration when recording stops to prevent it from being reset to 0
   - Enhanced duration tracking to maintain accurate recording times in the database
   - Fixed duration mapping from recording hooks to ensure proper storage and display
