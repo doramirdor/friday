@@ -234,6 +234,11 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       // Start microphone capture
       await this.startMicrophoneCapture(defaultOptions);
 
+      // Add a small delay to ensure audio processing is fully initialized
+      console.log('⏱️ Adding delay before WebSocket connection...');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('⏱️ Delay completed, proceeding with WebSocket connection');
+
       crashDetector.log('websocket-connect-start');
       // Connect to Gemini Live WebSocket
       await this.connectWebSocket(defaultOptions);
@@ -374,35 +379,22 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       console.log('🎤 Direct PCM capture started at 16kHz for Gemini Live API');
       console.log('🎤 AudioContext sample rate:', audioContext.sampleRate);
       
-      // Add a test to see if we're getting audio levels
+      // Add immediate audio processing test
+      console.log('🎤 Testing audio processing pipeline...');
+      let audioTestPassed = false;
       try {
-        const analyser = audioContext.createAnalyser();
-        source.connect(analyser);
-        
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        const checkAudioLevel = () => {
-          try {
-            analyser.getByteFrequencyData(dataArray);
-            const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-            if (average > 0) {
-              console.log('🔊 Audio level detected:', average);
-            }
-          } catch (levelError) {
-            console.warn('Error checking audio level:', levelError);
-          }
-        };
-        
-        // Check audio level every 2 seconds for debugging
-        const levelCheckInterval = setInterval(checkAudioLevel, 2000);
-        
-        // Clean up after 10 seconds
-        setTimeout(() => {
-          clearInterval(levelCheckInterval);
-        }, 10000);
-      } catch (analyserError) {
-        console.warn('Could not create audio analyser:', analyserError);
-        // Continue without audio level monitoring
+        // Test if the audio processing chain is working
+        if (this.audioAccumulationBuffer && Array.isArray(this.audioAccumulationBuffer)) {
+          console.log('🎤 Audio accumulation buffer is ready');
+          audioTestPassed = true;
+        } else {
+          console.warn('⚠️ Audio accumulation buffer is not properly initialized');
+        }
+      } catch (audioTestError) {
+        console.error('🚨 Audio processing test failed:', audioTestError);
       }
+      
+      console.log('🎤 Audio processing test result:', audioTestPassed ? 'PASSED' : 'FAILED');
       
     } catch (error) {
       console.error('Failed to start microphone capture:', error);
@@ -430,18 +422,43 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
       try {
         console.log('🔗 Connecting to Gemini Live WebSocket...');
         
+        // Check WebSocket availability
+        if (typeof WebSocket === 'undefined') {
+          reject(new Error('WebSocket is not available in this environment'));
+          return;
+        }
+        console.log('🔗 WebSocket constructor is available');
+        
         if (!this.apiKey) {
           reject(new Error('API key is required for WebSocket connection'));
           return;
         }
+        console.log('🔗 API key is available');
 
         const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${this.apiKey}`;
         console.log('🔗 WebSocket URL:', wsUrl.replace(this.apiKey, '[API_KEY_HIDDEN]'));
         
-        this.websocket = new WebSocket(wsUrl);
+        console.log('🔗 Creating WebSocket instance...');
+        try {
+          this.websocket = new WebSocket(wsUrl);
+          console.log('🔗 WebSocket instance created successfully');
+          console.log('🔗 WebSocket readyState:', this.websocket.readyState);
+          console.log('🔗 WebSocket URL property:', this.websocket.url ? this.websocket.url.replace(this.apiKey, '[API_KEY_HIDDEN]') : 'undefined');
+        } catch (wsCreationError) {
+          console.error('🚨 CRASH during WebSocket creation:', {
+            error: wsCreationError.message,
+            stack: wsCreationError.stack,
+            url: wsUrl.replace(this.apiKey, '[API_KEY_HIDDEN]'),
+            timestamp: new Date().toISOString()
+          });
+          reject(new Error(`Failed to create WebSocket: ${wsCreationError.message}`));
+          return;
+        }
 
+        console.log('🔗 Setting up connection timeout...');
         // Set up connection timeout
         const connectionTimeout = setTimeout(() => {
+          console.log('🔗 Connection timeout triggered');
           if (this.websocket && this.websocket.readyState === WebSocket.CONNECTING) {
             console.error('❌ WebSocket connection timeout');
             this.websocket.close();
@@ -449,6 +466,7 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
           }
         }, 10000); // 10 second timeout
 
+        console.log('🔗 Setting up WebSocket event handlers...');
         this.websocket.onopen = () => {
           try {
             console.log('🔗 WebSocket onopen event triggered');
