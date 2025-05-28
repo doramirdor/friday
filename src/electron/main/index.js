@@ -29,6 +29,9 @@ import { setupDatabaseHandlers } from "./database-handler.js";
 // Import streaming speech handler (CommonJS module)
 const streamingSpeechHandler = await import("./streaming-speech-handler.cjs");
 
+// Import semi-live speech handler (CommonJS module)
+const semiLiveSpeechHandler = await import("./semi-live-speech-handler.cjs");
+
 // Import local modules using dynamic import since they're CommonJS
 const { checkPermissions } = await import("./utils/permission.js");
 const { startRecording, stopRecording } = await import("./utils/recording.js");

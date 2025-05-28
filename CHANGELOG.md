@@ -89,6 +89,15 @@ All notable changes to this project will be documented in this file.
   - Added finally blocks to ensure cleanup even when errors occur
   - Prevents renderer OOM crashes, hung-renderer watchdog triggers, and IPC channel saturation
 - TypeScript error with setInterval return type using window.setInterval
+- **Speech Recognition API Compatibility**: Fixed streaming speech recognition by replacing with semi-live approach
+  - Replaced problematic Google Cloud Speech streaming API with REST API chunks to resolve "getUniverseDomain is not a function" error
+  - Created new semi-live speech handler that sends audio chunks every 3 seconds using REST API with API key authentication
+  - Updated streaming speech service to use semi-live approach while maintaining same interface for components
+  - Removed dependency on Google Cloud Speech client library streaming methods that don't support API key authentication
+  - Fixed authentication issues by using HTTPS REST API calls instead of gRPC streaming
+  - Maintained real-time feel by processing audio in 3-second chunks with immediate transcription results
+  - Updated UI tooltips to reflect semi-live approach instead of true streaming
+  - All existing components continue to work without changes due to maintained interface compatibility
 
 ### Added
 - **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API

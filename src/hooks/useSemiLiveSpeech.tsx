@@ -2,45 +2,42 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { semiLiveSpeechService, SemiLiveSpeechResult, SemiLiveSpeechOptions } from '@/services/semi-live-speech';
 import { useToast } from '@/hooks/use-toast';
 
-interface UseStreamingSpeechReturn {
+interface UseSemiLiveSpeechReturn {
   transcript: string;
-  interimTranscript: string;
-  isStreaming: boolean;
+  isRecording: boolean;
   isAvailable: boolean;
   error: Error | null;
-  startStreaming: (options?: SemiLiveSpeechOptions) => Promise<void>;
-  stopStreaming: () => void;
+  startRecording: (options?: SemiLiveSpeechOptions) => Promise<void>;
+  stopRecording: () => void;
   clearTranscript: () => void;
   confidence: number | null;
   speakerId: string | null;
 }
 
-export const useStreamingSpeech = (): UseStreamingSpeechReturn => {
+export const useSemiLiveSpeech = (): UseSemiLiveSpeechReturn => {
   const [transcript, setTranscript] = useState<string>('');
-  const [interimTranscript, setInterimTranscript] = useState<string>('');
-  const [isStreaming, setIsStreaming] = useState<boolean>(false);
+  const [isRecording, setIsRecording] = useState<boolean>(false);
   const [error, setError] = useState<Error | null>(null);
   const [confidence, setConfidence] = useState<number | null>(null);
   const [speakerId, setSpeakerId] = useState<string | null>(null);
   
   const { toast } = useToast();
-  const finalTranscriptRef = useRef<string>('');
+  const transcriptRef = useRef<string>('');
 
-  // Check if semi-live speech is available (using semi-live instead of streaming)
+  // Check if semi-live speech is available
   const isAvailable = semiLiveSpeechService.isAvailable;
 
-  // Handle streaming results (now using semi-live results)
+  // Handle speech results
   const handleResult = useCallback((result: SemiLiveSpeechResult) => {
-    console.log('🎯 Semi-live result (via streaming hook):', result);
+    console.log('🎯 Semi-live result:', result);
     
     // All results are final in semi-live approach
-    const newFinalText = result.transcript;
-    finalTranscriptRef.current = finalTranscriptRef.current 
-      ? `${finalTranscriptRef.current} ${newFinalText}`
-      : newFinalText;
+    const newText = result.transcript;
+    transcriptRef.current = transcriptRef.current 
+      ? `${transcriptRef.current} ${newText}`
+      : newText;
     
-    setTranscript(finalTranscriptRef.current);
-    setInterimTranscript(''); // No interim results in semi-live
+    setTranscript(transcriptRef.current);
     
     // Update confidence and speaker info
     if (result.confidence !== undefined) {
@@ -50,14 +47,14 @@ export const useStreamingSpeech = (): UseStreamingSpeechReturn => {
       setSpeakerId(result.speakerId);
     }
     
-    console.log('✅ Final transcript updated:', newFinalText);
+    console.log('✅ Transcript updated:', newText);
   }, []);
 
-  // Handle streaming errors
+  // Handle speech errors
   const handleError = useCallback((error: Error) => {
-    console.error('❌ Semi-live speech error (via streaming hook):', error);
+    console.error('❌ Semi-live speech error:', error);
     setError(error);
-    setIsStreaming(false);
+    setIsRecording(false);
     
     toast({
       title: 'Speech Recognition Error',
@@ -78,10 +75,10 @@ export const useStreamingSpeech = (): UseStreamingSpeechReturn => {
     };
   }, [isAvailable, handleResult, handleError]);
 
-  // Start streaming function (now uses semi-live)
-  const startStreaming = useCallback(async (options?: SemiLiveSpeechOptions) => {
+  // Start recording function
+  const startRecording = useCallback(async (options?: SemiLiveSpeechOptions) => {
     if (!isAvailable) {
-      const errorMsg = 'Speech recognition is not available';
+      const errorMsg = 'Semi-live speech recognition is not available';
       setError(new Error(errorMsg));
       toast({
         title: 'Service Unavailable',
@@ -94,19 +91,19 @@ export const useStreamingSpeech = (): UseStreamingSpeechReturn => {
     try {
       setError(null);
       await semiLiveSpeechService.startRecording(options);
-      setIsStreaming(true);
+      setIsRecording(true);
       
       toast({
         title: 'Recording Started',
-        description: 'Speech recognition is now active',
+        description: 'Semi-live speech recognition is now active',
       });
       
-      console.log('✅ Streaming started successfully');
+      console.log('✅ Semi-live recording started successfully');
     } catch (error) {
       const err = error as Error;
-      console.error('❌ Failed to start streaming:', err);
+      console.error('❌ Failed to start semi-live recording:', err);
       setError(err);
-      setIsStreaming(false);
+      setIsRecording(false);
       
       toast({
         title: 'Failed to Start Recording',
@@ -116,48 +113,46 @@ export const useStreamingSpeech = (): UseStreamingSpeechReturn => {
     }
   }, [isAvailable, toast]);
 
-  // Stop streaming function
-  const stopStreaming = useCallback(() => {
-    if (!isStreaming) return;
+  // Stop recording function
+  const stopRecording = useCallback(() => {
+    if (!isRecording) return;
 
     try {
       semiLiveSpeechService.stopRecording();
-      setIsStreaming(false);
+      setIsRecording(false);
       
       toast({
         title: 'Recording Stopped',
-        description: 'Speech recognition has been stopped',
+        description: 'Semi-live speech recognition has been stopped',
       });
       
-      console.log('✅ Streaming stopped');
+      console.log('✅ Semi-live recording stopped');
     } catch (error) {
-      console.error('❌ Failed to stop streaming:', error);
+      console.error('❌ Failed to stop semi-live recording:', error);
     }
-  }, [isStreaming, toast]);
+  }, [isRecording, toast]);
 
   // Clear transcript function
   const clearTranscript = useCallback(() => {
     setTranscript('');
-    setInterimTranscript('');
-    finalTranscriptRef.current = '';
+    transcriptRef.current = '';
     setConfidence(null);
     setSpeakerId(null);
     console.log('🧹 Transcript cleared');
   }, []);
 
-  // Sync streaming state with service
+  // Sync recording state with service
   useEffect(() => {
-    setIsStreaming(semiLiveSpeechService.isRecording);
+    setIsRecording(semiLiveSpeechService.isRecording);
   }, []);
 
   return {
     transcript,
-    interimTranscript,
-    isStreaming,
+    isRecording,
     isAvailable,
     error,
-    startStreaming,
-    stopStreaming,
+    startRecording,
+    stopRecording,
     clearTranscript,
     confidence,
     speakerId

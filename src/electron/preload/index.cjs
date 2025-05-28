@@ -238,6 +238,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
   removeStreamingSpeechListeners: () => {
     ipcRenderer.removeAllListeners('streaming-speech:result');
     ipcRenderer.removeAllListeners('streaming-speech:error');
+  },
+
+  // Semi-live speech recognition methods
+  startSemiLiveSpeech: async (options) => {
+    return await ipcRenderer.invoke('semi-live-speech:start', options);
+  },
+  stopSemiLiveSpeech: async () => {
+    return await ipcRenderer.invoke('semi-live-speech:stop');
+  },
+  onSemiLiveSpeechResult: (callback) => {
+    ipcRenderer.on('semi-live-speech:result', (event, result) => callback(result));
+  },
+  onSemiLiveSpeechError: (callback) => {
+    ipcRenderer.on('semi-live-speech:error', (event, error) => callback(error));
+  },
+  removeSemiLiveSpeechListeners: () => {
+    ipcRenderer.removeAllListeners('semi-live-speech:result');
+    ipcRenderer.removeAllListeners('semi-live-speech:error');
   }
 });
 

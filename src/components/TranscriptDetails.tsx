@@ -31,7 +31,7 @@ import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
 import useCombinedRecording from "@/hooks/useCombinedRecording";
 import AudioPlayer from "@/components/AudioPlayer";
 import { useStreamingSpeech } from '@/hooks/useStreamingSpeech';
-import { StreamingSpeechOptions } from '@/services/streaming-speech';
+import { SemiLiveSpeechOptions } from '@/services/semi-live-speech';
 import { Switch } from "@/components/ui/switch";
 import GeminiLiveTranscript from '@/components/GeminiLiveTranscript';
 import { useGeminiLive } from '@/hooks/useGeminiLive';
@@ -1852,7 +1852,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                             onClick={() => setIsGeminiLiveMode(false)}
                             className="flex gap-2 items-center"
                             disabled={!streamingSpeech.isAvailable}
-                            title={!streamingSpeech.isAvailable ? "Google Speech not available - check API key" : "Use Google Cloud Speech for streaming transcription"}
+                            title={!streamingSpeech.isAvailable ? "Google Speech not available - check API key" : "Use Google Cloud Speech for semi-live transcription (sends audio chunks every few seconds)"}
                           >
                             <Mic className="h-4 w-4" />
                             <span>Google Speech</span>
@@ -1881,10 +1881,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                                     if (streamingSpeech.isStreaming) {
                                       streamingSpeech.stopStreaming();
                                     } else {
-                                      const options: StreamingSpeechOptions = {
+                                      const options: SemiLiveSpeechOptions = {
                                         languageCode: 'en-US',
-                                        enableSpeakerDiarization: true,
-                                        diarizationSpeakerCount: maxSpeakers
+                                        chunkDurationMs: 3000 // Send chunks every 3 seconds
                                       };
                                       streamingSpeech.startStreaming(options);
                                     }
