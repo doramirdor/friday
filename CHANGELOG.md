@@ -463,6 +463,27 @@ All notable changes to this project will be documented in this file.
   - New meetings now start with empty context files array
   - Users can add context files as needed for each meeting
 
+### Added
+- **Gemini Live Crash Debugging Tools**: Comprehensive debugging suite to identify and prevent crashes
+  - Created `debug-gemini-live-electron.js` script for step-by-step testing in browser console
+  - Added `crash-test.html` standalone testing page for isolated crash testing
+  - Implemented global error handlers to catch unhandled crashes and rejections
+  - Added comprehensive crash detection with detailed logging at each step of streaming initialization
+  - Created step-by-step testing functions for microphone, AudioContext, WebSocket, and service initialization
+  - Enhanced error reporting with timestamps, stack traces, and crash location identification
+  - Added automatic cleanup functions to prevent resource leaks during testing
+  - Implemented detailed logging for each phase of Gemini Live startup process
+
+### Enhanced
+- **Gemini Live Error Handling**: Significantly improved crash prevention and error detection
+  - Added comprehensive crash detector to `startStreaming` method with step-by-step logging
+  - Enhanced error messages with specific crash location and timing information
+  - Improved cleanup error handling to prevent cascading failures
+  - Added global error listeners for unhandled crashes and promise rejections
+  - Enhanced TypeScript error handling with proper type safety
+  - Added detailed logging for each initialization step to identify crash points
+  - Implemented enhanced error recovery with graceful degradation
+
 ## [0.3.1] - 2024-05-21
 
 ### Added

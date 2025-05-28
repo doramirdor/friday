@@ -1,5 +1,31 @@
 import { DatabaseService } from './database';
 
+// Add global error handler for unhandled crashes
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    if (event.error && event.error.stack && event.error.stack.includes('gemini-live')) {
+      console.error('🚨 GEMINI LIVE CRASH DETECTED:', {
+        message: event.error.message,
+        stack: event.error.stack,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    if (event.reason && event.reason.stack && event.reason.stack.includes('gemini-live')) {
+      console.error('🚨 GEMINI LIVE UNHANDLED REJECTION:', {
+        reason: event.reason.message || event.reason,
+        stack: event.reason.stack,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+}
+
 // Interface for Gemini Live streaming results
 export interface GeminiLiveResult {
   transcript: string;
@@ -153,20 +179,47 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
   }
 
   async startStreaming(options: GeminiLiveOptions = {}): Promise<void> {
-    if (!this._isAvailable) {
-      throw new Error('Gemini Live service is not available');
-    }
-
-    if (this._isStreaming) {
-      console.warn('Gemini Live streaming is already active');
-      return;
-    }
-
-    if (!this.apiKey) {
-      throw new Error('Gemini API key not configured. Please add your API key in settings.');
-    }
+    console.log('🚀 GEMINI LIVE: Starting streaming with crash detection...');
+    
+    // Add comprehensive crash detection
+    const crashDetector = {
+      step: 'initialization',
+      startTime: Date.now(),
+      log: (step: string, data?: unknown) => {
+        crashDetector.step = step;
+        console.log(`🔍 GEMINI LIVE STEP [${step}]:`, data || '');
+      },
+      error: (step: string, error: Error | unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        console.error(`🚨 GEMINI LIVE CRASH at [${step}]:`, {
+          error: errorMessage,
+          stack: errorStack,
+          step,
+          timeElapsed: Date.now() - crashDetector.startTime,
+          timestamp: new Date().toISOString()
+        });
+      }
+    };
 
     try {
+      crashDetector.log('availability-check');
+      if (!this._isAvailable) {
+        throw new Error('Gemini Live service is not available');
+      }
+
+      crashDetector.log('streaming-check');
+      if (this._isStreaming) {
+        console.warn('Gemini Live streaming is already active');
+        return;
+      }
+
+      crashDetector.log('api-key-check');
+      if (!this.apiKey) {
+        throw new Error('Gemini API key not configured. Please add your API key in settings.');
+      }
+
+      crashDetector.log('options-setup');
       // Default options
       const defaultOptions: Required<GeminiLiveOptions> = {
         sampleRateHertz: 16000,
@@ -177,17 +230,31 @@ class GeminiLiveServiceImpl implements GeminiLiveService {
         ...options
       };
 
+      crashDetector.log('microphone-capture-start', defaultOptions);
       // Start microphone capture
       await this.startMicrophoneCapture(defaultOptions);
 
+      crashDetector.log('websocket-connect-start');
       // Connect to Gemini Live WebSocket
       await this.connectWebSocket(defaultOptions);
 
+      crashDetector.log('streaming-state-update');
       this._isStreaming = true;
+      
+      crashDetector.log('success', { timeElapsed: Date.now() - crashDetector.startTime });
       console.log('✅ Gemini Live streaming started successfully');
     } catch (error) {
+      crashDetector.error(crashDetector.step, error);
       console.error('❌ Failed to start Gemini Live streaming:', error);
-      this.cleanup();
+      
+      // Enhanced cleanup with crash detection
+      try {
+        crashDetector.log('cleanup-after-error');
+        this.cleanup();
+      } catch (cleanupError) {
+        console.error('🚨 CLEANUP CRASH:', cleanupError);
+      }
+      
       throw error;
     }
   }

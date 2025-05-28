@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Live Crash Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #ccc;
+        }
+        .step.running {
+            border-left-color: #007bff;
+            background-color: #e7f3ff;
+        }
+        .step.success {
+            border-left-color: #28a745;
+            background-color: #d4edda;
+        }
+        .step.error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .error-log {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Gemini Live Crash Test</h1>
+        <p>This tool will help identify where Gemini Live crashes occur.</p>
+        
+        <div class="controls">
+            <button onclick="runFullTest()">Run Full Test</button>
+            <button onclick="runStepByStep()">Step by Step</button>
+            <button onclick="clearLogs()">Clear Logs</button>
+            <button onclick="loadDebugScript()">Load Debug Script</button>
+        </div>
+
+        <div id="steps">
+            <div class="step" id="step1">Step 1: Check Browser APIs</div>
+            <div class="step" id="step2">Step 2: Check API Key</div>
+            <div class="step" id="step3">Step 3: Test Microphone</div>
+            <div class="step" id="step4">Step 4: Test AudioContext</div>
+            <div class="step" id="step5">Step 5: Test WebSocket</div>
+            <div class="step" id="step6">Step 6: Test Service</div>
+            <div class="step" id="step7">Step 7: Start Streaming</div>
+        </div>
+
+        <div class="log" id="log"></div>
+        <div class="log error-log" id="errorLog" style="display: none;"></div>
+    </div>
+
+    <script>
+        let currentStep = 0;
+        let testResults = {};
+        let errors = [];
+
+        function log(message, isError = false) {
+            const timestamp = new Date().toISOString();
+            const logMessage = `[${timestamp}] ${message}`;
+            
+            if (isError) {
+                errors.push(logMessage);
+                const errorLog = document.getElementById('errorLog');
+                errorLog.style.display = 'block';
+                errorLog.innerHTML += logMessage + '\n';
+                console.error(message);
+            } else {
+                const logDiv = document.getElementById('log');
+                logDiv.innerHTML += logMessage + '\n';
+                logDiv.scrollTop = logDiv.scrollHeight;
+                console.log(message);
+            }
+        }
+
+        function updateStepStatus(stepNum, status) {
+            const stepDiv = document.getElementById(`step${stepNum}`);
+            stepDiv.className = `step ${status}`;
+            
+            if (status === 'running') {
+                stepDiv.innerHTML += ' - Running...';
+            } else if (status === 'success') {
+                stepDiv.innerHTML = stepDiv.innerHTML.replace(' - Running...', ' - ✅ Success');
+            } else if (status === 'error') {
+                stepDiv.innerHTML = stepDiv.innerHTML.replace(' - Running...', ' - ❌ Failed');
+            }
+        }
+
+        async function loadDebugScript() {
+            try {
+                log('Loading debug script...');
+                
+                // Load the debug script
+                const script = document.createElement('script');
+                script.src = './debug-gemini-live-electron.js';
+                script.onload = () => {
+                    log('✅ Debug script loaded successfully');
+                    log('💡 You can now run geminiDebug.runAllSteps() in the console');
+                };
+                script.onerror = () => {
+                    log('❌ Failed to load debug script', true);
+                };
+                document.head.appendChild(script);
+                
+            } catch (error) {
+                log(`❌ Error loading debug script: ${error.message}`, true);
+            }
+        }
+
+        async function testStep1() {
+            updateStepStatus(1, 'running');
+            log('🔍 Step 1: Checking browser APIs...');
+            
+            try {
+                const checks = {
+                    hasWebSocket: typeof WebSocket !== 'undefined',
+                    hasAudioContext: typeof AudioContext !== 'undefined',
+                    hasGetUserMedia: !!(navigator.mediaDevices?.getUserMedia),
+                    hasLocalStorage: typeof localStorage !== 'undefined',
+                    hasElectronAPI: !!(window.electronAPI),
+                    userAgent: navigator.userAgent
+                };
+                
+                log(`Browser APIs: ${JSON.stringify(checks, null, 2)}`);
+                
+                const missing = Object.entries(checks)
+                    .filter(([key, value]) => key !== 'userAgent' && !value)
+                    .map(([key]) => key);
+                
+                if (missing.length > 0) {
+                    throw new Error(`Missing APIs: ${missing.join(', ')}`);
+                }
+                
+                testResults.step1 = checks;
+                updateStepStatus(1, 'success');
+                return checks;
+            } catch (error) {
+                log(`❌ Step 1 failed: ${error.message}`, true);
+                updateStepStatus(1, 'error');
+                throw error;
+            }
+        }
+
+        async function testStep2() {
+            updateStepStatus(2, 'running');
+            log('🔍 Step 2: Checking API key...');
+            
+            try {
+                const sources = {
+                    electronAPI: window.electronAPI?.env?.GEMINI_API_KEY,
+                    localStorage: localStorage.getItem('gemini-api-key'),
+                    settingsDB: null
+                };
+                
+                const apiKey = sources.electronAPI || sources.settingsDB || sources.localStorage;
+                
+                log(`API Key sources: electronAPI=${!!sources.electronAPI}, localStorage=${!!sources.localStorage}, final=${!!apiKey}`);
+                
+                if (!apiKey) {
+                    throw new Error('No API key found in any source');
+                }
+                
+                testResults.step2 = { hasApiKey: !!apiKey, sources };
+                updateStepStatus(2, 'success');
+                return testResults.step2;
+            } catch (error) {
+                log(`❌ Step 2 failed: ${error.message}`, true);
+                updateStepStatus(2, 'error');
+                throw error;
+            }
+        }
+
+        async function testStep3() {
+            updateStepStatus(3, 'running');
+            log('🔍 Step 3: Testing microphone...');
+            
+            try {
+                log('Requesting microphone access...');
+                
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                
+                log(`✅ Microphone access granted: ${stream.id}`);
+                
+                // Store for cleanup
+                testResults.step3 = { stream };
+                updateStepStatus(3, 'success');
+                return testResults.step3;
+            } catch (error) {
+                log(`❌ Step 3 failed: ${error.message}`, true);
+                updateStepStatus(3, 'error');
+                throw error;
+            }
+        }
+
+        async function testStep4() {
+            updateStepStatus(4, 'running');
+            log('🔍 Step 4: Testing AudioContext...');
+            
+            try {
+                log('Creating AudioContext...');
+                
+                const audioContext = new AudioContext({
+                    sampleRate: 16000
+                });
+                
+                log(`✅ AudioContext created: state=${audioContext.state}, sampleRate=${audioContext.sampleRate}`);
+                
+                testResults.step4 = { audioContext };
+                updateStepStatus(4, 'success');
+                return testResults.step4;
+            } catch (error) {
+                log(`❌ Step 4 failed: ${error.message}`, true);
+                updateStepStatus(4, 'error');
+                throw error;
+            }
+        }
+
+        async function testStep5() {
+            updateStepStatus(5, 'running');
+            log('🔍 Step 5: Testing WebSocket...');
+            
+            try {
+                if (!testResults.step2?.hasApiKey) {
+                    throw new Error('No API key available for WebSocket test');
+                }
+                
+                const apiKey = window.electronAPI?.env?.GEMINI_API_KEY || localStorage.getItem('gemini-api-key');
+                const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+                
+                log('Creating WebSocket connection...');
+                
+                const ws = new WebSocket(wsUrl);
+                
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        log('❌ WebSocket connection timeout', true);
+                        ws.close();
+                        updateStepStatus(5, 'error');
+                        reject(new Error('WebSocket connection timeout'));
+                    }, 10000);
+                    
+                    ws.onopen = () => {
+                        log('✅ WebSocket connected successfully');
+                        clearTimeout(timeout);
+                        testResults.step5 = { websocket: ws };
+                        updateStepStatus(5, 'success');
+                        resolve(testResults.step5);
+                    };
+                    
+                    ws.onerror = (error) => {
+                        log(`❌ WebSocket error: ${error}`, true);
+                        clearTimeout(timeout);
+                        updateStepStatus(5, 'error');
+                        reject(error);
+                    };
+                    
+                    ws.onclose = (event) => {
+                        log(`WebSocket closed: code=${event.code}, reason=${event.reason}`);
+                        if (event.code === 4001) {
+                            log('❌ Invalid API key', true);
+                        }
+                    };
+                });
+            } catch (error) {
+                log(`❌ Step 5 failed: ${error.message}`, true);
+                updateStepStatus(5, 'error');
+                throw error;
+            }
+        }
+
+        async function runFullTest() {
+            log('🚀 Starting full Gemini Live crash test...');
+            errors = [];
+            testResults = {};
+            
+            try {
+                await testStep1();
+                await testStep2();
+                await testStep3();
+                await testStep4();
+                await testStep5();
+                
+                log('🎉 All tests completed successfully!');
+                log('📊 Test Results: ' + JSON.stringify(testResults, null, 2));
+                
+            } catch (error) {
+                log(`❌ Test failed: ${error.message}`, true);
+                log('📊 Partial Results: ' + JSON.stringify(testResults, null, 2));
+            }
+            
+            if (errors.length > 0) {
+                log(`🚨 Total errors: ${errors.length}`, true);
+            }
+        }
+
+        async function runStepByStep() {
+            log('🔍 Running step-by-step test...');
+            log('💡 Click through each step manually or check the console for detailed logs');
+            
+            // Reset all steps
+            for (let i = 1; i <= 7; i++) {
+                const stepDiv = document.getElementById(`step${i}`);
+                stepDiv.className = 'step';
+                stepDiv.innerHTML = stepDiv.innerHTML.split(' - ')[0];
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('errorLog').innerHTML = '';
+            document.getElementById('errorLog').style.display = 'none';
+            errors = [];
+        }
+
+        // Add global error handlers
+        window.addEventListener('error', (event) => {
+            log(`🚨 GLOBAL ERROR: ${event.error.message}`, true);
+            log(`Stack: ${event.error.stack}`, true);
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            log(`🚨 UNHANDLED REJECTION: ${event.reason}`, true);
+        });
+
+        // Auto-load debug script on page load
+        window.addEventListener('load', () => {
+            log('🔍 Crash test page loaded');
+            log('💡 Click "Load Debug Script" to enable advanced debugging');
+        });
+    </script>
+</body>
+</html> 
