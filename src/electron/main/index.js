@@ -1500,6 +1500,124 @@ ipcMain.handle("delete-file", async (event, filepath) => {
   }
 });
 
+// Semi-Live Recording Handlers for Gemini 2.0 Flash Integration
+let semiLiveRecordingProcess = null;
+let semiLiveRecordingPath = null;
+let semiLiveChunkCounter = 0;
+let semiLiveRecordingId = null;
+
+// Start semi-live recording with chunked output
+ipcMain.handle("start-semi-live-recording", async (_, options = {}) => {
+  try {
+    console.log('🎤 Starting semi-live recording for Gemini processing:', options);
+    
+    const { chunkDurationMs = 2000, source = 'mic', filename = 'semi_live' } = options;
+    
+    // Generate unique recording ID and setup path
+    semiLiveRecordingId = `${filename}_${Date.now()}`;
+    const documentsPath = app.getPath("documents");
+    const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings", "semi-live");
+    
+    // Create the directory if it doesn't exist
+    if (!fs.existsSync(fridayRecordingsPath)) {
+      try {
+        fs.mkdirSync(fridayRecordingsPath, { recursive: true });
+        console.log(`Created semi-live recordings directory at ${fridayRecordingsPath}`);
+      } catch (error) {
+        console.error(`Failed to create semi-live recordings directory: ${error.message}`);
+      }
+    }
+    
+    semiLiveRecordingPath = fridayRecordingsPath;
+    semiLiveChunkCounter = 0;
+    
+    console.log(`✅ Semi-live recording setup completed for ${source} source`);
+    
+    // Note: We don't start the actual recording process here
+    // Instead, we'll use the existing recording infrastructure triggered by requestSemiLiveChunk
+    
+    return { success: true, recordingId: semiLiveRecordingId, path: semiLiveRecordingPath };
+  } catch (error) {
+    console.error("Error starting semi-live recording:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Request a chunk from the ongoing recording
+ipcMain.handle("request-semi-live-chunk", async (_, options = {}) => {
+  try {
+    if (!semiLiveRecordingId || !semiLiveRecordingPath) {
+      throw new Error('Semi-live recording not initialized');
+    }
+    
+    const { filename = `chunk_${semiLiveChunkCounter++}` } = options;
+    const chunkFilename = `${semiLiveRecordingId}_${filename}`;
+    const chunkPath = path.join(semiLiveRecordingPath, `${chunkFilename}.mp3`);
+    
+    console.log(`🎙️ Recording semi-live chunk: ${chunkPath}`);
+    
+    // Start a short recording for this chunk
+    const recordingOptions = {
+      filepath: semiLiveRecordingPath,
+      filename: chunkFilename,
+      source: 'mic' // Default to mic for semi-live
+    };
+    
+    await startRecording(recordingOptions);
+    
+    // Stop after 2 seconds to create the chunk
+    setTimeout(async () => {
+      try {
+        const result = await stopRecording();
+        
+        if (result.success && result.path) {
+          // Notify frontend that chunk is ready
+          const chunkData = {
+            filePath: result.path,
+            timestamp: Date.now(),
+            chunkIndex: semiLiveChunkCounter - 1,
+            size: fs.existsSync(result.path) ? fs.statSync(result.path).size : 0
+          };
+          
+          console.log(`📁 Semi-live chunk ready: ${result.path}`);
+          global.mainWindow.webContents.send("semi-live-chunk-ready", chunkData);
+        }
+      } catch (error) {
+        console.error('❌ Error stopping semi-live chunk:', error);
+      }
+    }, 2000); // 2 second chunks
+    
+    return { success: true, chunkPath };
+  } catch (error) {
+    console.error("Error requesting semi-live chunk:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Stop semi-live recording
+ipcMain.handle("stop-semi-live-recording", async () => {
+  try {
+    console.log('🛑 Stopping semi-live recording...');
+    
+    // Stop any ongoing recording
+    if (semiLiveRecordingProcess) {
+      await stopRecording();
+      semiLiveRecordingProcess = null;
+    }
+    
+    // Reset semi-live state
+    semiLiveRecordingPath = null;
+    semiLiveChunkCounter = 0;
+    semiLiveRecordingId = null;
+    
+    console.log('✅ Semi-live recording stopped');
+    return { success: true };
+  } catch (error) {
+    console.error("Error stopping semi-live recording:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 

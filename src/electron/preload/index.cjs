@@ -261,6 +261,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
   removeSemiLiveSpeechListeners: () => {
     ipcRenderer.removeAllListeners('semi-live-speech:result');
     ipcRenderer.removeAllListeners('semi-live-speech:error');
+  },
+
+  // Semi-Live Recording methods for Gemini 2.0 Flash Integration
+  startSemiLiveRecording: async (options = {}) => {
+    return await ipcRenderer.invoke("start-semi-live-recording", options);
+  },
+  
+  stopSemiLiveRecording: async () => {
+    return await ipcRenderer.invoke("stop-semi-live-recording");
+  },
+  
+  requestSemiLiveChunk: async (options = {}) => {
+    return await ipcRenderer.invoke("request-semi-live-chunk", options);
+  },
+  
+  // Listen for semi-live chunk ready events
+  onSemiLiveChunk: (callback) => {
+    ipcRenderer.on("semi-live-chunk-ready", (_, chunkData) => {
+      callback(chunkData);
+    });
+  },
+  
+  // Remove semi-live listeners
+  removeSemiLiveListeners: () => {
+    ipcRenderer.removeAllListeners('semi-live-chunk-ready');
   }
 });
 
