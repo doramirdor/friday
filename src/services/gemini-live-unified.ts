@@ -191,13 +191,27 @@ class GeminiLiveUnifiedService {
         
         this.processingInterval = window.setInterval(() => {
           try {
+            console.log('🔍 CRASH DEBUG: ===== INTERVAL CALLBACK START =====');
             console.log('🔍 CRASH DEBUG: Processing interval triggered, calling processAudioBuffer...');
-            this.processAudioBuffer().catch((error) => {
-              console.error('🔍 CRASH DEBUG: ERROR in processAudioBuffer from interval:', error);
+            console.log('🔍 CRASH DEBUG: Current recording state:', this.isRecording);
+            console.log('🔍 CRASH DEBUG: Audio buffer length:', this.audioBuffer.length);
+            
+            // Add even more granular error handling
+            this.processAudioBuffer().then(() => {
+              console.log('🔍 CRASH DEBUG: processAudioBuffer Promise resolved successfully');
+            }).catch((error) => {
+              console.error('🔍 CRASH DEBUG: ERROR in processAudioBuffer Promise rejection:', error);
+              console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
+              console.error('🔍 CRASH DEBUG: Error name:', error.name);
+              console.error('🔍 CRASH DEBUG: Error message:', error.message);
               this.emitError(error as Error);
             });
+            
+            console.log('🔍 CRASH DEBUG: processAudioBuffer call dispatched, interval callback completing...');
+            console.log('🔍 CRASH DEBUG: ===== INTERVAL CALLBACK END =====');
           } catch (error) {
             console.error('🔍 CRASH DEBUG: ERROR in processing interval callback:', error);
+            console.error('🔍 CRASH DEBUG: Sync error stack:', error.stack);
             this.emitError(error as Error);
           }
         }, this.options.chunkDurationMs);
@@ -268,19 +282,38 @@ class GeminiLiveUnifiedService {
   }
 
   private async processAudioBuffer(): Promise<void> {
-    console.log('🔍 CRASH DEBUG: processAudioBuffer called, checking buffer...');
-    
-    if (this.audioBuffer.length === 0) {
-      console.log('🔍 CRASH DEBUG: Audio buffer is empty, returning early');
-      return;
-    }
-
     try {
-      console.log(`🔍 CRASH DEBUG: Processing audio buffer with ${this.audioBuffer.length} chunks`);
+      console.log('🔍 CRASH DEBUG: ===== PROCESS AUDIO BUFFER START =====');
+      console.log('🔍 CRASH DEBUG: processAudioBuffer called, checking buffer...');
+      console.log('🔍 CRASH DEBUG: Audio buffer exists:', !!this.audioBuffer);
+      console.log('🔍 CRASH DEBUG: Audio buffer type:', typeof this.audioBuffer);
+      console.log('🔍 CRASH DEBUG: Audio buffer length:', this.audioBuffer?.length || 'undefined');
       
-      // Combine audio chunks
-      const totalLength = this.audioBuffer.reduce((sum, chunk) => sum + chunk.length, 0);
-      console.log(`🔍 CRASH DEBUG: Total audio length: ${totalLength} samples`);
+      if (!this.audioBuffer) {
+        console.error('🔍 CRASH DEBUG: Audio buffer is null/undefined!');
+        return;
+      }
+      
+      if (this.audioBuffer.length === 0) {
+        console.log('🔍 CRASH DEBUG: Audio buffer is empty, returning early');
+        return;
+      }
+
+      console.log(`🔍 CRASH DEBUG: Processing audio buffer with ${this.audioBuffer.length} chunks`);
+      console.log('🔍 CRASH DEBUG: About to reduce audio chunks...');
+      
+      // Combine audio chunks with extra safety
+      let totalLength = 0;
+      try {
+        totalLength = this.audioBuffer.reduce((sum, chunk, index) => {
+          console.log(`🔍 CRASH DEBUG: Processing chunk ${index}, length: ${chunk?.length || 'undefined'}, sum so far: ${sum}`);
+          return sum + (chunk?.length || 0);
+        }, 0);
+        console.log(`🔍 CRASH DEBUG: Total audio length calculated: ${totalLength} samples`);
+      } catch (reduceError) {
+        console.error('🔍 CRASH DEBUG: ERROR during reduce operation:', reduceError);
+        throw reduceError;
+      }
       
       if (totalLength < 8000) { // Less than 0.5 seconds at 16kHz
         console.log('🔍 CRASH DEBUG: Audio too short, skipping processing');
@@ -288,20 +321,38 @@ class GeminiLiveUnifiedService {
       }
 
       console.log('🔍 CRASH DEBUG: Creating combined buffer...');
-      const combinedBuffer = new Float32Array(totalLength);
-      let offset = 0;
-      for (const chunk of this.audioBuffer) {
-        combinedBuffer.set(chunk, offset);
-        offset += chunk.length;
+      
+      let combinedBuffer: Float32Array;
+      try {
+        combinedBuffer = new Float32Array(totalLength);
+        console.log('🔍 CRASH DEBUG: Float32Array created successfully');
+      } catch (arrayError) {
+        console.error('🔍 CRASH DEBUG: ERROR creating Float32Array:', arrayError);
+        throw arrayError;
       }
-      console.log('🔍 CRASH DEBUG: Combined buffer created successfully');
+      
+      let offset = 0;
+      try {
+        for (let i = 0; i < this.audioBuffer.length; i++) {
+          const chunk = this.audioBuffer[i];
+          console.log(`🔍 CRASH DEBUG: Setting chunk ${i}, offset: ${offset}, chunk length: ${chunk?.length || 'undefined'}`);
+          if (chunk && chunk.length > 0) {
+            combinedBuffer.set(chunk, offset);
+            offset += chunk.length;
+          }
+        }
+        console.log('🔍 CRASH DEBUG: Combined buffer created successfully');
+      } catch (setError) {
+        console.error('🔍 CRASH DEBUG: ERROR setting combined buffer:', setError);
+        throw setError;
+      }
 
       // Clear buffer
       this.audioBuffer = [];
       console.log('🔍 CRASH DEBUG: Audio buffer cleared');
 
       // Save as temporary audio file (reusing proven file-based approach)
-      console.log('🔍 CRASH DEBUG: Calling saveAudioChunk...');
+      console.log('🔍 CRASH DEBUG: About to call saveAudioChunk...');
       const audioChunk = await this.saveAudioChunk(combinedBuffer);
       console.log('🔍 CRASH DEBUG: saveAudioChunk completed:', audioChunk ? 'success' : 'failed');
       
@@ -320,11 +371,19 @@ class GeminiLiveUnifiedService {
           console.log('🔍 CRASH DEBUG: processChunk completed successfully');
         }
       }
+      
+      console.log('🔍 CRASH DEBUG: ===== PROCESS AUDIO BUFFER END =====');
 
     } catch (error) {
+      console.error('🔍 CRASH DEBUG: ===== CRITICAL ERROR IN PROCESS AUDIO BUFFER =====');
       console.error('🔍 CRASH DEBUG: ERROR in processAudioBuffer:', error);
       console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
+      console.error('🔍 CRASH DEBUG: Error name:', error.name);
+      console.error('🔍 CRASH DEBUG: Error message:', error.message);
+      console.error('🔍 CRASH DEBUG: Error toString:', error.toString());
+      console.error('🔍 CRASH DEBUG: ===== END CRITICAL ERROR =====');
       this.emitError(error as Error);
+      throw error; // Re-throw to see if this causes the white page
     }
   }
 
