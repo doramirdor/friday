@@ -661,26 +661,49 @@ ipcMain.handle('invoke-google-speech', async (event, audioBuffer, options = {}) 
 });
 
 // Handle saving audio file
-ipcMain.handle("save-audio-file", async (event, buffer, filename, formats = ['mp3']) => {
+ipcMain.handle("save-audio-file", async (event, { buffer, filename, formats = ['mp3'] }) => {
   try {
     console.log(`🔄 main.js: Saving audio file: ${filename} with formats:`, formats);
+    console.log(`🔍 main.js DEBUG: Received parameters:`, {
+      bufferType: buffer?.constructor?.name,
+      bufferSize: buffer?.byteLength || buffer?.length || 'unknown',
+      filename,
+      formats
+    });
     
     // Create output directory if it doesn't exist
     const outputDir = path.join(app.getPath('userData'), 'recordings');
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
+      console.log(`🔍 main.js DEBUG: Created output directory: ${outputDir}`);
     }
     
     // Generate timestamp for unique filenames
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    
+    // Convert ArrayBuffer to Buffer if necessary
+    let bufferToWrite;
+    if (buffer instanceof ArrayBuffer) {
+      bufferToWrite = Buffer.from(buffer);
+      console.log(`🔍 main.js DEBUG: Converted ArrayBuffer to Buffer (${bufferToWrite.length} bytes)`);
+    } else if (Buffer.isBuffer(buffer)) {
+      bufferToWrite = buffer;
+      console.log(`🔍 main.js DEBUG: Using existing Buffer (${bufferToWrite.length} bytes)`);
+    } else {
+      console.error(`❌ main.js DEBUG: Unexpected buffer type: ${buffer?.constructor?.name}`);
+      throw new Error(`Unexpected buffer type: ${buffer?.constructor?.name}`);
+    }
     
     // Save files in requested formats
     const savedFiles = [];
     
     for (const format of formats) {
       try {
+        console.log(`🔍 main.js DEBUG: Processing format: ${format}`);
+        
         // Generate output path
         const outputPath = path.join(outputDir, `${filename}_${timestamp}.${format}`);
+        console.log(`🔍 main.js DEBUG: Output path: ${outputPath}`);
         
         // For MP3 format, use ffmpeg to convert
         if (format.toLowerCase() === 'mp3') {
@@ -688,31 +711,45 @@ ipcMain.handle("save-audio-file", async (event, buffer, filename, formats = ['mp
           
           // Create a temporary WAV file first
           const tempWavPath = path.join(app.getPath('temp'), `temp_${Date.now()}.wav`);
-          fs.writeFileSync(tempWavPath, buffer);
+          fs.writeFileSync(tempWavPath, bufferToWrite);
+          console.log(`🔍 main.js DEBUG: Wrote temp WAV file: ${tempWavPath}`);
           
           // Convert to MP3 using ffmpeg
           await exec(`ffmpeg -i "${tempWavPath}" -acodec libmp3lame -ab 128k "${outputPath}" -y`);
+          console.log(`🔍 main.js DEBUG: MP3 conversion completed`);
           
           // Clean up temp file
           try {
             fs.unlinkSync(tempWavPath);
+            console.log(`🔍 main.js DEBUG: Cleaned up temp WAV file`);
           } catch (cleanupError) {
             console.warn(`⚠️ main.js: Could not delete temp WAV file: ${cleanupError.message}`);
           }
         } else {
           // For other formats, just write the buffer directly
-          fs.writeFileSync(outputPath, buffer);
+          console.log(`🔍 main.js DEBUG: Writing ${format} file directly`);
+          fs.writeFileSync(outputPath, bufferToWrite);
+          console.log(`🔍 main.js DEBUG: Direct write completed`);
         }
         
-        // Add to saved files list
-        savedFiles.push({
-          format: format.toLowerCase(),
-          path: outputPath
-        });
-        
-        console.log(`✅ main.js: Saved ${format} file: ${outputPath}`);
+        // Check if file was created successfully
+        if (fs.existsSync(outputPath)) {
+          const fileStats = fs.statSync(outputPath);
+          console.log(`🔍 main.js DEBUG: File created successfully, size: ${fileStats.size} bytes`);
+          
+          // Add to saved files list
+          savedFiles.push({
+            format: format.toLowerCase(),
+            path: outputPath
+          });
+          
+          console.log(`✅ main.js: Saved ${format} file: ${outputPath}`);
+        } else {
+          throw new Error(`File was not created: ${outputPath}`);
+        }
       } catch (formatError) {
         console.error(`❌ main.js: Error saving ${format} file:`, formatError);
+        console.error(`❌ main.js DEBUG: Format error stack:`, formatError.stack);
       }
     }
     
