@@ -694,68 +694,119 @@ ipcMain.handle("save-audio-file", async (event, { buffer, filename, formats = ['
       throw new Error(`Unexpected buffer type: ${buffer?.constructor?.name}`);
     }
     
+    // Detect audio format from buffer header
+    const bufferHeader = bufferToWrite.slice(0, 16);
+    const headerHex = bufferHeader.toString('hex');
+    console.log(`🔍 main.js DEBUG: Audio buffer header: ${headerHex}`);
+    
+    let detectedFormat = 'unknown';
+    let nativeExtension = 'bin';
+    
+    // WebM/Matroska magic bytes: 1A 45 DF A3
+    if (headerHex.includes('1a45dfa3')) {
+      detectedFormat = 'webm';
+      nativeExtension = 'webm';
+      console.log('🔍 main.js DEBUG: Detected WebM format');
+    }
+    // WAV magic bytes: RIFF (52494646) + WAVE (57415645)
+    else if (headerHex.includes('52494646') && bufferToWrite.slice(8, 12).toString('ascii') === 'WAVE') {
+      detectedFormat = 'wav';
+      nativeExtension = 'wav';
+      console.log('🔍 main.js DEBUG: Detected WAV format');
+    }
+    // OGG magic bytes: OggS (4F676753)
+    else if (headerHex.includes('4f676753')) {
+      detectedFormat = 'ogg';
+      nativeExtension = 'ogg';
+      console.log('🔍 main.js DEBUG: Detected OGG format');
+    }
+    // MP3 magic bytes: ID3 (494433) or MPEG frame sync (FFFB/FFF3)
+    else if (headerHex.includes('494433') || headerHex.includes('fffb') || headerHex.includes('fff3')) {
+      detectedFormat = 'mp3';
+      nativeExtension = 'mp3';
+      console.log('🔍 main.js DEBUG: Detected MP3 format');
+    }
+    
+    console.log(`🔍 main.js DEBUG: Detected format: ${detectedFormat}, native extension: ${nativeExtension}`);
+    
     // Save files in requested formats
     const savedFiles = [];
     
+    // First, always save in native format
+    const nativePath = path.join(outputDir, `${filename}_${timestamp}.${nativeExtension}`);
+    console.log(`🔍 main.js DEBUG: Saving native format to: ${nativePath}`);
+    
+    try {
+      fs.writeFileSync(nativePath, bufferToWrite);
+      console.log(`✅ main.js: Saved native ${nativeExtension} file: ${nativePath}`);
+      
+      if (fs.existsSync(nativePath)) {
+        const fileStats = fs.statSync(nativePath);
+        console.log(`🔍 main.js DEBUG: Native file created successfully, size: ${fileStats.size} bytes`);
+        
+        savedFiles.push({
+          format: nativeExtension,
+          path: nativePath
+        });
+      }
+    } catch (nativeError) {
+      console.error(`❌ main.js: Error saving native format:`, nativeError);
+      throw new Error(`Failed to save native format: ${nativeError.message}`);
+    }
+    
+    // Now convert to other requested formats
     for (const format of formats) {
+      const formatLower = format.toLowerCase();
+      
+      // Skip if we already saved this format as native
+      if (formatLower === nativeExtension) {
+        console.log(`🔍 main.js DEBUG: Skipping ${format} - already saved as native format`);
+        continue;
+      }
+      
       try {
-        console.log(`🔍 main.js DEBUG: Processing format: ${format}`);
+        console.log(`🔍 main.js DEBUG: Converting to format: ${format}`);
         
         // Generate output path
-        const outputPath = path.join(outputDir, `${filename}_${timestamp}.${format}`);
+        const outputPath = path.join(outputDir, `${filename}_${timestamp}.${formatLower}`);
         console.log(`🔍 main.js DEBUG: Output path: ${outputPath}`);
         
-        // For MP3 format, use ffmpeg to convert
-        if (format.toLowerCase() === 'mp3') {
-          console.log('🔄 main.js: Converting to MP3');
-          
-          // Create a temporary WAV file first
-          const tempWavPath = path.join(app.getPath('temp'), `temp_${Date.now()}.wav`);
-          fs.writeFileSync(tempWavPath, bufferToWrite);
-          console.log(`🔍 main.js DEBUG: Wrote temp WAV file: ${tempWavPath}`);
-          
-          // Convert to MP3 using ffmpeg
-          await exec(`ffmpeg -i "${tempWavPath}" -acodec libmp3lame -ab 128k "${outputPath}" -y`);
-          console.log(`🔍 main.js DEBUG: MP3 conversion completed`);
-          
-          // Clean up temp file
-          try {
-            fs.unlinkSync(tempWavPath);
-            console.log(`🔍 main.js DEBUG: Cleaned up temp WAV file`);
-          } catch (cleanupError) {
-            console.warn(`⚠️ main.js: Could not delete temp WAV file: ${cleanupError.message}`);
-          }
-        } else {
-          // For other formats, just write the buffer directly
-          console.log(`🔍 main.js DEBUG: Writing ${format} file directly`);
-          fs.writeFileSync(outputPath, bufferToWrite);
-          console.log(`🔍 main.js DEBUG: Direct write completed`);
-        }
+        // Use ffmpeg to convert from native format to target format
+        console.log(`🔄 main.js: Converting ${nativeExtension} to ${formatLower} using ffmpeg`);
+        
+        const ffmpegCmd = `ffmpeg -i "${nativePath}" -acodec libmp3lame -ab 128k "${outputPath}" -y`;
+        console.log(`🔍 main.js DEBUG: FFmpeg command: ${ffmpegCmd}`);
+        
+        await exec(ffmpegCmd);
+        console.log(`🔍 main.js DEBUG: FFmpeg conversion completed`);
         
         // Check if file was created successfully
         if (fs.existsSync(outputPath)) {
           const fileStats = fs.statSync(outputPath);
-          console.log(`🔍 main.js DEBUG: File created successfully, size: ${fileStats.size} bytes`);
+          console.log(`🔍 main.js DEBUG: Converted file created successfully, size: ${fileStats.size} bytes`);
           
           // Add to saved files list
           savedFiles.push({
-            format: format.toLowerCase(),
+            format: formatLower,
             path: outputPath
           });
           
-          console.log(`✅ main.js: Saved ${format} file: ${outputPath}`);
+          console.log(`✅ main.js: Converted to ${formatLower} file: ${outputPath}`);
         } else {
-          throw new Error(`File was not created: ${outputPath}`);
+          throw new Error(`Converted file was not created: ${outputPath}`);
         }
       } catch (formatError) {
-        console.error(`❌ main.js: Error saving ${format} file:`, formatError);
+        console.error(`❌ main.js: Error converting to ${format}:`, formatError);
         console.error(`❌ main.js DEBUG: Format error stack:`, formatError.stack);
+        // Don't fail the entire operation if one format fails
       }
     }
     
     if (savedFiles.length === 0) {
       throw new Error('Failed to save in any format');
     }
+    
+    console.log(`✅ main.js: Successfully saved ${savedFiles.length} files:`, savedFiles.map(f => `${f.format}: ${f.path}`));
     
     return {
       success: true,
@@ -764,6 +815,7 @@ ipcMain.handle("save-audio-file", async (event, { buffer, filename, formats = ['
     };
   } catch (error) {
     console.error('❌ main.js: Error saving audio file:', error);
+    console.error('❌ main.js DEBUG: Error stack:', error.stack);
     return {
       success: false,
       error: error.message,
