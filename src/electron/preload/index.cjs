@@ -188,6 +188,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return await ipcRenderer.invoke("check-file-exists", filepath);
   },
   
+  // Delete a file
+  deleteFile: async (filepath) => {
+    return await ipcRenderer.invoke("delete-file", filepath);
+  },
+  
   // Read audio file as buffer for Gemini transcription
   readAudioFile: async (filepath) => {
     return await ipcRenderer.invoke("readAudioFile", filepath);

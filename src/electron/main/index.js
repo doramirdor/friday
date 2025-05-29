@@ -1481,6 +1481,25 @@ ipcMain.handle('test-specific-file', async (event, filePath) => {
   }
 });
 
+// Add a handler to delete a file
+ipcMain.handle("delete-file", async (event, filepath) => {
+  try {
+    console.log(`🔄 main.js: Deleting file: ${filepath}`);
+    
+    if (!fs.existsSync(filepath)) {
+      console.log(`⚠️ main.js: File does not exist, nothing to delete: ${filepath}`);
+      return { success: true, message: "File does not exist" };
+    }
+    
+    fs.unlinkSync(filepath);
+    console.log(`✅ main.js: Successfully deleted file: ${filepath}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`❌ main.js: Error deleting file: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 

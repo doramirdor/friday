@@ -666,71 +666,66 @@ const getAllMeetings = async (): Promise<Meeting[]> => {
   try {
     await ensureDatabaseInitialized();
     
-    // Try different query approaches in sequence
+    // Double-check that meetingsDb is actually available
+    if (!meetingsDb || typeof meetingsDb.find !== 'function') {
+      console.error('meetingsDb is not properly initialized, attempting to reinitialize...');
+      // Force reinitialization
+      isInitialized = false;
+      databasesInitialized = false;
+      localStorage.removeItem('db_initialized');
+      localStorage.removeItem('databases_initialized');
+      await initDatabase();
+      
+      // If still not available, return empty array
+      if (!meetingsDb || typeof meetingsDb.find !== 'function') {
+        console.error('meetingsDb still not available after reinitialization');
+        return [];
+      }
+    }
+
+    // Simple query first - try to get all meetings with type
     try {
-      // First try with simple type index
       const result = await meetingsDb.find({
         selector: {
           type: 'meeting'
         },
-        use_index: 'type-index'
+        limit: 25
       });
-
-      // Sort in memory if needed
-      const sortedDocs = result.docs.sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-
-      // Remove duplicates based on title and creation time (within 1 hour)
-      const uniqueDocs = [];
-      const seen = new Map();
       
-      for (const doc of sortedDocs) {
-        const createdAtHour = Math.floor(new Date(doc.createdAt).getTime() / 3600000); // Group by hour
-        const key = `${doc.title.toLowerCase().trim()}_${createdAtHour}`;
-        if (!seen.has(key)) {
-          seen.set(key, doc);
-          uniqueDocs.push(doc);
-        } else {
-          console.warn('Removing duplicate meeting:', doc.title, doc.createdAt, doc._id);
-        }
+      if (result.docs.length > 0) {
+        const sortedDocs = result.docs.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        return sortedDocs;
       }
-
-      return uniqueDocs;
-    } catch (simpleIndexError) {
-      console.warn('Simple index query failed, trying compound index:', simpleIndexError);
+    } catch (simpleError) {
+      console.warn('Simple index query failed, trying compound index:', simpleError);
       
-              try {
-          // Try with compound index
-          const result = await meetingsDb.find({
-            selector: {
-              type: 'meeting',
-              createdAt: { $gt: null }
-            },
-            sort: [{ createdAt: 'desc' }],
-            use_index: 'type-createdAt-index'
-          });
-          
-          // Remove duplicates based on title and creation time (within 1 hour)
-          const uniqueDocs = [];
-          const seen = new Map();
-          
-          for (const doc of result.docs) {
-            const createdAtHour = Math.floor(new Date(doc.createdAt).getTime() / 3600000); // Group by hour
-            const key = `${doc.title.toLowerCase().trim()}_${createdAtHour}`;
-            if (!seen.has(key)) {
-              seen.set(key, doc);
-              uniqueDocs.push(doc);
-            } else {
-              console.warn('Removing duplicate meeting:', doc.title, doc.createdAt, doc._id);
-            }
-          }
-          
-          return uniqueDocs;
+      // Try using the compound index
+      try {
+        const result = await meetingsDb.find({
+          selector: {
+            type: 'meeting'
+          },
+          use_index: ['type-index'],
+          limit: 25
+        });
+        
+        if (result.docs.length > 0) {
+          const sortedDocs = result.docs.sort((a, b) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+          return sortedDocs;
+        }
       } catch (compoundIndexError) {
         console.warn('Compound index query failed, falling back to allDocs:', compoundIndexError);
         
-        // Final fallback to allDocs
+        // Final fallback to allDocs - but check if allDocs exists first
+        if (!meetingsDb.allDocs || typeof meetingsDb.allDocs !== 'function') {
+          console.error('allDocs method not available on meetingsDb, returning empty array');
+          return [];
+        }
+        
         const result = await meetingsDb.allDocs({
           include_docs: true,
           startkey: 'meeting_',
@@ -760,9 +755,13 @@ const getAllMeetings = async (): Promise<Meeting[]> => {
         return uniqueDocs;
       }
     }
+    
+    // If we get here, no meetings were found
+    return [];
   } catch (error) {
     console.error('Error getting all meetings:', error);
-    throw error;
+    // Return empty array instead of throwing to prevent app crash
+    return [];
   }
 };
 
@@ -788,6 +787,15 @@ const cleanupDuplicateMeetings = async (): Promise<{ deletedCount: number; messa
   try {
     await ensureDatabaseInitialized();
     
+    // Check if database is properly initialized
+    if (!meetingsDb || typeof meetingsDb.find !== 'function') {
+      console.warn('meetingsDb not available for cleanup, skipping duplicate cleanup');
+      return {
+        deletedCount: 0,
+        message: 'Database not ready for cleanup'
+      };
+    }
+
     // Get all meetings without deduplication
     const result = await meetingsDb.find({
       selector: {

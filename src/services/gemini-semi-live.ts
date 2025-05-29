@@ -1,830 +1,435 @@
-import { DatabaseService } from './database';
+// File-based audio chunk interface
+interface AudioChunk {
+  timestamp: number;
+  filePath: string;
+  size: number;
+}
 
-// Interface for semi-live Gemini results
-export interface GeminiSemiLiveResult {
+// Processing state for file-based approach
+interface ProcessingState {
+  isRecording: boolean;
+  processingMode: 'continuous' | 'send-at-end';
+  chunkDurationMs: number;
+  audioChunks: AudioChunk[];
+  lastProcessedTime: number;
+  totalChunksProcessed: number;
+  tempFileCounter: number;
+}
+
+// Options for the simplified file-based service
+interface FileSemiLiveOptions {
+  sampleRateHertz?: number;
+  languageCode?: string;
+  enableSpeakerDiarization?: boolean;
+  maxSpeakerCount?: number;
+  chunkDurationMs?: number;
+  processingMode?: 'continuous' | 'send-at-end';
+}
+
+// Result from file-based transcription
+interface FileSemiLiveResult {
   transcript: string;
   isFinal: boolean;
-  confidence?: number;
-  speakerId?: string;
   speakers?: Array<{
     id: string;
     name: string;
     color: string;
   }>;
-  // New field for speaker continuity
-  speakerContext?: Array<{
-    id: string;
-    name: string;
-    color: string;
-    lastSeen: number; // timestamp
-    totalSegments: number;
-  }>;
+  timestamp: number;
 }
 
-// Interface for semi-live Gemini options
-export interface GeminiSemiLiveOptions {
-  sampleRateHertz?: number;
-  languageCode?: string;
-  enableSpeakerDiarization?: boolean;
-  maxSpeakerCount?: number;
-  chunkDurationMs?: number; // How often to send chunks (in milliseconds)
-  encoding?: 'LINEAR16' | 'WEBM_OPUS';
-  // New options for speaker context
-  maintainSpeakerContext?: boolean;
-  speakerContextTimeoutMs?: number; // How long to remember speakers (default: 5 minutes)
-  // New option for processing mode
-  processingMode?: 'continuous' | 'send-at-end'; // How to process audio
-}
-
-// Interface for the semi-live Gemini service
-export interface GeminiSemiLiveService {
-  isAvailable: boolean;
-  isRecording: boolean;
-  startRecording: (options?: GeminiSemiLiveOptions) => Promise<void>;
-  stopRecording: () => void;
-  onResult: (callback: (result: GeminiSemiLiveResult) => void) => void;
-  onError: (callback: (error: Error) => void) => void;
-  // New speaker context methods
-  clearSpeakerContext: () => void;
-  getSpeakerContext: () => Array<{ id: string; name: string; color: string; lastSeen: number; totalSegments: number }>;
-}
-
-class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
-  private resultCallback: ((result: GeminiSemiLiveResult) => void) | null = null;
-  private errorCallback: ((error: Error) => void) | null = null;
-  private _isRecording = false;
-  private _isAvailable = false;
-  private apiKey: string | null = null;
+class FileSemiLiveService {
+  private state: ProcessingState = {
+    isRecording: false,
+    processingMode: 'send-at-end',
+    chunkDurationMs: 1000,
+    audioChunks: [],
+    lastProcessedTime: 0,
+    totalChunksProcessed: 0,
+    tempFileCounter: 0
+  };
   
-  // Audio recording state
-  private mediaStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
-  private processor: ScriptProcessorNode | null = null;
-  private audioChunks: Float32Array[] = [];
-  private chunkInterval: number | null = null;
-  private options: GeminiSemiLiveOptions = {};
+  private mediaStream: MediaStream | null = null;
+  private scriptProcessor: ScriptProcessorNode | null = null;
+  private gainNode: GainNode | null = null;
+  private currentOptions: FileSemiLiveOptions | null = null;
+  private processingInterval: number | null = null;
 
-  // Speaker context tracking
-  private speakerContext: Map<string, {
-    id: string;
-    name: string;
-    color: string;
-    lastSeen: number;
-    totalSegments: number;
-  }> = new Map();
-  private nextSpeakerId = 1;
-
-  constructor() {
+  async startRecording(options: FileSemiLiveOptions): Promise<boolean> {
     try {
-      this.checkAvailability();
+      console.log('🎤 Starting File-based Semi-Live recording with options:', options);
       
-      // Add global error handler for unhandled promise rejections
-      if (typeof window !== 'undefined') {
-        window.addEventListener('unhandledrejection', (event) => {
-          if (event.reason && event.reason.message && event.reason.message.includes('Gemini')) {
-            console.error('❌ Unhandled Gemini Semi-Live error:', event.reason);
-            if (this.errorCallback) {
-              this.errorCallback(new Error(`Unhandled error: ${event.reason.message}`));
-            }
-            event.preventDefault(); // Prevent the error from crashing the app
-          }
-        });
-        
-        // Add specific error handler for our service
-        window.addEventListener('error', (event) => {
-          if (event.error && event.error.stack && event.error.stack.includes('gemini-semi-live')) {
-            console.error('🚨 GEMINI SEMI-LIVE CRASH DETECTED:', {
-              message: event.error.message,
-              stack: event.error.stack,
-              filename: event.filename,
-              lineno: event.lineno,
-              colno: event.colno,
-              timestamp: new Date().toISOString()
-            });
-            if (this.errorCallback) {
-              this.errorCallback(new Error(`Service crashed: ${event.error.message}`));
-            }
-          }
-        });
+      this.currentOptions = options;
+      this.state.processingMode = options.processingMode || 'send-at-end';
+      this.state.chunkDurationMs = options.chunkDurationMs || 1000;
+      this.state.isRecording = true;
+      this.state.audioChunks = [];
+      this.state.lastProcessedTime = Date.now();
+      this.state.totalChunksProcessed = 0;
+      this.state.tempFileCounter = 0;
+
+      const success = await this.startMicrophoneCapture(options);
+      if (!success) {
+        this.state.isRecording = false;
+        return false;
       }
-    } catch (error) {
-      console.error('❌ Error initializing Gemini Semi-Live service:', error);
-      this._isAvailable = false;
-    }
-  }
 
-  private checkAvailability() {
-    // Check if we have Gemini API key
-    const electronWindow = window as unknown as { electronAPI?: { env?: { GEMINI_API_KEY?: string } } };
-    this.apiKey = electronWindow.electronAPI?.env?.GEMINI_API_KEY || null;
-    
-    // Check if we have necessary Web APIs
-    const hasWebAPIs = !!(navigator.mediaDevices && window.AudioContext);
-    
-    this._isAvailable = !!(this.apiKey && hasWebAPIs);
-    
-    if (!this._isAvailable) {
-      if (!this.apiKey) {
-        console.warn('Gemini Semi-Live not available - missing API key');
-      }
-      if (!hasWebAPIs) {
-        console.warn('Gemini Semi-Live not available - missing Web APIs');
-      }
-    } else {
-      console.log('✅ Gemini Semi-Live service available');
-    }
-  }
-
-  get isAvailable(): boolean {
-    return this._isAvailable;
-  }
-
-  get isRecording(): boolean {
-    return this._isRecording;
-  }
-
-  async startRecording(options: GeminiSemiLiveOptions = {}): Promise<void> {
-    if (!this._isAvailable) {
-      throw new Error('Gemini Semi-Live service is not available');
-    }
-
-    if (this._isRecording) {
-      console.warn('Recording is already active');
-      return;
-    }
-
-    try {
-      this.options = {
-        sampleRateHertz: 16000,
-        languageCode: 'en-US',
-        enableSpeakerDiarization: true,
-        maxSpeakerCount: 4,
-        chunkDurationMs: 1000, // Send chunks every 1 second
-        encoding: 'LINEAR16',
-        maintainSpeakerContext: true,
-        speakerContextTimeoutMs: 300000, // 5 minutes
-        processingMode: 'continuous',
-        ...options
-      };
-
-      console.log('🎤 Starting Gemini Semi-Live recording with options:', this.options);
-
-      // Start microphone capture
-      await this.startMicrophoneCapture();
-
-      // Set up processing based on mode
-      if (this.options.processingMode === 'send-at-end') {
-        console.log('📥 Using "send-at-end" mode - audio will be processed when recording stops');
-        // Don't set up interval, just collect audio
+      if (this.state.processingMode === 'continuous') {
+        console.log('🔄 Using continuous mode - processing files every', this.state.chunkDurationMs, 'ms');
+        this.setupAudioProcessingInterval();
       } else {
-        // Default continuous mode
-        console.log('🔄 Using continuous bulk mode - processing every', this.options.chunkDurationMs, 'ms');
-        
-        // Set up interval to process chunks
-        console.log('🔄 Setting up audio processing interval...');
-        this.chunkInterval = window.setInterval(() => {
-          try {
-            console.log('🔄 Audio processing interval triggered');
-            this.processAudioChunk().catch(error => {
-              console.error('❌ Unhandled error in processAudioChunk:', error);
-              if (this.errorCallback) {
-                this.errorCallback(new Error(`Audio processing failed: ${error.message}`));
-              }
-            });
-            console.log('🔄 Audio processing interval completed');
-          } catch (error) {
-            console.error('❌ Error setting up audio chunk processing:', error);
-            if (this.errorCallback) {
-              this.errorCallback(new Error(`Audio processing setup failed: ${error.message}`));
-            }
-          }
-        }, this.options.chunkDurationMs);
-        
-        console.log('✅ Audio processing interval set successfully');
+        console.log('📥 Using "send-at-end" mode - files will be processed when recording stops');
       }
-      
-      this._isRecording = true;
-      console.log('✅ Gemini Semi-Live recording started successfully');
-      
-      // Add monitoring to detect if the service crashes after startup
-      setTimeout(() => {
-        console.log('🔍 POST-STARTUP CHECK: Service status after 2 seconds:', {
-          isRecording: this._isRecording,
-          hasInterval: !!this.chunkInterval,
-          audioChunksLength: this.audioChunks.length,
-          hasAudioContext: !!this.audioContext,
-          audioContextState: this.audioContext?.state,
-          hasProcessor: !!this.processor,
-          hasMediaStream: !!this.mediaStream,
-          timestamp: new Date().toISOString()
-        });
-      }, 2000);
-      
-      // Add longer-term monitoring
-      setTimeout(() => {
-        console.log('🔍 EXTENDED CHECK: Service status after 10 seconds:', {
-          isRecording: this._isRecording,
-          hasInterval: !!this.chunkInterval,
-          audioChunksLength: this.audioChunks.length,
-          hasAudioContext: !!this.audioContext,
-          audioContextState: this.audioContext?.state,
-          hasProcessor: !!this.processor,
-          hasMediaStream: !!this.mediaStream,
-          timestamp: new Date().toISOString()
-        });
-        
-        if (!this._isRecording) {
-          console.error('🚨 SERVICE CRASHED: Recording stopped unexpectedly!');
-        }
-      }, 10000);
+
+      console.log('✅ File-based Semi-Live recording started successfully');
+      return true;
     } catch (error) {
-      console.error('❌ Failed to start Gemini Semi-Live recording:', error);
-      this.cleanup();
-      throw error;
+      console.error('❌ Error starting recording:', error);
+      this.state.isRecording = false;
+      return false;
     }
   }
 
-  private async startMicrophoneCapture(): Promise<void> {
-    try {
-      console.log('🎤 Requesting microphone access...');
-      
-      // Request microphone access
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate: this.options.sampleRateHertz,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        }
-      });
-
-      console.log('✅ Microphone access granted');
-
-      // Create audio context
-      this.audioContext = new AudioContext({
-        sampleRate: this.options.sampleRateHertz
-      });
-
-      console.log('✅ AudioContext created with sample rate:', this.audioContext.sampleRate);
-
-      // Create audio source and processor
-      const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-      
-      // Use ScriptProcessorNode for now (will migrate to AudioWorklet later)
-      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-      
-      // Create a gain node to control output volume (set to 0 to prevent feedback)
-      const gainNode = this.audioContext.createGain();
-      gainNode.gain.value = 0; // Mute the output to prevent audio feedback
-      
-      this.processor.onaudioprocess = (event) => {
-        try {
-          const inputBuffer = event.inputBuffer;
-          const inputData = inputBuffer.getChannelData(0);
-          
-          // Safety check: ensure we have valid audio data
-          if (!inputData || inputData.length === 0) {
-            console.log('⚠️ No audio data in processing event');
-            return;
-          }
-          
-          // Calculate audio level for debugging
-          let sum = 0;
-          for (let i = 0; i < inputData.length; i++) {
-            sum += inputData[i] * inputData[i];
-          }
-          const audioLevel = Math.sqrt(sum / inputData.length);
-          
-          // Log audio activity (but not too frequently)
-          if (this.audioChunks.length % 50 === 0) {
-            console.log('🎵 Audio processing event:', {
-              length: inputData.length,
-              currentChunks: this.audioChunks.length,
-              audioLevel: audioLevel.toFixed(4),
-              isActive: audioLevel > 0.001 // Threshold for detecting actual audio
-            });
-          }
-          
-          // Safety check: prevent excessive chunk accumulation
-          if (this.audioChunks.length > 300) {
-            console.warn('⚠️ Audio chunk buffer overflow, dropping oldest chunks');
-            this.audioChunks = this.audioChunks.slice(-150); // Keep only recent chunks
-          }
-          
-          // Store audio chunk (create a copy to avoid reference issues)
-          this.audioChunks.push(new Float32Array(inputData));
-          
-          // Log every 100 chunks instead of every chunk to reduce spam
-          if (this.audioChunks.length % 100 === 0) {
-            console.log('🎵 Audio chunks stored:', this.audioChunks.length);
-          }
-        } catch (error) {
-          console.error('❌ Error in audio processing event:', error);
-          console.error('🚨 AUDIO PROCESSING CRASH:', {
-            error: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
-          });
-          // Don't throw here as it would crash the audio processing
-        }
-      };
-
-      // Connect the audio processing chain
-      source.connect(this.processor);
-      this.processor.connect(gainNode);
-      gainNode.connect(this.audioContext.destination);
-
-      console.log('✅ Audio processing chain connected');
-      
-      // Add debugging to verify the audio chain is working
-      console.log('🔍 Audio chain verification:', {
-        sourceState: source.context.state,
-        processorBufferSize: this.processor.bufferSize,
-        audioContextSampleRate: this.audioContext.sampleRate,
-        audioContextState: this.audioContext.state,
-        mediaStreamActive: this.mediaStream.active,
-        mediaStreamTracks: this.mediaStream.getTracks().length
-      });
-      
-      // Verify the processor is receiving data by checking after a short delay
-      setTimeout(() => {
-        console.log('🔍 Audio processing verification after 2 seconds:', {
-          chunksCollected: this.audioChunks.length,
-          audioContextState: this.audioContext?.state,
-          processorConnected: !!this.processor,
-          streamActive: this.mediaStream?.active
-        });
-        
-        if (this.audioChunks.length === 0) {
-          console.warn('⚠️ No audio chunks collected after 2 seconds - possible microphone or audio chain issue');
-          console.log('🔧 Troubleshooting tips:');
-          console.log('1. Check if microphone is working in other applications');
-          console.log('2. Check browser permissions for microphone access');
-          console.log('3. Try speaking loudly into the microphone');
-          console.log('4. Check if another application is using the microphone');
-        }
-      }, 2000);
-    } catch (error) {
-      console.error('❌ Failed to start microphone capture:', error);
-      throw new Error(`Microphone capture failed: ${error.message}`);
-    }
-  }
-
-  private async processAudioChunk(): Promise<void> {
-    console.log('🔄 processAudioChunk called');
-    
-    if (this.audioChunks.length === 0) {
-      console.log('⚠️ No audio chunks to process');
-      return;
+  private setupAudioProcessingInterval() {
+    if (this.processingInterval) {
+      clearInterval(this.processingInterval);
     }
 
-    try {
-      console.log(`🔄 Processing ${this.audioChunks.length} audio chunks...`);
-
-      // Safety check: prevent memory overflow by limiting chunk accumulation
-      if (this.audioChunks.length > 200) {
-        console.warn('⚠️ Too many audio chunks accumulated, clearing old chunks to prevent memory overflow');
-        this.audioChunks = this.audioChunks.slice(-100); // Keep only the last 100 chunks
-      }
-
-      console.log('🔄 Step 1: Calculating total length...');
-      // Combine all chunks into a single buffer
-      const totalLength = this.audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-      console.log('🔄 Step 1 complete: Total length =', totalLength);
-      
-      // Safety check: prevent processing extremely large buffers
-      if (totalLength > 1000000) { // More than ~60 seconds at 16kHz
-        console.warn('⚠️ Audio buffer too large, skipping to prevent crash');
-        this.audioChunks.length = 0; // Clear chunks
-        return;
-      }
-      
-      console.log('🔄 Step 2: Creating combined buffer...');
-      const combinedBuffer = new Float32Array(totalLength);
-      console.log('🔄 Step 2 complete: Combined buffer created');
-      
-      console.log('🔄 Step 3: Copying chunks to combined buffer...');
-      let offset = 0;
-      for (const chunk of this.audioChunks) {
-        combinedBuffer.set(chunk, offset);
-        offset += chunk.length;
-      }
-      console.log('🔄 Step 3 complete: Chunks copied');
-
-      // Clear chunks for next interval
-      this.audioChunks.length = 0; // More efficient than reassigning
-      console.log('🔄 Step 4: Chunks cleared');
-
-      // Skip if buffer is too small (less than 0.5 seconds of audio)
-      const minSamples = (this.options.sampleRateHertz || 16000) * 0.5;
-      if (combinedBuffer.length < minSamples) {
-        console.log('⚠️ Audio chunk too small, skipping...');
+    this.processingInterval = window.setInterval(async () => {
+      if (!this.state.isRecording) {
+        if (this.processingInterval) {
+          clearInterval(this.processingInterval);
+          this.processingInterval = null;
+        }
         return;
       }
 
-      console.log('🔄 Step 5: Converting audio for Gemini...');
-      // Convert to the format expected by Gemini
-      const audioData = this.convertAudioForGemini(combinedBuffer);
-      console.log('🔄 Step 5 complete: Audio converted, length =', audioData.length);
-
-      console.log('🔄 Step 6: Calling Gemini API...');
-      // Send to Gemini API
-      const result = await this.callGeminiAPI(audioData);
-      console.log('🔄 Step 6 complete: API call finished');
-      
-      if (result && this.resultCallback) {
-        console.log('🔄 Step 7: Calling result callback...');
-        this.resultCallback(result);
-        console.log('🔄 Step 7 complete: Result callback finished');
+      if (this.state.audioChunks.length > 0) {
+        console.log(`🔄 Processing ${this.state.audioChunks.length} audio files in continuous mode`);
+        await this.processAccumulatedAudioFiles();
       }
+    }, this.state.chunkDurationMs);
 
-      console.log('✅ processAudioChunk completed successfully');
-
-    } catch (error) {
-      console.error('❌ Error processing audio chunk:', error);
-      console.error('🚨 PROCESS AUDIO CHUNK CRASH:', {
-        error: error.message,
-        stack: error.stack,
-        audioChunksLength: this.audioChunks.length,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Clear chunks on error to prevent accumulation
-      this.audioChunks.length = 0;
-      
-      if (this.errorCallback) {
-        this.errorCallback(new Error(`Audio processing failed: ${error.message}`));
-      }
-    }
+    console.log('✅ Audio processing interval set successfully');
   }
 
-  private convertAudioForGemini(audioBuffer: Float32Array): string {
+  async stopRecording(): Promise<FileSemiLiveResult[]> {
     try {
-      console.log('🔄 convertAudioForGemini called with buffer length:', audioBuffer.length);
+      console.log('🛑 Stopping File-based Semi-Live recording...');
       
-      console.log('🔄 Converting Float32Array to 16-bit PCM...');
-      // Convert Float32Array to 16-bit PCM
-      const pcmBuffer = new Int16Array(audioBuffer.length);
-      for (let i = 0; i < audioBuffer.length; i++) {
-        // Convert from [-1, 1] to [-32768, 32767]
-        pcmBuffer[i] = Math.max(-32768, Math.min(32767, audioBuffer[i] * 32767));
-      }
-      console.log('🔄 PCM conversion complete, buffer size:', pcmBuffer.length);
-
-      // Convert to base64 using more efficient approach
-      const bytes = new Uint8Array(pcmBuffer.buffer);
-      console.log('🔄 Created Uint8Array, size:', bytes.length);
+      this.state.isRecording = false;
       
-      // Use browser's built-in btoa with chunked processing for large buffers
-      if (bytes.length > 50000) { // If buffer is large, process in chunks
-        console.log('🔄 Using chunked Base64 conversion for large buffer');
-        const chunkSize = 50000;
-        let base64 = '';
-        
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          const chunk = bytes.slice(i, i + chunkSize);
-          let binary = '';
-          for (let j = 0; j < chunk.length; j++) {
-            binary += String.fromCharCode(chunk[j]);
-          }
-          base64 += btoa(binary);
-          console.log(`🔄 Processed chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(bytes.length / chunkSize)}`);
-        }
-        
-        console.log('🔄 Chunked Base64 conversion complete, length:', base64.length);
-        return base64;
-      } else {
-        console.log('🔄 Using direct Base64 conversion for small buffer');
-        // For smaller buffers, use the direct approach
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const result = btoa(binary);
-        console.log('🔄 Direct Base64 conversion complete, length:', result.length);
-        return result;
-      }
-    } catch (error) {
-      console.error('❌ Error converting audio to Base64:', error);
-      console.error('🚨 BASE64 CONVERSION CRASH:', {
-        error: error.message,
-        stack: error.stack,
-        bufferLength: audioBuffer?.length || 0,
-        timestamp: new Date().toISOString()
-      });
-      throw new Error(`Audio conversion failed: ${error.message}`);
-    }
-  }
-
-  private async callGeminiAPI(audioData: string): Promise<GeminiSemiLiveResult | null> {
-    try {
-      // Safety check: ensure we have an API key
-      if (!this.apiKey) {
-        throw new Error('Gemini API key is not available');
+      if (this.processingInterval) {
+        clearInterval(this.processingInterval);
+        this.processingInterval = null;
       }
       
-      console.log('🌐 Sending audio to Gemini API...');
-
-      // Build speaker context information for better continuity
-      let speakerContextPrompt = '';
-      if (this.options.maintainSpeakerContext && this.speakerContext.size > 0) {
-        const activeSpeakers = Array.from(this.speakerContext.values())
-          .filter(speaker => Date.now() - speaker.lastSeen < (this.options.speakerContextTimeoutMs || 300000))
-          .sort((a, b) => b.totalSegments - a.totalSegments); // Sort by activity
-
-        if (activeSpeakers.length > 0) {
-          speakerContextPrompt = `\n\nContext: Previous speakers detected in this conversation:
-${activeSpeakers.map(s => `- ${s.name} (ID: ${s.id}, segments: ${s.totalSegments}, last seen: ${Math.round((Date.now() - s.lastSeen) / 1000)}s ago)`).join('\n')}
-
-Please maintain speaker consistency by using the same speaker IDs when you recognize the same voices. If you detect a speaker that sounds like one of the previous speakers, use their existing ID and name.`;
-        }
-      }
-
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=' + this.apiKey, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              inline_data: {
-                mime_type: 'audio/pcm',
-                data: audioData
-              }
-            }, {
-              text: `Please transcribe this audio with speaker diarization. Format the response as markdown with speaker labels like "**Speaker 1**: [text]". Maximum ${this.options.maxSpeakerCount} speakers. Language: ${this.options.languageCode}.${speakerContextPrompt}`
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 1000,
-          }
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-        console.log('⚠️ No transcription result from Gemini');
-        return null;
-      }
-
-      const transcriptText = data.candidates[0].content.parts[0].text;
-      console.log('🎯 Gemini transcription result:', transcriptText);
-
-      // Parse the response to extract speakers and transcript
-      return this.parseGeminiResponse(transcriptText);
-
-    } catch (error) {
-      console.error('❌ Gemini API call failed:', error);
-      throw error;
-    }
-  }
-
-  private parseGeminiResponse(text: string): GeminiSemiLiveResult {
-    // Parse markdown-formatted response with speaker labels
-    const lines = text.split('\n').filter(line => line.trim());
-    const detectedSpeakers = new Set<string>();
-    let transcript = '';
-
-    for (const line of lines) {
-      const speakerMatch = line.match(/^\*\*Speaker (\d+)\*\*:\s*(.+)$/);
-      if (speakerMatch) {
-        const speakerNum = speakerMatch[1];
-        const speakerText = speakerMatch[2];
-        detectedSpeakers.add(speakerNum);
-        
-        if (transcript) transcript += '\n';
-        transcript += `Speaker ${speakerNum}: ${speakerText}`;
-      } else if (line.trim()) {
-        // Handle non-speaker formatted text
-        if (transcript) transcript += '\n';
-        transcript += line.trim();
-      }
-    }
-
-    // Update speaker context if enabled
-    const now = Date.now();
-    const speakerObjects: Array<{ id: string; name: string; color: string }> = [];
-
-    for (const speakerNum of detectedSpeakers) {
-      const speakerId = speakerNum;
-      const speakerName = `Speaker ${speakerNum}`;
-      
-      // Check if this speaker already exists in context
-      const existingSpeaker = this.speakerContext.get(speakerId);
-      
-      if (this.options.maintainSpeakerContext) {
-        if (existingSpeaker) {
-          // Update existing speaker
-          existingSpeaker.lastSeen = now;
-          existingSpeaker.totalSegments += 1;
-          this.speakerContext.set(speakerId, existingSpeaker);
-          
-          speakerObjects.push({
-            id: existingSpeaker.id,
-            name: existingSpeaker.name,
-            color: existingSpeaker.color
-          });
-          
-          console.log(`🔄 Updated existing speaker context: ${existingSpeaker.name} (segments: ${existingSpeaker.totalSegments})`);
-        } else {
-          // Create new speaker in context
-          const newSpeaker = {
-            id: speakerId,
-            name: speakerName,
-            color: this.getSpeakerColor(parseInt(speakerNum)),
-            lastSeen: now,
-            totalSegments: 1
-          };
-          
-          this.speakerContext.set(speakerId, newSpeaker);
-          
-          speakerObjects.push({
-            id: newSpeaker.id,
-            name: newSpeaker.name,
-            color: newSpeaker.color
-          });
-          
-          console.log(`✨ Added new speaker to context: ${newSpeaker.name}`);
-        }
-      } else {
-        // Legacy behavior when context is disabled
-        speakerObjects.push({
-          id: speakerId,
-          name: speakerName,
-          color: this.getSpeakerColor(parseInt(speakerNum))
-        });
-      }
-    }
-
-    // Clean up old speakers from context (older than timeout)
-    if (this.options.maintainSpeakerContext) {
-      const timeout = this.options.speakerContextTimeoutMs || 300000;
-      const expiredSpeakers: string[] = [];
-      
-      for (const [id, speaker] of this.speakerContext.entries()) {
-        if (now - speaker.lastSeen > timeout) {
-          expiredSpeakers.push(id);
-        }
+      if (this.scriptProcessor) {
+        this.scriptProcessor.disconnect();
+        this.scriptProcessor = null;
       }
       
-      for (const id of expiredSpeakers) {
-        const removed = this.speakerContext.get(id);
-        this.speakerContext.delete(id);
-        console.log(`🧹 Removed expired speaker from context: ${removed?.name} (last seen ${Math.round((now - (removed?.lastSeen || 0)) / 1000)}s ago)`);
-      }
-    }
-
-    return {
-      transcript: transcript || text,
-      isFinal: true, // All results are final in semi-live approach
-      confidence: 0.9, // Gemini doesn't provide confidence, use default
-      speakers: speakerObjects,
-      speakerContext: this.generateSpeakerContext(Array.from(this.speakerContext.values()))
-    };
-  }
-
-  private getSpeakerColor(speakerNum: number): string {
-    const colors = ["#28C76F", "#7367F0", "#FF9F43", "#EA5455", "#00CFE8", "#9F44D3", "#666666", "#FE9900"];
-    return colors[speakerNum % colors.length];
-  }
-
-  private generateSpeakerContext(speakers: Array<{ id: string; name: string; color: string; lastSeen: number; totalSegments: number }>): Array<{ id: string; name: string; color: string; lastSeen: number; totalSegments: number }> {
-    // Return a copy of the speaker context array for the result
-    return speakers.map(speaker => ({
-      id: speaker.id,
-      name: speaker.name,
-      color: speaker.color,
-      lastSeen: speaker.lastSeen,
-      totalSegments: speaker.totalSegments
-    }));
-  }
-
-  stopRecording(): void {
-    if (!this._isRecording) {
-      return;
-    }
-
-    try {
-      // Process any remaining audio if in "send-at-end" mode
-      if (this.options.processingMode === 'send-at-end' && this.audioChunks.length > 0) {
-        console.log('📥 Processing all accumulated audio at end of recording...');
-        this.processAudioChunk().catch(error => {
-          console.error('❌ Error processing final audio chunk:', error);
-          if (this.errorCallback) {
-            this.errorCallback(new Error(`Final audio processing failed: ${error.message}`));
-          }
-        });
+      if (this.gainNode) {
+        this.gainNode.disconnect();
+        this.gainNode = null;
       }
       
-      this.cleanup();
-      this._isRecording = false;
-      console.log('✅ Gemini Semi-Live recording stopped');
-    } catch (error) {
-      console.error('❌ Failed to stop Gemini Semi-Live recording:', error);
-    }
-  }
-
-  private cleanup(): void {
-    try {
-      // Clear interval
-      if (this.chunkInterval) {
-        clearInterval(this.chunkInterval);
-        this.chunkInterval = null;
+      if (this.mediaStream) {
+        this.mediaStream.getTracks().forEach(track => track.stop());
+        this.mediaStream = null;
       }
-
-      // Stop audio processing
-      if (this.processor) {
-        try {
-          this.processor.disconnect();
-        } catch (error) {
-          console.warn('Warning: Error disconnecting processor:', error);
-        }
-        this.processor = null;
-      }
-
-      // Close audio context
+      
       if (this.audioContext && this.audioContext.state !== 'closed') {
-        try {
-          this.audioContext.close();
-        } catch (error) {
-          console.warn('Warning: Error closing audio context:', error);
-        }
+        await this.audioContext.close();
         this.audioContext = null;
       }
 
-      // Stop media stream
-      if (this.mediaStream) {
-        try {
-          this.mediaStream.getTracks().forEach(track => {
-            try {
-              track.stop();
-            } catch (error) {
-              console.warn('Warning: Error stopping track:', error);
-            }
-          });
-        } catch (error) {
-          console.warn('Warning: Error stopping media stream:', error);
-        }
-        this.mediaStream = null;
+      let results: FileSemiLiveResult[] = [];
+
+      if (this.state.audioChunks.length > 0) {
+        console.log(`📤 Processing ${this.state.audioChunks.length} accumulated audio files`);
+        results = await this.processAccumulatedAudioFiles();
       }
 
-      // Clear audio chunks
-      this.audioChunks.length = 0;
-      
-      // Clear speaker context optionally (keep it by default to maintain continuity across recording sessions)
-      // this.clearSpeakerContext();
-      
-      console.log('🧹 Gemini Semi-Live cleanup completed');
+      await this.cleanupTempFiles();
+
+      console.log('✅ Recording stopped successfully');
+      return results;
     } catch (error) {
-      console.error('❌ Error during cleanup:', error);
-      // Force clear everything even if cleanup fails
-      this.chunkInterval = null;
-      this.processor = null;
-      this.audioContext = null;
-      this.mediaStream = null;
-      this.audioChunks.length = 0;
+      console.error('❌ Error stopping recording:', error);
+      return [];
     }
   }
 
-  /**
-   * Clear the speaker context manually
-   */
-  clearSpeakerContext(): void {
-    this.speakerContext.clear();
-    this.nextSpeakerId = 1;
-    console.log('🧹 Speaker context cleared');
+  private async startMicrophoneCapture(options: FileSemiLiveOptions): Promise<boolean> {
+    try {
+      console.log('🎤 Requesting microphone access...');
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: options.sampleRateHertz || 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      
+      console.log('✅ Microphone access granted');
+      
+      this.audioContext = new AudioContext({
+        sampleRate: options.sampleRateHertz || 16000
+      });
+      
+      console.log('✅ AudioContext created with sample rate:', this.audioContext.sampleRate);
+      
+      const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+      this.gainNode = this.audioContext.createGain();
+      this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      
+      source.connect(this.gainNode);
+      this.gainNode.connect(this.scriptProcessor);
+      this.scriptProcessor.connect(this.audioContext.destination);
+      
+      console.log('✅ Audio processing chain connected');
+      
+      console.log('🔍 Audio chain verification:', {
+        sourceState: source.context.state,
+        processorBufferSize: this.scriptProcessor.bufferSize,
+        audioContextSampleRate: this.audioContext.sampleRate,
+        audioContextState: this.audioContext.state,
+        mediaStreamActive: this.mediaStream.active,
+        mediaStreamTracks: this.mediaStream.getAudioTracks().length
+      });
+
+      this.scriptProcessor.onaudioprocess = async (event) => {
+        if (!this.state.isRecording) return;
+        
+        const inputBuffer = event.inputBuffer;
+        const audioData = inputBuffer.getChannelData(0);
+        await this.saveAudioChunkAsFile(audioData, this.audioContext!.sampleRate);
+      };
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error setting up microphone capture:', error);
+      return false;
+    }
   }
 
-  /**
-   * Get current speaker context for debugging
-   */
-  getSpeakerContext(): Array<{ id: string; name: string; color: string; lastSeen: number; totalSegments: number }> {
-    return Array.from(this.speakerContext.values());
+  private async saveAudioChunkAsFile(audioData: Float32Array, sampleRate: number): Promise<void> {
+    try {
+      const pcm16Data = new Int16Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        const sample = Math.max(-1, Math.min(1, audioData[i]));
+        pcm16Data[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      }
+
+      const wavBuffer = this.createWavFile(pcm16Data, sampleRate);
+      
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.saveAudioFile) {
+        const fileName = `temp_chunk_${this.state.tempFileCounter++}_${Date.now()}`;
+        const result = await electronAPI.saveAudioFile(wavBuffer, fileName, ['wav']);
+        
+        if (result.success) {
+          let filePath = '';
+          if (result.files && result.files.length > 0) {
+            const wavFile = result.files.find((f: any) => f.format === 'wav');
+            filePath = wavFile ? wavFile.path : result.files[0].path;
+          } else if (result.filePath) {
+            filePath = result.filePath;
+            if (!filePath.toLowerCase().endsWith('.wav')) {
+              filePath = filePath + '.wav';
+            }
+          }
+          
+          if (filePath) {
+            this.state.audioChunks.push({
+              timestamp: Date.now(),
+              filePath: filePath,
+              size: wavBuffer.byteLength
+            });
+            
+            console.log(`💾 Saved audio chunk: ${fileName}.wav (${wavBuffer.byteLength} bytes) -> ${filePath}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error saving audio chunk as file:', error);
+    }
   }
 
-  onResult(callback: (result: GeminiSemiLiveResult) => void): void {
-    this.resultCallback = callback;
+  private createWavFile(pcmData: Int16Array, sampleRate: number): ArrayBuffer {
+    const length = pcmData.length;
+    const buffer = new ArrayBuffer(44 + length * 2);
+    const view = new DataView(buffer);
+    
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, length * 2, true);
+    
+    const offset = 44;
+    for (let i = 0; i < length; i++) {
+      view.setInt16(offset + i * 2, pcmData[i], true);
+    }
+    
+    return buffer;
   }
 
-  onError(callback: (error: Error) => void): void {
-    this.errorCallback = callback;
+  private async processAccumulatedAudioFiles(): Promise<FileSemiLiveResult[]> {
+    if (this.state.audioChunks.length === 0) {
+      return [];
+    }
+
+    try {
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI?.testSpeechWithFile) {
+        console.error('❌ Electron transcription API not available');
+        return [];
+      }
+
+      const results: FileSemiLiveResult[] = [];
+
+      for (const chunk of this.state.audioChunks) {
+        try {
+          console.log(`🔄 Transcribing audio file: ${chunk.filePath}`);
+          const transcriptionResult = await electronAPI.testSpeechWithFile(chunk.filePath);
+          
+          if (transcriptionResult.transcription) {
+            const transcriptText = typeof transcriptionResult.transcription === 'string' 
+              ? transcriptionResult.transcription 
+              : transcriptionResult.transcription.transcript;
+
+            if (transcriptText && transcriptText.trim()) {
+              results.push({
+                transcript: transcriptText.trim(),
+                isFinal: true,
+                speakers: transcriptionResult.transcription.speakers || [],
+                timestamp: chunk.timestamp
+              });
+              
+              console.log('✅ Transcription result:', transcriptText.trim());
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Error transcribing chunk ${chunk.filePath}:`, error);
+        }
+      }
+
+      this.state.audioChunks = [];
+      this.state.totalChunksProcessed += results.length;
+
+      return results;
+    } catch (error) {
+      console.error('❌ Error processing accumulated audio files:', error);
+      return [];
+    }
   }
 
-  destroy(): void {
-    this.stopRecording();
-    this.resultCallback = null;
-    this.errorCallback = null;
+  private async cleanupTempFiles(): Promise<void> {
+    try {
+      const electronAPI = (window as any).electronAPI;
+      if (!electronAPI?.deleteFile) {
+        console.warn('⚠️ Electron deleteFile API not available for cleanup');
+        return;
+      }
+
+      for (const chunk of this.state.audioChunks) {
+        try {
+          await electronAPI.deleteFile(chunk.filePath);
+          console.log(`🗑️ Cleaned up temp file: ${chunk.filePath}`);
+        } catch (error) {
+          console.warn(`⚠️ Could not delete temp file ${chunk.filePath}:`, error);
+        }
+      }
+
+      this.state.audioChunks = [];
+    } catch (error) {
+      console.error('❌ Error during temp file cleanup:', error);
+    }
+  }
+
+  isAvailable(): boolean {
+    return !!(window as any).electronAPI?.saveAudioFile && 
+           !!(window as any).electronAPI?.testSpeechWithFile;
+  }
+
+  isRecording(): boolean {
+    return this.state.isRecording;
+  }
+
+  getProcessingStats() {
+    return {
+      isRecording: this.state.isRecording,
+      processingMode: this.state.processingMode,
+      chunkDurationMs: this.state.chunkDurationMs,
+      totalChunks: this.state.audioChunks.length,
+      totalProcessed: this.state.totalChunksProcessed,
+      lastProcessedTime: this.state.lastProcessedTime
+    };
   }
 }
 
-// Export singleton instance
-export const geminiSemiLiveService = new GeminiSemiLiveServiceImpl();
-export default geminiSemiLiveService; 
+// Keep the original service interface for backward compatibility
+export interface GeminiSemiLiveService {
+  startRecording: (options: any) => Promise<boolean>;
+  stopRecording: () => Promise<any[]>;
+  isRecording: () => boolean;
+  isAvailable: () => boolean;
+  getProcessingStats: () => any;
+  getSpeakerContext: () => any;
+  clearSpeakerContext: () => void;
+}
+
+// Adapter to make the file service compatible with existing interfaces
+class LegacyAdapter implements GeminiSemiLiveService {
+  private fileService = new FileSemiLiveService();
+  
+  async startRecording(options: any): Promise<boolean> {
+    return this.fileService.startRecording(options);
+  }
+  
+  async stopRecording(): Promise<any[]> {
+    return this.fileService.stopRecording();
+  }
+  
+  isRecording(): boolean {
+    return this.fileService.isRecording();
+  }
+  
+  isAvailable(): boolean {
+    return this.fileService.isAvailable();
+  }
+  
+  getProcessingStats(): any {
+    return this.fileService.getProcessingStats();
+  }
+  
+  getSpeakerContext(): any {
+    return {};
+  }
+  
+  clearSpeakerContext(): void {
+    // No-op for file-based approach
+  }
+}
+
+// Export the service using the original name for compatibility
+export const geminiSemiLiveService = new LegacyAdapter(); 

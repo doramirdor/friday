@@ -34,6 +34,17 @@ All notable changes to this project will be documented in this file.
   - Cleared all persistent Electron databases to start fresh
   - Cleared Vite cache to prevent cached auto-save behaviors
 
+### Added
+- **File-Based Gemini Semi-Live Transcription**: Completely rewritten Gemini Semi-Live to use file-based approach instead of memory buffering
+  - Saves 1-second audio chunks as temporary WAV files to disk
+  - Uses existing proven transcription flow (`testSpeechWithFile`) instead of complex memory management
+  - Eliminates memory pressure and crashes from long recordings
+  - Added `deleteFile` Electron API method for cleaning up temporary files
+  - Supports both "continuous" and "send-at-end" processing modes
+  - Automatic cleanup of temporary files after processing
+  - More reliable and stable than previous memory-based approach
+  - Leverages existing, working transcription pipeline for consistency
+
 ## [Previous Version]
 
 ### Fixed
