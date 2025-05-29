@@ -1,5 +1,6 @@
 // Import types
 import geminiService, { GeminiTranscriptionResult } from './gemini';
+import { Speaker } from '@/models/types';
 
 // Unified Gemini Live Transcription Service
 // Captures audio using MediaRecorder and transcribes using Gemini 2.0 Flash API in real-time
@@ -298,7 +299,7 @@ class GeminiLiveUnifiedService {
       
       const startTime = Date.now();
 
-      console.log('🔍 GEMINI DEBUG: 🚀 Calling actual Gemini API with audio buffer...');
+      console.log('🔍 GEMINI DEBUG: 🚀 Converting WebM to PCM for Gemini API...');
       console.log('🔍 GEMINI DEBUG: Request details:', {
         size: chunk.size,
         duration: chunk.duration,
@@ -306,25 +307,27 @@ class GeminiLiveUnifiedService {
         timestamp: new Date().toISOString()
       });
 
-      // Convert ArrayBuffer to Blob with WebM format for Gemini API
-      const audioBlob = new Blob([chunk.audioBuffer], { type: 'audio/webm' });
+      // Check if Gemini service is available
+      if (!geminiService.isAvailable()) {
+        throw new Error('Gemini AI is not initialized. Please check your API key.');
+      }
+
+      // Convert WebM audio buffer to PCM format for Gemini API
+      const pcmData = await this.convertWebMToPCM(chunk.audioBuffer);
       
-      // Create a File object from the blob (Gemini service expects File | string)
-      const audioFile = new File([audioBlob], `live-chunk-${chunk.timestamp}.webm`, { 
-        type: 'audio/webm' 
+      if (!pcmData) {
+        console.log('🔇 No valid audio data after PCM conversion');
+        return;
+      }
+
+      console.log('🔍 GEMINI DEBUG: PCM conversion successful:', {
+        originalSize: chunk.size,
+        pcmSize: pcmData.length,
+        sampleRate: '16kHz'
       });
 
-      console.log('🔍 GEMINI DEBUG: Created audio file for transcription:', {
-        name: audioFile.name,
-        type: audioFile.type,
-        size: audioFile.size
-      });
-
-      // Call actual Gemini transcription service
-      const result: GeminiTranscriptionResult = await geminiService.transcribeAudio(
-        audioFile,
-        this.options.maxSpeakers
-      );
+      // Call Gemini API directly with PCM data
+      const result: GeminiTranscriptionResult = await this.callGeminiAPIWithPCM(pcmData);
 
       const processingTime = Date.now() - startTime;
       console.log(`🔍 GEMINI DEBUG: ✅ Received response from Gemini API (${processingTime}ms)`);
@@ -376,6 +379,218 @@ class GeminiLiveUnifiedService {
         chunkSize: chunk.size
       });
       this.emitError(error as Error);
+    }
+  }
+
+  private async convertWebMToPCM(audioBuffer: ArrayBuffer): Promise<string | null> {
+    try {
+      // Decode WebM audio using Web Audio API
+      const audioContext = new AudioContext({ sampleRate: 16000 });
+      const decodedAudioData = await audioContext.decodeAudioData(audioBuffer.slice(0));
+      
+      console.log('🔍 AUDIO DEBUG: Decoded audio data:', {
+        sampleRate: decodedAudioData.sampleRate,
+        duration: decodedAudioData.duration,
+        numberOfChannels: decodedAudioData.numberOfChannels,
+        length: decodedAudioData.length
+      });
+
+      // Get the audio channel data (use first channel, convert to mono)
+      const channelData = decodedAudioData.getChannelData(0);
+      
+      // Convert to 16-bit PCM
+      const pcmBuffer = new Int16Array(channelData.length);
+      for (let i = 0; i < channelData.length; i++) {
+        pcmBuffer[i] = Math.max(-32768, Math.min(32767, channelData[i] * 32767));
+      }
+
+      // Convert to base64
+      const bytes = new Uint8Array(pcmBuffer.buffer);
+      let binary = '';
+      
+      // Process in chunks to avoid string length issues
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.slice(i, i + chunkSize);
+        for (let j = 0; j < chunk.length; j++) {
+          binary += String.fromCharCode(chunk[j]);
+        }
+      }
+      
+      const base64Data = btoa(binary);
+      console.log('🔍 AUDIO DEBUG: PCM conversion complete:', {
+        pcmSamples: pcmBuffer.length,
+        base64Length: base64Data.length
+      });
+      
+      return base64Data;
+
+    } catch (error) {
+      console.error('❌ Error converting WebM to PCM:', error);
+      return null;
+    }
+  }
+
+  private async callGeminiAPIWithPCM(pcmData: string): Promise<GeminiTranscriptionResult> {
+    try {
+      // Get API key from Gemini service
+      const apiKey = await this.getGeminiAPIKey();
+      if (!apiKey) {
+        throw new Error('Gemini API key not available');
+      }
+
+      // Call Gemini API directly with PCM data
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              inline_data: {
+                mime_type: 'audio/pcm',
+                data: pcmData
+              }
+            }, {
+              text: `Please provide a detailed transcription of this audio with speaker diarization. 
+
+Requirements:
+1. Identify different speakers and label them as "Speaker 1", "Speaker 2", etc.
+2. Limit the number of speakers to a maximum of ${this.options.maxSpeakers} speakers
+3. If you detect more than ${this.options.maxSpeakers} different voices, group similar voices together rather than creating new speakers
+4. Format the output with each speaker's dialogue on separate lines
+5. Use the format: "Speaker X: [dialogue]"
+6. If you can detect speaker changes within a single turn, break them into separate lines
+7. Maintain chronological order of the conversation
+8. Include all speech content, even brief interjections
+
+Please provide the transcription:`
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 1000,
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const transcriptionText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!transcriptionText) {
+        throw new Error('No transcription text received from Gemini API');
+      }
+
+      console.log('🔍 GEMINI DEBUG: Raw transcription received:', transcriptionText);
+
+      // Parse the transcription to extract speakers
+      const { transcript, speakers } = this.parseTranscriptionWithSpeakers(transcriptionText, this.options.maxSpeakers);
+
+      return {
+        transcript,
+        speakers
+      };
+
+    } catch (error) {
+      console.error('❌ Error calling Gemini API with PCM:', error);
+      throw error;
+    }
+  }
+
+  private parseTranscriptionWithSpeakers(transcriptionText: string, maxSpeakers: number): { transcript: string, speakers: Speaker[] } {
+    const lines = transcriptionText.split('\n').filter(line => line.trim());
+    const speakerMap = new Map<string, Speaker>();
+    const transcriptLines: string[] = [];
+    
+    // Default speaker colors
+    const speakerColors = ['#28C76F', '#7367F0', '#FF9F43', '#EA5455', '#00CFE8', '#9F44D3'];
+    let colorIndex = 0;
+
+    for (const line of lines) {
+      // Match patterns like "Speaker 1:", "Speaker 2:", etc.
+      const speakerMatch = line.match(/^(Speaker\s+(\d+)):\s*(.+)$/i);
+      
+      if (speakerMatch) {
+        const speakerLabel = speakerMatch[1];
+        const speakerNumber = speakerMatch[2];
+        const dialogue = speakerMatch[3].trim();
+        
+        // Create speaker if not exists and within limit
+        if (!speakerMap.has(speakerNumber)) {
+          if (speakerMap.size < maxSpeakers) {
+            speakerMap.set(speakerNumber, {
+              id: speakerNumber,
+              meetingId: 'live-unified-session',
+              name: speakerLabel,
+              color: speakerColors[colorIndex % speakerColors.length],
+              type: 'speaker'
+            });
+            colorIndex++;
+          } else {
+            // If we've reached the speaker limit, assign to the last speaker
+            const lastSpeakerId = Array.from(speakerMap.keys())[speakerMap.size - 1];
+            const lastSpeaker = speakerMap.get(lastSpeakerId);
+            if (lastSpeaker) {
+              transcriptLines.push(`${lastSpeaker.name}: ${dialogue}`);
+              continue;
+            }
+          }
+        }
+        
+        transcriptLines.push(`${speakerLabel}: ${dialogue}`);
+      } else if (line.trim()) {
+        // If no speaker pattern found, add to transcript as-is
+        transcriptLines.push(line.trim());
+      }
+    }
+
+    // If no speakers were detected, create a default speaker
+    if (speakerMap.size === 0) {
+      speakerMap.set('1', {
+        id: '1',
+        meetingId: 'live-unified-session',
+        name: 'Speaker 1',
+        color: speakerColors[0],
+        type: 'speaker'
+      });
+      
+      // Format the entire transcription under Speaker 1
+      const formattedTranscript = transcriptLines.length > 0 
+        ? `Speaker 1: ${transcriptLines.join(' ')}`
+        : `Speaker 1: ${transcriptionText}`;
+      
+      return {
+        transcript: formattedTranscript,
+        speakers: Array.from(speakerMap.values())
+      };
+    }
+
+    return {
+      transcript: transcriptLines.join('\n'),
+      speakers: Array.from(speakerMap.values())
+    };
+  }
+
+  private async getGeminiAPIKey(): Promise<string | null> {
+    try {
+      // Try to get API key from environment first
+      const electronAPI = (window as { electronAPI?: { env?: { GEMINI_API_KEY?: string } } }).electronAPI;
+      const envApiKey = electronAPI?.env?.GEMINI_API_KEY;
+      
+      if (envApiKey) {
+        return envApiKey;
+      }
+
+      // Fallback: we rely on geminiService.isAvailable() check which ensures API key availability
+      // Since this is called after isAvailable() check, we know an API key exists somewhere
+      // For now, we'll return null and let the API call fail with a proper error
+      return null;
+    } catch (error) {
+      console.error('Error getting Gemini API key:', error);
+      return null;
     }
   }
 
