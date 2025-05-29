@@ -112,6 +112,30 @@ class GeminiLiveUnifiedService {
 
   constructor() {
     this.updateStats();
+    
+    // Add global error handlers to catch crashes
+    console.log('🔍 CRASH DEBUG: Setting up global error handlers...');
+    
+    if (typeof window !== 'undefined') {
+      // Catch unhandled errors
+      window.addEventListener('error', (event) => {
+        console.error('🔍 CRASH DEBUG: *** GLOBAL UNHANDLED ERROR ***:', event.error);
+        console.error('🔍 CRASH DEBUG: Error message:', event.message);
+        console.error('🔍 CRASH DEBUG: Error filename:', event.filename);
+        console.error('🔍 CRASH DEBUG: Error line:', event.lineno);
+        console.error('🔍 CRASH DEBUG: Error column:', event.colno);
+        console.error('🔍 CRASH DEBUG: Error stack:', event.error?.stack);
+      });
+      
+      // Catch unhandled promise rejections
+      window.addEventListener('unhandledrejection', (event) => {
+        console.error('🔍 CRASH DEBUG: *** GLOBAL UNHANDLED PROMISE REJECTION ***:', event.reason);
+        console.error('🔍 CRASH DEBUG: Promise:', event.promise);
+        console.error('🔍 CRASH DEBUG: Reason stack:', event.reason?.stack);
+      });
+      
+      console.log('🔍 CRASH DEBUG: Global error handlers set up successfully');
+    }
   }
 
   get isAvailable(): boolean {
@@ -162,19 +186,36 @@ class GeminiLiveUnifiedService {
       // Add crash detection around the audio process handler
       this.processor.onaudioprocess = (event) => {
         try {
-          if (!this.isRecording) return;
+          console.log('🔍 CRASH DEBUG: *** AUDIO PROCESS EVENT FIRED ***');
           
+          if (!this.isRecording) {
+            console.log('🔍 CRASH DEBUG: Audio process - not recording, returning');
+            return;
+          }
+          
+          console.log('🔍 CRASH DEBUG: Audio process - getting channel data...');
           const inputData = event.inputBuffer.getChannelData(0);
+          console.log('🔍 CRASH DEBUG: Audio process - channel data length:', inputData?.length || 'undefined');
+          
           if (inputData && inputData.length > 0) {
-            this.audioBuffer.push(new Float32Array(inputData));
+            console.log('🔍 CRASH DEBUG: Audio process - creating Float32Array copy...');
+            const audioCopy = new Float32Array(inputData);
+            console.log('🔍 CRASH DEBUG: Audio process - pushing to buffer...');
+            this.audioBuffer.push(audioCopy);
+            console.log('🔍 CRASH DEBUG: Audio process - buffer now has', this.audioBuffer.length, 'chunks');
             
             // Log audio activity periodically (every 100 events to avoid spam)
             if (this.audioBuffer.length % 100 === 0) {
               console.log(`🔍 CRASH DEBUG: Audio processing - buffer size: ${this.audioBuffer.length}, input length: ${inputData.length}`);
             }
+          } else {
+            console.log('🔍 CRASH DEBUG: Audio process - no input data or empty');
           }
+          
+          console.log('🔍 CRASH DEBUG: *** AUDIO PROCESS EVENT COMPLETED ***');
         } catch (error) {
-          console.error('🔍 CRASH DEBUG: ERROR in onaudioprocess handler:', error);
+          console.error('🔍 CRASH DEBUG: *** CRITICAL ERROR in onaudioprocess handler ***:', error);
+          console.error('🔍 CRASH DEBUG: Audio process error stack:', error.stack);
           this.emitError(error as Error);
         }
       };
@@ -229,6 +270,28 @@ class GeminiLiveUnifiedService {
       
       console.log('✅ Unified Gemini Live Transcription started');
       console.log('🔍 CRASH DEBUG: Step 12 - Startup completed successfully');
+
+      // Add post-startup monitoring
+      console.log('🔍 CRASH DEBUG: ===== POST-STARTUP MONITORING =====');
+      console.log('🔍 CRASH DEBUG: Setting up heartbeat monitor...');
+      
+      // Start a heartbeat to monitor if the main thread is alive
+      let heartbeatCounter = 0;
+      const heartbeatInterval = setInterval(() => {
+        heartbeatCounter++;
+        console.log(`🔍 CRASH DEBUG: ❤️ HEARTBEAT ${heartbeatCounter} - Main thread alive at ${Date.now()}`);
+        console.log(`🔍 CRASH DEBUG: ❤️ Recording state: ${this.isRecording}, buffer length: ${this.audioBuffer.length}`);
+        
+        if (heartbeatCounter >= 10) { // Stop after 10 heartbeats
+          clearInterval(heartbeatInterval);
+          console.log('🔍 CRASH DEBUG: ❤️ Heartbeat monitoring stopped');
+        }
+      }, 500); // Every 500ms
+      
+      console.log('🔍 CRASH DEBUG: Heartbeat monitor started');
+      console.log('🔍 CRASH DEBUG: About to wait for interval to fire...');
+      console.log(`🔍 CRASH DEBUG: Interval should fire in ${this.options.chunkDurationMs}ms`);
+      console.log('🔍 CRASH DEBUG: ===== END POST-STARTUP MONITORING =====');
 
     } catch (error) {
       console.error('🔍 CRASH DEBUG: ERROR during startup:', error);
