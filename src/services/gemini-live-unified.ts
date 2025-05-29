@@ -277,21 +277,59 @@ class GeminiLiveUnifiedService {
       
       // Start a heartbeat to monitor if the main thread is alive
       let heartbeatCounter = 0;
-      const heartbeatInterval = setInterval(() => {
-        heartbeatCounter++;
-        console.log(`🔍 CRASH DEBUG: ❤️ HEARTBEAT ${heartbeatCounter} - Main thread alive at ${Date.now()}`);
-        console.log(`🔍 CRASH DEBUG: ❤️ Recording state: ${this.isRecording}, buffer length: ${this.audioBuffer.length}`);
-        
-        if (heartbeatCounter >= 10) { // Stop after 10 heartbeats
-          clearInterval(heartbeatInterval);
-          console.log('🔍 CRASH DEBUG: ❤️ Heartbeat monitoring stopped');
+      console.log('🔍 CRASH DEBUG: Creating heartbeat function...');
+      
+      const heartbeatFunction = () => {
+        try {
+          heartbeatCounter++;
+          console.log(`🔍 CRASH DEBUG: ❤️ HEARTBEAT ${heartbeatCounter} - Main thread alive at ${Date.now()}`);
+          console.log(`🔍 CRASH DEBUG: ❤️ Recording state: ${this.isRecording}, buffer length: ${this.audioBuffer.length}`);
+          
+          if (heartbeatCounter >= 10) { // Stop after 10 heartbeats
+            clearInterval(heartbeatInterval);
+            console.log('🔍 CRASH DEBUG: ❤️ Heartbeat monitoring stopped');
+          }
+        } catch (heartbeatError) {
+          console.error('🔍 CRASH DEBUG: *** ERROR IN HEARTBEAT FUNCTION ***:', heartbeatError);
         }
-      }, 500); // Every 500ms
+      };
+      
+      console.log('🔍 CRASH DEBUG: About to call setInterval...');
+      const heartbeatInterval = setInterval(heartbeatFunction, 500); // Every 500ms
+      console.log('🔍 CRASH DEBUG: setInterval called successfully, interval ID:', heartbeatInterval);
       
       console.log('🔍 CRASH DEBUG: Heartbeat monitor started');
       console.log('🔍 CRASH DEBUG: About to wait for interval to fire...');
       console.log(`🔍 CRASH DEBUG: Interval should fire in ${this.options.chunkDurationMs}ms`);
       console.log('🔍 CRASH DEBUG: ===== END POST-STARTUP MONITORING =====');
+      
+      // Add immediate post-setup checks
+      console.log('🔍 CRASH DEBUG: ===== IMMEDIATE POST-SETUP CHECKS =====');
+      console.log('🔍 CRASH DEBUG: Checking this.isRecording:', this.isRecording);
+      console.log('🔍 CRASH DEBUG: Checking this.audioBuffer:', !!this.audioBuffer);
+      console.log('🔍 CRASH DEBUG: Checking this.audioBuffer.length:', this.audioBuffer?.length);
+      console.log('🔍 CRASH DEBUG: Checking this.processor:', !!this.processor);
+      console.log('🔍 CRASH DEBUG: Checking this.audioContext:', !!this.audioContext);
+      console.log('🔍 CRASH DEBUG: Checking this.mediaStream:', !!this.mediaStream);
+      console.log('🔍 CRASH DEBUG: Checking this.processingInterval:', this.processingInterval);
+      console.log('🔍 CRASH DEBUG: ===== END IMMEDIATE POST-SETUP CHECKS =====');
+      
+      // Add a small delay then check if everything is still working
+      setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 100MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 100ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: ===== END 100MS DELAYED CHECK =====');
+      }, 100);
+      
+      setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 1000MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 1000ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: ===== END 1000MS DELAYED CHECK =====');
+      }, 1000);
 
     } catch (error) {
       console.error('🔍 CRASH DEBUG: ERROR during startup:', error);
