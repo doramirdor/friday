@@ -262,9 +262,12 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       // Use ScriptProcessorNode for now (will migrate to AudioWorklet later)
       this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
       
+      // Create a gain node to control output volume (set to 0 to prevent feedback)
+      const gainNode = this.audioContext.createGain();
+      gainNode.gain.value = 0; // Mute the output to prevent audio feedback
+      
       this.processor.onaudioprocess = (event) => {
         try {
-          console.log('🎵 Audio processing event triggered');
           const inputBuffer = event.inputBuffer;
           const inputData = inputBuffer.getChannelData(0);
           
@@ -274,10 +277,22 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
             return;
           }
           
-          console.log('🎵 Processing audio data:', {
-            length: inputData.length,
-            currentChunks: this.audioChunks.length
-          });
+          // Calculate audio level for debugging
+          let sum = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sum += inputData[i] * inputData[i];
+          }
+          const audioLevel = Math.sqrt(sum / inputData.length);
+          
+          // Log audio activity (but not too frequently)
+          if (this.audioChunks.length % 50 === 0) {
+            console.log('🎵 Audio processing event:', {
+              length: inputData.length,
+              currentChunks: this.audioChunks.length,
+              audioLevel: audioLevel.toFixed(4),
+              isActive: audioLevel > 0.001 // Threshold for detecting actual audio
+            });
+          }
           
           // Safety check: prevent excessive chunk accumulation
           if (this.audioChunks.length > 300) {
@@ -287,7 +302,11 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
           
           // Store audio chunk (create a copy to avoid reference issues)
           this.audioChunks.push(new Float32Array(inputData));
-          console.log('🎵 Audio chunk stored, total chunks:', this.audioChunks.length);
+          
+          // Log every 100 chunks instead of every chunk to reduce spam
+          if (this.audioChunks.length % 100 === 0) {
+            console.log('🎵 Audio chunks stored:', this.audioChunks.length);
+          }
         } catch (error) {
           console.error('❌ Error in audio processing event:', error);
           console.error('🚨 AUDIO PROCESSING CRASH:', {
@@ -301,9 +320,39 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
 
       // Connect the audio processing chain
       source.connect(this.processor);
-      this.processor.connect(this.audioContext.destination);
+      this.processor.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
 
       console.log('✅ Audio processing chain connected');
+      
+      // Add debugging to verify the audio chain is working
+      console.log('🔍 Audio chain verification:', {
+        sourceState: source.context.state,
+        processorBufferSize: this.processor.bufferSize,
+        audioContextSampleRate: this.audioContext.sampleRate,
+        audioContextState: this.audioContext.state,
+        mediaStreamActive: this.mediaStream.active,
+        mediaStreamTracks: this.mediaStream.getTracks().length
+      });
+      
+      // Verify the processor is receiving data by checking after a short delay
+      setTimeout(() => {
+        console.log('🔍 Audio processing verification after 2 seconds:', {
+          chunksCollected: this.audioChunks.length,
+          audioContextState: this.audioContext?.state,
+          processorConnected: !!this.processor,
+          streamActive: this.mediaStream?.active
+        });
+        
+        if (this.audioChunks.length === 0) {
+          console.warn('⚠️ No audio chunks collected after 2 seconds - possible microphone or audio chain issue');
+          console.log('🔧 Troubleshooting tips:');
+          console.log('1. Check if microphone is working in other applications');
+          console.log('2. Check browser permissions for microphone access');
+          console.log('3. Try speaking loudly into the microphone');
+          console.log('4. Check if another application is using the microphone');
+        }
+      }, 2000);
     } catch (error) {
       console.error('❌ Failed to start microphone capture:', error);
       throw new Error(`Microphone capture failed: ${error.message}`);
