@@ -1,17 +1,24 @@
-// Electron API interfaces
-interface ElectronAPI {
+// Import types
+import geminiService, { GeminiTranscriptionResult } from './gemini';
+
+interface ExtendedElectronAPI {
   saveAudioFile: (buffer: ArrayBuffer, filename: string, formats: string[]) => Promise<{
     success: boolean;
     files?: Array<{ format: string; path: string }>;
     error?: string;
   }>;
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  [key: string]: unknown;
+}
+
+declare global {
+  interface Window {
+    electronAPI: ExtendedElectronAPI;
+  }
 }
 
 // Unified Gemini Live Transcription Service
 // Reuses existing proven Gemini transcribeAudio method and file-based approach
-
-import geminiService, { GeminiTranscriptionResult } from './gemini';
 
 export interface GeminiLiveOptions {
   languageCode?: string;
@@ -118,27 +125,17 @@ class GeminiLiveUnifiedService {
   }
 
   async startRecording(options: GeminiLiveOptions = {}): Promise<void> {
-    if (!this.isAvailable) {
-      throw new Error('Gemini Live not available - check Gemini API key, browser support, and Electron APIs');
-    }
-
     if (this.isRecording) {
-      console.warn('Already recording');
-      return;
+      throw new Error('Recording is already in progress');
     }
 
-    // Merge options with defaults
-    this.options = {
-      languageCode: 'en-US',
-      chunkDurationMs: 2000,
-      enableSpeakerDiarization: true,
-      maxSpeakers: 4,
-      processingMode: 'continuous',
-      ...options
-    };
+    this.options = { ...this.options, ...options };
+    this.stats.processingMode = this.options.processingMode;
+    this.stats.chunkDurationMs = this.options.chunkDurationMs;
 
     try {
       console.log('🎤 Starting Unified Gemini Live Transcription...', this.options);
+      console.log('🔍 CRASH DEBUG: Step 1 - Starting microphone access...');
 
       // Get microphone access
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -149,38 +146,78 @@ class GeminiLiveUnifiedService {
           noiseSuppression: true,
         }
       });
+      console.log('🔍 CRASH DEBUG: Step 2 - Microphone access granted, creating AudioContext...');
 
       // Create audio context
       this.audioContext = new AudioContext({ sampleRate: 16000 });
+      console.log('🔍 CRASH DEBUG: Step 3 - AudioContext created, creating MediaStreamSource...');
+      
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+      console.log('🔍 CRASH DEBUG: Step 4 - MediaStreamSource created, creating ScriptProcessor...');
       
       // Create processor
       this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      console.log('🔍 CRASH DEBUG: Step 5 - ScriptProcessor created, setting up audio process handler...');
+      
+      // Add crash detection around the audio process handler
       this.processor.onaudioprocess = (event) => {
-        if (!this.isRecording) return;
-        
-        const inputData = event.inputBuffer.getChannelData(0);
-        if (inputData && inputData.length > 0) {
-          this.audioBuffer.push(new Float32Array(inputData));
+        try {
+          if (!this.isRecording) return;
+          
+          const inputData = event.inputBuffer.getChannelData(0);
+          if (inputData && inputData.length > 0) {
+            this.audioBuffer.push(new Float32Array(inputData));
+            
+            // Log audio activity periodically (every 100 events to avoid spam)
+            if (this.audioBuffer.length % 100 === 0) {
+              console.log(`🔍 CRASH DEBUG: Audio processing - buffer size: ${this.audioBuffer.length}, input length: ${inputData.length}`);
+            }
+          }
+        } catch (error) {
+          console.error('🔍 CRASH DEBUG: ERROR in onaudioprocess handler:', error);
+          this.emitError(error as Error);
         }
       };
+      console.log('🔍 CRASH DEBUG: Step 6 - Audio process handler set, connecting audio chain...');
 
       // Connect audio chain
       source.connect(this.processor);
       this.processor.connect(this.audioContext.destination);
+      console.log('🔍 CRASH DEBUG: Step 7 - Audio chain connected successfully');
 
       // Start processing interval based on mode
       if (this.options.processingMode === 'continuous') {
+        console.log('🔍 CRASH DEBUG: Step 8 - Setting up continuous processing interval...');
+        
         this.processingInterval = window.setInterval(() => {
-          this.processAudioBuffer();
+          try {
+            console.log('🔍 CRASH DEBUG: Processing interval triggered, calling processAudioBuffer...');
+            this.processAudioBuffer().catch((error) => {
+              console.error('🔍 CRASH DEBUG: ERROR in processAudioBuffer from interval:', error);
+              this.emitError(error as Error);
+            });
+          } catch (error) {
+            console.error('🔍 CRASH DEBUG: ERROR in processing interval callback:', error);
+            this.emitError(error as Error);
+          }
         }, this.options.chunkDurationMs);
+        
+        console.log(`🔍 CRASH DEBUG: Step 9 - Processing interval set up with ${this.options.chunkDurationMs}ms duration`);
+      } else {
+        console.log('🔍 CRASH DEBUG: Step 8 - Skipping interval setup (send-at-end mode)');
       }
 
       this.isRecording = true;
+      console.log('🔍 CRASH DEBUG: Step 10 - Recording state set to true, updating stats...');
+      
       this.updateStats();
+      console.log('🔍 CRASH DEBUG: Step 11 - Stats updated successfully');
+      
       console.log('✅ Unified Gemini Live Transcription started');
+      console.log('🔍 CRASH DEBUG: Step 12 - Startup completed successfully');
 
     } catch (error) {
+      console.error('🔍 CRASH DEBUG: ERROR during startup:', error);
       this.cleanup();
       throw new Error(`Failed to start recording: ${error.message}`);
     }
@@ -231,61 +268,90 @@ class GeminiLiveUnifiedService {
   }
 
   private async processAudioBuffer(): Promise<void> {
-    if (this.audioBuffer.length === 0) return;
+    console.log('🔍 CRASH DEBUG: processAudioBuffer called, checking buffer...');
+    
+    if (this.audioBuffer.length === 0) {
+      console.log('🔍 CRASH DEBUG: Audio buffer is empty, returning early');
+      return;
+    }
 
     try {
+      console.log(`🔍 CRASH DEBUG: Processing audio buffer with ${this.audioBuffer.length} chunks`);
+      
       // Combine audio chunks
       const totalLength = this.audioBuffer.reduce((sum, chunk) => sum + chunk.length, 0);
+      console.log(`🔍 CRASH DEBUG: Total audio length: ${totalLength} samples`);
+      
       if (totalLength < 8000) { // Less than 0.5 seconds at 16kHz
+        console.log('🔍 CRASH DEBUG: Audio too short, skipping processing');
         return;
       }
 
+      console.log('🔍 CRASH DEBUG: Creating combined buffer...');
       const combinedBuffer = new Float32Array(totalLength);
       let offset = 0;
       for (const chunk of this.audioBuffer) {
         combinedBuffer.set(chunk, offset);
         offset += chunk.length;
       }
+      console.log('🔍 CRASH DEBUG: Combined buffer created successfully');
 
       // Clear buffer
       this.audioBuffer = [];
+      console.log('🔍 CRASH DEBUG: Audio buffer cleared');
 
       // Save as temporary audio file (reusing proven file-based approach)
+      console.log('🔍 CRASH DEBUG: Calling saveAudioChunk...');
       const audioChunk = await this.saveAudioChunk(combinedBuffer);
+      console.log('🔍 CRASH DEBUG: saveAudioChunk completed:', audioChunk ? 'success' : 'failed');
       
       if (audioChunk) {
         this.audioChunks.push(audioChunk);
         this.stats.audioChunksCollected++;
+        console.log(`🔍 CRASH DEBUG: Audio chunk added, total chunks: ${this.audioChunks.length}`);
+        
         this.updateStats();
+        console.log('🔍 CRASH DEBUG: Stats updated after chunk');
 
         // In continuous mode, process immediately
         if (this.options.processingMode === 'continuous') {
+          console.log('🔍 CRASH DEBUG: Continuous mode - calling processChunk...');
           await this.processChunk(audioChunk);
+          console.log('🔍 CRASH DEBUG: processChunk completed successfully');
         }
       }
 
     } catch (error) {
-      console.error('❌ Error processing audio buffer:', error);
+      console.error('🔍 CRASH DEBUG: ERROR in processAudioBuffer:', error);
+      console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
       this.emitError(error as Error);
     }
   }
 
   private async saveAudioChunk(audioBuffer: Float32Array): Promise<AudioChunk | null> {
     try {
+      console.log('🔍 CRASH DEBUG: saveAudioChunk called, creating WAV buffer...');
+      
       // Convert to WAV buffer (reusing file-based approach)
       const wavBuffer = this.createWavBuffer(audioBuffer, 16000, 1);
+      console.log(`🔍 CRASH DEBUG: WAV buffer created, size: ${wavBuffer.byteLength} bytes`);
       
-      const electronAPI = window.electronAPI;
+      const electronAPI = window.electronAPI as ExtendedElectronAPI;
       if (!electronAPI?.saveAudioFile) {
         throw new Error('Electron saveAudioFile API not available');
       }
+      console.log('🔍 CRASH DEBUG: Electron API available, saving file...');
 
       const fileName = `gemini_live_chunk_${this.tempFileCounter++}_${Date.now()}`;
+      console.log(`🔍 CRASH DEBUG: Saving file with name: ${fileName}`);
+      
       const result = await electronAPI.saveAudioFile(wavBuffer, fileName, ['wav']);
+      console.log('🔍 CRASH DEBUG: saveAudioFile result:', result);
       
       if (result.success && result.files && result.files.length > 0) {
-        const wavFile = result.files.find((f: any) => f.format === 'wav');
+        const wavFile = result.files.find((f: { format: string; path: string }) => f.format === 'wav');
         const filePath = wavFile ? wavFile.path : result.files[0].path;
+        console.log(`🔍 CRASH DEBUG: File saved successfully: ${filePath}`);
 
         return {
           timestamp: Date.now(),
@@ -294,36 +360,45 @@ class GeminiLiveUnifiedService {
           duration: audioBuffer.length / 16000 // Duration in seconds
         };
       } else {
-        console.error('❌ Failed to save audio chunk:', result.error);
+        console.error('🔍 CRASH DEBUG: Failed to save audio chunk:', result.error);
         return null;
       }
 
     } catch (error) {
-      console.error('❌ Error saving audio chunk:', error);
+      console.error('🔍 CRASH DEBUG: ERROR in saveAudioChunk:', error);
+      console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
       return null;
     }
   }
 
   private async processChunk(chunk: AudioChunk): Promise<void> {
     try {
-      console.log(`🔄 Processing audio chunk: ${chunk.filePath}`);
+      console.log(`🔍 CRASH DEBUG: processChunk called for: ${chunk.filePath}`);
+      console.log(`🔍 CRASH DEBUG: Processing audio chunk: ${chunk.filePath}`);
       const startTime = Date.now();
 
+      console.log('🔍 CRASH DEBUG: Calling geminiService.transcribeAudio...');
       // Use existing proven Gemini transcribeAudio method
       const result: GeminiTranscriptionResult = await geminiService.transcribeAudio(
         chunk.filePath, 
         this.options.maxSpeakers
       );
+      console.log('🔍 CRASH DEBUG: geminiService.transcribeAudio completed');
 
       const processingTime = Date.now() - startTime;
       this.stats.totalProcessingTime += processingTime;
       this.stats.chunksProcessed++;
       this.stats.lastProcessedTime = Date.now();
+      console.log(`🔍 CRASH DEBUG: Stats updated, processing time: ${processingTime}ms`);
+      
       this.updateStats();
+      console.log('🔍 CRASH DEBUG: updateStats completed');
 
       if (result.transcript && result.transcript.trim()) {
+        console.log('🔍 CRASH DEBUG: Got transcript, updating speaker context...');
         // Update speaker context
         this.updateSpeakerContext(result.speakers);
+        console.log('🔍 CRASH DEBUG: Speaker context updated');
 
         const liveResult: GeminiLiveResult = {
           transcript: result.transcript,
@@ -333,23 +408,18 @@ class GeminiLiveUnifiedService {
           timestamp: chunk.timestamp
         };
 
+        console.log('🔍 CRASH DEBUG: Emitting result...');
         this.emitResult(liveResult);
         console.log(`✅ Transcription result (${processingTime}ms):`, result.transcript);
+        console.log('🔍 CRASH DEBUG: Result emitted successfully');
+      } else {
+        console.log('🔍 CRASH DEBUG: No transcript received from Gemini');
       }
-
-      // Cleanup the temporary file
-      await this.cleanupFile(chunk.filePath);
 
     } catch (error) {
-      console.error(`❌ Error processing chunk ${chunk.filePath}:`, error);
+      console.error('🔍 CRASH DEBUG: ERROR in processChunk:', error);
+      console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
       this.emitError(error as Error);
-      
-      // Try to cleanup the file even on error
-      try {
-        await this.cleanupFile(chunk.filePath);
-      } catch (cleanupError) {
-        console.error('❌ Error cleaning up failed chunk:', cleanupError);
-      }
     }
   }
 
@@ -433,9 +503,9 @@ class GeminiLiveUnifiedService {
 
   private async cleanupFile(filePath: string): Promise<void> {
     try {
-      const electronAPI = window.electronAPI;
+      const electronAPI = window.electronAPI as ExtendedElectronAPI;
       if (electronAPI?.deleteFile) {
-        await electronAPI.deleteFile(filePath);
+        const deleteResult = await electronAPI.deleteFile(filePath);
         console.log(`🗑️ Cleaned up temp file: ${filePath}`);
       }
     } catch (error) {
