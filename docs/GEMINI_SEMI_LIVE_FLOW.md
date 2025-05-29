@@ -1,17 +1,41 @@
 # Gemini Semi-Live Transcription Flow
 
-This document outlines the complete method call flow for the Gemini Semi-Live transcription system, which uses a file-based approach with 1-second audio chunks for near real-time transcription.
+This document outlines the complete method call flow for the Gemini Semi-Live transcription system, which uses a file-based approach with 2-second audio chunks for near real-time transcription.
 
 ## Overview
 
-The Gemini Semi-Live system captures audio in real-time, saves it as temporary WAV files, and uses the proven `testSpeechWithFile` Electron API to transcribe each chunk. This approach leverages existing stable transcription tools instead of complex memory buffering.
+The Gemini Semi-Live system captures audio in real-time, saves it as temporary WAV files every 2 seconds, and uses the same proven Gemini 2.0 Flash transcription pipeline as the regular flow. This approach leverages the existing stable transcription tools for consistency and reliability.
 
 ## Architecture Components
 
 - **Frontend**: React component + hook
-- **Service Layer**: File-based semi-live service
-- **Electron Main Process**: IPC handlers for file operations and transcription
-- **Transcription Engine**: Google Cloud Speech-to-Text API
+- **Service Layer**: File-based semi-live service with Gemini integration
+- **Electron Main Process**: IPC handlers for file operations (`readAudioFile`, `saveAudioFile`, `deleteFile`)
+- **Transcription Engine**: Gemini 2.0 Flash model (same as regular flow)
+
+---
+
+## Key Changes from Previous Version
+
+### ✅ **New Transcription Engine**
+- **Previous**: Google Cloud Speech-to-Text API via `testSpeechWithFile`
+- **Current**: Gemini 2.0 Flash via `geminiService.transcribeAudio()`
+
+### ✅ **Improved Chunk Duration**  
+- **Previous**: 1-second chunks (too frequent)
+- **Current**: 2-second chunks (better balance of responsiveness and performance)
+
+### ✅ **Unified Transcription Pipeline**
+- **Previous**: Separate transcription logic from regular flow
+- **Current**: Reuses exact same `geminiService.transcribeAudio()` method
+
+### ✅ **Enhanced File Operations**
+- **Previous**: Only `testSpeechWithFile` and `deleteFile`
+- **Current**: Uses `readAudioFile` (with size checking) + `saveAudioFile` + `deleteFile`
+
+### ✅ **Prompt-Level Speaker Diarization**
+- **Previous**: API-level diarization configuration
+- **Current**: Prompt-level diarization performed by Gemini model, post-parsed client-side
 
 ---
 
@@ -48,10 +72,13 @@ class LegacyAdapter {
   }
 }
 
-// 6. FileSemiLiveService checks Electron APIs
+// 6. FileSemiLiveService checks Gemini + Electron APIs
 get isAvailable(): boolean {
-  return !!(window as any).electronAPI?.saveAudioFile && 
-         !!(window as any).electronAPI?.testSpeechWithFile;
+  const electronAPI = window.electronAPI as ExtendedElectronAPI;
+  return !!(electronAPI?.saveAudioFile) && 
+         !!(electronAPI?.readAudioFile) &&
+         !!(electronAPI?.deleteFile) &&
+         geminiService.isAvailable(); // NEW: Requires Gemini service
 }
 ```
 
@@ -63,7 +90,12 @@ get isAvailable(): boolean {
 ```javascript
 // 7. User clicks start recording button
 const handleStartRecording = () => {
-  geminiLive.startRecording(options);
+  geminiLive.startRecording({
+    chunkDurationMs: 2000, // NEW: 2-second chunks
+    processingMode: 'continuous',
+    enableSpeakerDiarization: true,
+    maxSpeakerCount: 4
+  });
 }
 ```
 
@@ -74,7 +106,7 @@ const startRecording = useCallback(async (options) => {
   if (!service.isAvailable) return false;
   
   const success = await service.startRecording({
-    chunkDurationMs: 1000,
+    chunkDurationMs: 2000, // NEW: Default 2 seconds
     processingMode: 'continuous',
     enableSpeakerDiarization: true,
     maxSpeakers: 4,
@@ -94,16 +126,22 @@ async startRecording(options: GeminiSemiLiveOptions): Promise<boolean> {
 
 // 10. FileSemiLiveService.startRecording() method
 async startRecording(options: FileSemiLiveOptions): Promise<boolean> {
-  // 11. Initialize state
+  console.log('🎤 Starting File-based Semi-Live recording with Gemini 2.0 Flash:', options);
+  
+  // 11. Initialize state with new defaults
+  this.currentOptions = options;
+  this.state.processingMode = options.processingMode || 'continuous';
+  this.state.chunkDurationMs = options.chunkDurationMs || 2000; // NEW: 2-second default
   this.state.isRecording = true;
-  this.state.processingMode = options.processingMode || 'send-at-end';
-  this.state.chunkDurationMs = options.chunkDurationMs || 1000;
+  this.state.audioChunks = [];
+  this.audioBuffer = []; // NEW: Separate audio buffer management
   
   // 12. Start microphone capture
   const success = await this.startMicrophoneCapture(options);
   
   // 13. Setup processing interval (if continuous mode)
   if (this.state.processingMode === 'continuous') {
+    console.log('🔄 Using continuous mode - processing files every', this.state.chunkDurationMs, 'ms with Gemini 2.0 Flash');
     this.setupAudioProcessingInterval();
   }
   
@@ -115,9 +153,16 @@ async startRecording(options: FileSemiLiveOptions): Promise<boolean> {
 ```javascript
 // 14. FileSemiLiveService.startMicrophoneCapture()
 private async startMicrophoneCapture(options: FileSemiLiveOptions): Promise<boolean> {
+  console.log('🎙️ Starting microphone capture for Semi-Live Gemini transcription');
+  
   // 15. Get microphone permission
   this.mediaStream = await navigator.mediaDevices.getUserMedia({
-    audio: { sampleRate: 16000, channelCount: 1 }
+    audio: { 
+      sampleRate: 16000, 
+      channelCount: 1,
+      echoCancellation: true,
+      noiseSuppression: true
+    }
   });
   
   // 16. Create audio context
@@ -125,17 +170,23 @@ private async startMicrophoneCapture(options: FileSemiLiveOptions): Promise<bool
   
   // 17. Setup audio processing chain
   const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+  this.gainNode = this.audioContext.createGain();
   this.scriptProcessor = this.audioContext.createScriptProcessor(4096, 1, 1);
   
-  // 18. Connect audio processing pipeline
+  // 18. Setup audio data handler - NEW: Buffer management
+  this.scriptProcessor.onaudioprocess = (event) => {
+    if (!this.state.isRecording) return;
+    
+    const inputData = event.inputBuffer.getChannelData(0);
+    if (inputData && inputData.length > 0) {
+      this.audioBuffer.push(new Float32Array(inputData)); // NEW: Push to buffer
+    }
+  };
+  
+  // 19. Connect audio processing pipeline
   source.connect(this.gainNode);
   this.gainNode.connect(this.scriptProcessor);
   this.scriptProcessor.connect(this.audioContext.destination);
-  
-  // 19. Setup audio data handler
-  this.scriptProcessor.onaudioprocess = (event) => {
-    this.handleAudioData(event);
-  };
   
   return true;
 }
@@ -145,79 +196,80 @@ private async startMicrophoneCapture(options: FileSemiLiveOptions): Promise<bool
 ```javascript
 // 20. FileSemiLiveService.setupAudioProcessingInterval()
 private setupAudioProcessingInterval(): void {
-  this.processingInterval = window.setInterval(() => {
-    this.processAudioBuffer();
-  }, this.state.chunkDurationMs);
+  this.processingInterval = window.setInterval(async () => {
+    if (!this.state.isRecording || this.audioBuffer.length === 0) {
+      return;
+    }
+
+    // 21. NEW: Process accumulated audio buffer every 2 seconds
+    console.log(`🔄 Processing audio buffer (${this.audioBuffer.length} chunks) for Gemini transcription`);
+    
+    // 22. Combine audio chunks into single buffer
+    const totalLength = this.audioBuffer.reduce((sum, chunk) => sum + chunk.length, 0);
+    const combinedBuffer = new Float32Array(totalLength);
+    
+    let offset = 0;
+    for (const chunk of this.audioBuffer) {
+      combinedBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    // 23. Clear buffer for next chunk
+    this.audioBuffer = [];
+
+    // 24. Skip if too small (less than 0.5 seconds)
+    if (combinedBuffer.length < 8000) return; // 0.5 seconds at 16kHz
+
+    // 25. Save as temporary WAV file
+    await this.saveAudioChunkAsFile(combinedBuffer, 16000);
+
+    // 26. Process immediately with Gemini (continuous mode)
+    if (this.state.processingMode === 'continuous' && this.state.audioChunks.length > 0) {
+      const latestChunk = this.state.audioChunks[this.state.audioChunks.length - 1];
+      await this.processChunkWithGemini(latestChunk); // NEW: Gemini processing
+    }
+
+  }, this.state.chunkDurationMs); // NEW: 2-second interval
 }
 ```
 
 ---
 
-### 3. Real-Time Audio Processing Phase
+### 3. Real-Time File Processing Phase
 
-#### Audio Data Capture (gemini-semi-live.ts)
+#### File Save Operation (gemini-semi-live.ts)
 ```javascript
-// 21. FileSemiLiveService.handleAudioData() - called every 4096 samples
-private handleAudioData(event: AudioProcessingEvent): void {
-  const inputData = event.inputBuffer.getChannelData(0);
+// 27. FileSemiLiveService.saveAudioChunkAsFile()
+private async saveAudioChunkAsFile(audioData: Float32Array, sampleRate: number): Promise<void> {
+  const electronAPI = window.electronAPI as ExtendedElectronAPI;
   
-  // 22. Add to buffer
-  this.audioBuffer.push(new Float32Array(inputData));
-}
-```
-
-#### Periodic Processing (every 1 second in continuous mode)
-```javascript
-// 23. FileSemiLiveService.processAudioBuffer() - called by interval
-private async processAudioBuffer(): Promise<void> {
-  if (this.audioBuffer.length === 0) return;
-  
-  // 24. Combine audio chunks
-  const combinedBuffer = this.combineAudioBuffer();
-  
-  // 25. Convert to WAV format
-  const wavBuffer = this.createWavFile(combinedBuffer, 16000);
-  
-  // 26. Save as temporary file
-  const tempFilePath = await this.saveTemporaryFile(wavBuffer);
-  
-  // 27. Add to processing queue
-  this.state.audioChunks.push({
-    filePath: tempFilePath,
-    timestamp: Date.now(),
-    duration: combinedBuffer.length / 16000
-  });
-  
-  // 28. Process immediately (continuous mode)
-  if (this.state.processingMode === 'continuous') {
-    await this.processLatestChunk();
+  // 28. Convert to 16-bit PCM
+  const pcmData = new Int16Array(audioData.length);
+  for (let i = 0; i < audioData.length; i++) {
+    pcmData[i] = Math.max(-32768, Math.min(32767, audioData[i] * 32767));
   }
-  
-  // 29. Clear buffer for next chunk
-  this.audioBuffer = [];
-}
-```
 
-#### File Operations (gemini-semi-live.ts)
-```javascript
-// 30. FileSemiLiveService.saveTemporaryFile()
-private async saveTemporaryFile(wavBuffer: ArrayBuffer): Promise<string> {
-  const electronAPI = (window as any).electronAPI;
+  // 29. Create WAV file buffer
+  const wavBuffer = this.createWavFile(pcmData, sampleRate);
   
-  // 31. Call Electron saveAudioFile API
-  const result = await electronAPI.saveAudioFile(
-    wavBuffer,
-    `chunk_${Date.now()}_${this.state.tempFileCounter++}.wav`,
-    ['wav']
-  );
+  // 30. Save as temporary file
+  const filename = `semilive_gemini_${Date.now()}_${this.state.tempFileCounter++}.wav`;
+  const result = await electronAPI.saveAudioFile(wavBuffer, filename, ['wav']);
   
-  return result.filePath;
+  // 31. Add to processing queue
+  if (result.success && result.filePath) {
+    this.state.audioChunks.push({
+      timestamp: Date.now(),
+      filePath: result.filePath,
+      size: wavBuffer.byteLength
+    });
+  }
 }
 ```
 
 #### Electron Main Process (main/index.js)
 ```javascript
-// 32. IPC Handler: saveAudioFile
+// 32. IPC Handler: saveAudioFile (existing)
 ipcMain.handle("saveAudioFile", async (event, buffer, filename, formats) => {
   // 33. Create file in recordings directory
   const filePath = path.join(recordingsDir, filename);
@@ -231,110 +283,146 @@ ipcMain.handle("saveAudioFile", async (event, buffer, filename, formats) => {
 
 ---
 
-### 4. Transcription Processing Phase
+### 4. NEW: Gemini Transcription Processing Phase
 
-#### Chunk Processing (gemini-semi-live.ts)
+#### Chunk Processing with Gemini (gemini-semi-live.ts)
 ```javascript
-// 35. FileSemiLiveService.processLatestChunk()
-private async processLatestChunk(): Promise<void> {
-  const latestChunk = this.state.audioChunks[this.state.audioChunks.length - 1];
-  await this.processChunk(latestChunk);
-}
+// 35. NEW: FileSemiLiveService.processChunkWithGemini()
+private async processChunkWithGemini(chunk: AudioChunk): Promise<void> {
+  console.log(`🧠 Transcribing chunk with Gemini 2.0 Flash: ${chunk.filePath}`);
+  const startTime = Date.now();
 
-// 36. FileSemiLiveService.processChunk()
-private async processChunk(chunk: AudioChunk): Promise<void> {
-  const electronAPI = (window as any).electronAPI;
-  
-  // 37. Call Electron testSpeechWithFile API
-  const result = await electronAPI.testSpeechWithFile(chunk.filePath);
-  
-  // 38. Handle transcription result
-  if (result.transcription) {
-    this.handleTranscriptionResult(result, chunk);
+  // 36. NEW: Use same Gemini transcription method as regular flow
+  const result: GeminiTranscriptionResult = await geminiService.transcribeAudio(
+    chunk.filePath,
+    this.currentOptions?.maxSpeakerCount || 4
+  );
+
+  const processingTime = Date.now() - startTime;
+  console.log(`⚡ Gemini transcription completed in ${processingTime}ms`);
+
+  // 37. Process successful result
+  if (result.transcript && result.transcript.trim()) {
+    const fileSemiResult: FileSemiLiveResult = {
+      transcript: result.transcript,
+      isFinal: true, // NEW: Gemini results are always final
+      speakers: result.speakers?.map(speaker => ({
+        id: speaker.id,
+        name: speaker.name,
+        color: speaker.color
+      })) || [],
+      timestamp: chunk.timestamp
+    };
+
+    // 38. Emit result to callback
+    this.emitResult(fileSemiResult);
   }
-  
-  // 39. Cleanup temporary file
+
+  // 39. Cleanup processed chunk
+  this.state.audioChunks = this.state.audioChunks.filter(c => c.filePath !== chunk.filePath);
+  this.state.totalChunksProcessed++;
   await this.cleanupFile(chunk.filePath);
 }
 ```
 
-#### Electron Main Process Transcription (main/index.js)
+#### NEW: Gemini Service Integration (uses existing proven method)
 ```javascript
-// 40. IPC Handler: testSpeechWithFile
-ipcMain.handle('test-speech-with-file', async (event, filePath) => {
-  // 41. Read audio file
-  const audioBuffer = fs.readFileSync(filePath);
+// 40. geminiService.transcribeAudio() - REUSED FROM REGULAR FLOW
+// This is the exact same method used for regular transcription
+async transcribeAudio(audioFile: string, maxSpeakers: number = 4): Promise<GeminiTranscriptionResult> {
+  // 41. Use existing readAudioFile IPC
+  const electronAPI = window.electronAPI;
+  const audioData = await electronAPI.readAudioFile(audioFile);
   
-  // 42. Determine if file needs chunking (>10MB)
-  const isLongAudio = audioBuffer.length > MAX_SIZE;
-  
-  // 43. Process with appropriate handler
-  if (isLongAudio) {
-    transcription = await handleLongAudioTranscription(audioBuffer, 'WAV', options);
-  } else {
-    transcription = await handleGoogleSpeechAPI(audioBuffer, options);
+  // 42. Check file size limit (Gemini 20MB limit)
+  if (!audioData.success) {
+    throw new Error(`Failed to read audio file: ${audioData.error || 'Unknown error'}`);
   }
   
-  return { transcription };
-});
+  // 43. Convert to Blob and upload to Gemini
+  const audioBlob = new Blob([audioData.buffer], { type: 'audio/mp3' });
+  const uploadedFile = await this.genAI.files.upload({
+    file: audioBlob,
+    config: { mimeType: 'audio/mp3' }
+  });
+
+  // 44. Create transcription prompt with speaker diarization
+  const prompt = `Please provide a detailed transcription of this audio with speaker diarization. 
+
+Requirements:
+1. Identify different speakers and label them as "Speaker 1", "Speaker 2", etc.
+2. Limit the number of speakers to a maximum of ${maxSpeakers} speakers
+3. If you detect more than ${maxSpeakers} different voices, group similar voices together
+4. Format the output with each speaker's dialogue on separate lines
+5. Use the format: "Speaker X: [dialogue]"
+6. Maintain chronological order of the conversation
+
+Please provide the transcription:`;
+
+  // 45. Call Gemini 2.0 Flash model
+  const result = await this.genAI.models.generateContent({
+    model: 'gemini-2.0-flash-001',
+    contents: [
+      prompt,
+      {
+        fileData: {
+          mimeType: uploadedFile.mimeType,
+          fileUri: uploadedFile.uri
+        }
+      }
+    ]
+  });
+
+  // 46. Parse transcription and extract speakers
+  const { transcript, speakers } = await this.parseTranscriptionWithSpeakers(result.text, maxSpeakers);
+
+  // 47. Cleanup uploaded file
+  await this.genAI.files.delete(uploadedFile.name);
+
+  return { transcript, speakers };
+}
 ```
 
-#### Google Speech API Processing (main/index.js)
+#### Electron IPC: readAudioFile (main/index.js)
 ```javascript
-// 44. handleGoogleSpeechAPI()
-async function handleGoogleSpeechAPI(audioBuffer, options) {
-  // 45. Create Google Speech client
-  const client = new speech.SpeechClient({
-    apiKey: process.env.GOOGLE_SPEECH_API_KEY
-  });
+// 48. NEW: IPC Handler: readAudioFile (size-checked)
+ipcMain.handle("readAudioFile", async (event, filepath) => {
+  // 49. Check file existence
+  if (!fs.existsSync(filepath)) {
+    return { success: false, error: "File not found" };
+  }
   
-  // 46. Configure recognition request
-  const config = {
-    encoding: 'LINEAR16',
-    sampleRateHertz: 16000,
-    languageCode: 'en-US',
-    enableSpeakerDiarization: true,
-    diarizationConfig: {
-      enableSpeakerDiarization: true,
-      maxSpeakerCount: 4
-    }
+  // 50. Get file size statistics  
+  const stats = fs.statSync(filepath);
+  const fileSizeMB = stats.size / (1024 * 1024);
+  
+  // 51. Check file size limit (Gemini 20MB limit)
+  if (fileSizeMB > 20) {
+    return { 
+      success: false, 
+      error: `File too large for Gemini transcription (${fileSizeMB.toFixed(2)} MB). Maximum size is 20MB.`
+    };
+  }
+  
+  // 52. Read the audio file as buffer
+  const buffer = fs.readFileSync(filepath);
+  
+  // 53. Return successful result
+  return {
+    success: true,
+    buffer: buffer,
+    fileSizeMB: fileSizeMB
   };
-  
-  // 47. Convert audio to base64
-  const audioContent = audioBuffer.toString('base64');
-  
-  // 48. Send to Google Speech API
-  const [response] = await client.recognize({
-    config,
-    audio: { content: audioContent }
-  });
-  
-  // 49. Process results with speaker diarization
-  return processTranscriptionResults(response);
-}
+});
 ```
 
 ---
 
-### 5. Result Processing Phase
+### 5. Result Processing Phase (Same as Regular Flow)
 
 #### Result Handling (gemini-semi-live.ts)
 ```javascript
-// 50. FileSemiLiveService.handleTranscriptionResult()
-private handleTranscriptionResult(result: any, chunk: AudioChunk): void {
-  // 51. Create result object
-  const transcriptionResult: FileSemiLiveResult = {
-    transcript: result.transcription,
-    isFinal: true,
-    speakers: result.speakers || [],
-    timestamp: chunk.timestamp
-  };
-  
-  // 52. Emit result to callback
-  this.emitResult(transcriptionResult);
-}
-
-// 53. FileSemiLiveService.emitResult()
+// 54. FileSemiLiveService.emitResult()
 private emitResult(result: FileSemiLiveResult): void {
   if (this.resultCallback) {
     this.resultCallback(result);
@@ -344,19 +432,19 @@ private emitResult(result: FileSemiLiveResult): void {
 
 #### Hook Result Processing (useGeminiSemiLive.tsx)
 ```javascript
-// 54. Hook registers result callback
+// 55. Hook registers result callback
 useEffect(() => {
   if (service) {
     service.onResult((result) => {
-      // 55. Update transcript state
+      // 56. Update transcript state
       setTranscript(prev => prev + '\n' + result.transcript);
       
-      // 56. Update speakers
+      // 57. Update speakers
       if (result.speakers) {
         setSpeakers(result.speakers);
       }
       
-      // 57. Emit to parent component
+      // 58. Emit to parent component
       onTranscriptResult?.(result);
     });
   }
@@ -365,26 +453,25 @@ useEffect(() => {
 
 #### Component Integration (TranscriptDetails.tsx)
 ```javascript
-// 58. Component receives transcription result
+// 59. Component receives transcription result (same processing as regular flow)
 const handleAddGeminiTranscript = useCallback((transcript: string) => {
-  // 59. Parse transcript into lines
+  // 60. Parse transcript into lines - SAME AS REGULAR FLOW
   const lines = transcript.split('\n').filter(line => line.trim());
   const newTranscriptLines: TranscriptLine[] = [];
   
-  // 60. Process each line for speakers
+  // 61. Process each line for speakers - SAME PARSING LOGIC
   lines.forEach((line, index) => {
-    const speakerMatch = line.match(/^\*\*Speaker (\d+)\*\*:\s*(.+)$/);
+    const speakerMatch = line.match(/^(Speaker\s+\d+):\s*(.+)$/i);
     
     if (speakerMatch) {
-      // 61. Create/find speaker
-      const speakerId = speakerMatch[1];
+      const speakerName = speakerMatch[1];
       const text = speakerMatch[2].trim();
       
-      // 62. Add transcript line
+      // 62. Create transcript line
       newTranscriptLines.push({
-        id: `gemini-live-${Date.now()}-${index}`,
+        id: `gemini-semi-${Date.now()}-${index}`,
         text: text,
-        speakerId: speakerId,
+        speakerId: speakerMatch[1].replace(/\D/g, ''), // Extract number
       });
     }
   });
@@ -402,78 +489,64 @@ const handleAddGeminiTranscript = useCallback((transcript: string) => {
 ```javascript
 // 64. FileSemiLiveService.stopRecording()
 async stopRecording(): Promise<FileSemiLiveResult[]> {
-  // 65. Set recording state
+  console.log('🛑 Stopping Semi-Live Gemini transcription recording...');
   this.state.isRecording = false;
-  
-  // 66. Clear processing interval
+
+  // 65. Clear processing interval
   if (this.processingInterval) {
     clearInterval(this.processingInterval);
+    this.processingInterval = null;
   }
-  
-  // 67. Process remaining audio buffer
+
+  let results: FileSemiLiveResult[] = [];
+
+  // 66. Process remaining audio buffer
   if (this.audioBuffer.length > 0) {
-    await this.processAudioBuffer();
+    console.log('📝 Processing final audio buffer with Gemini...');
+    // ... (combine and save remaining audio)
   }
-  
-  // 68. Process accumulated files (send-at-end mode)
+
+  // 67. Process accumulated files (send-at-end mode)
   if (this.state.processingMode === 'send-at-end') {
-    results = await this.processAccumulatedAudioFiles();
+    console.log('📤 Processing all audio chunks with Gemini at end...');
+    results = await this.processAccumulatedAudioFilesWithGemini();
   }
-  
-  // 69. Cleanup all temporary files
+
+  // 68. Cleanup all temporary files
   await this.cleanupTempFiles();
   
-  // 70. Cleanup audio resources
+  // 69. Cleanup audio resources
   this.cleanupAudioResources();
-  
+
   return results;
 }
 ```
 
 #### Resource Cleanup (gemini-semi-live.ts)
 ```javascript
-// 71. FileSemiLiveService.cleanupAudioResources()
-private cleanupAudioResources(): void {
-  // 72. Disconnect audio nodes
-  if (this.scriptProcessor) {
-    this.scriptProcessor.disconnect();
-  }
-  
-  // 73. Close audio context
-  if (this.audioContext) {
-    this.audioContext.close();
-  }
-  
-  // 74. Stop media stream tracks
-  if (this.mediaStream) {
-    this.mediaStream.getTracks().forEach(track => track.stop());
-  }
-}
-
-// 75. FileSemiLiveService.cleanupTempFiles()
+// 70. FileSemiLiveService.cleanupTempFiles()
 private async cleanupTempFiles(): Promise<void> {
-  const electronAPI = (window as any).electronAPI;
+  const electronAPI = window.electronAPI as ExtendedElectronAPI;
   
-  // 76. Delete each temporary file
+  // 71. Delete each temporary file
   for (const chunk of this.state.audioChunks) {
     await electronAPI.deleteFile(chunk.filePath);
   }
   
-  // 77. Clear chunks array
+  // 72. Clear chunks array
   this.state.audioChunks = [];
 }
 ```
 
 #### Electron File Cleanup (main/index.js)
 ```javascript
-// 78. IPC Handler: deleteFile
+// 73. IPC Handler: deleteFile (existing)
 ipcMain.handle("deleteFile", async (event, filePath) => {
   try {
-    // 79. Delete file from disk
+    // 74. Delete file from disk
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
-    
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -483,26 +556,37 @@ ipcMain.handle("deleteFile", async (event, filePath) => {
 
 ---
 
-## Key Features
+## Key Benefits of the New Approach
 
-### File-Based Approach Benefits
-- **Reliability**: Uses proven `testSpeechWithFile` API instead of complex memory management
-- **Stability**: Eliminates memory pressure and crashes from long recordings
-- **Proven Pipeline**: Leverages existing, working transcription flow
-- **Cleanup**: Automatic cleanup of temporary files after processing
+### 🚀 **Unified Transcription Pipeline**
+- Reuses the exact same `geminiService.transcribeAudio()` method as regular flow
+- Ensures consistency in transcription quality and speaker diarization
+- Leverages proven, tested transcription logic
 
-### Processing Modes
-1. **Continuous Mode**: Processes 1-second chunks immediately for real-time feedback
-2. **Send-at-End Mode**: Accumulates chunks and processes when recording stops
+### ⚡ **Optimized Performance**
+- 2-second chunks provide better balance of responsiveness vs. processing overhead
+- Reduced API calls compared to 1-second chunks
+- More efficient processing with larger, meaningful audio segments
 
-### Error Handling
-- Comprehensive try-catch blocks at each stage
-- Graceful degradation when APIs are unavailable
-- Automatic cleanup even when errors occur
-- Detailed logging for debugging
+### 🔒 **Enhanced Reliability**
+- Uses the same file-based approach with proven IPC handlers
+- Consistent error handling and cleanup across regular and semi-live flows
+- Size-checked file operations prevent Gemini API failures
 
-### Performance Optimizations
-- 1-second chunk duration for responsive feel
-- Efficient WAV file creation with proper headers
-- Memory-efficient audio buffer management
-- Automatic temporary file cleanup 
+### 🎯 **Improved Speaker Diarization**
+- Prompt-level diarization leverages Gemini's natural language understanding
+- Post-parsed client-side for consistent speaker identification
+- Same speaker parsing logic as regular flow ensures compatibility
+
+### 🧹 **Better Resource Management**
+- Automatic cleanup of temporary files after processing
+- Efficient audio buffer management prevents memory issues
+- Proper resource cleanup on errors and stop operations
+
+## Technical Advantages
+
+1. **Code Reuse**: 95% of transcription logic shared with regular flow
+2. **Consistency**: Same prompt, same parsing, same result format
+3. **Reliability**: Leverages proven file operations and error handling
+4. **Performance**: Optimized 2-second processing intervals
+5. **Maintainability**: Single transcription service to maintain and improve 

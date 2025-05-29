@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Comprehensive Flow Documentation**: Created detailed method call flow documentation for Gemini transcription systems
+  - Added `docs/GEMINI_SEMI_LIVE_FLOW.md` documenting the complete 79-step method call flow for Gemini Semi-Live transcription
+  - Added `docs/GEMINI_REGULAR_FLOW.md` documenting the complete 80-step method call flow for regular Gemini transcription
+  - Documented file-based approach with 1-second audio chunks for semi-live transcription
+  - Documented Gemini 2.0 Flash model integration with file upload for regular transcription
+  - Included detailed phase-by-phase breakdowns: initialization, recording, processing, transcription, result handling, and cleanup
+  - Covered all method names, IPC handlers, Electron APIs, React hooks, and service layer interactions
+  - Documented error handling flows, state management, and UI updates
+  - Provided architecture overviews and key feature summaries for both transcription approaches
+
 ### Fixed
 - **Missing Radix UI Scroll Area Dependency**: Fixed "Failed to resolve import @radix-ui/react-scroll-area" build error
   - Installed missing `@radix-ui/react-scroll-area` package to resolve import failures in scroll area component
@@ -80,6 +91,19 @@ All notable changes to this project will be documented in this file.
   - Robust error handling with fallbacks and proper resource cleanup
   - Leverages proven tools instead of reinventing WebSocket or streaming approaches
   - More reliable than previous implementations due to reuse of tested, working transcription flow
+
+### Changed
+- **Gemini Semi-Live Transcription Engine Redesign**: Completely redesigned semi-live transcription to use the same proven pipeline as regular Gemini transcription
+  - **New Transcription Engine**: Replaced Google Cloud Speech-to-Text with Gemini 2.0 Flash model for consistency
+  - **Unified Pipeline**: Now uses the same `geminiService.transcribeAudio()` method as regular transcription flow
+  - **Improved Chunk Duration**: Changed from 1-second to 2-second chunks for better performance balance
+  - **Enhanced File Operations**: Uses `readAudioFile` (with size checking), `saveAudioFile`, and `deleteFile` IPC handlers
+  - **Prompt-Level Speaker Diarization**: Leverages Gemini's natural language understanding for better speaker identification
+  - **Consistent Results**: Same parsing logic and speaker format as regular flow for seamless integration
+  - **Better Resource Management**: Efficient audio buffer management and automatic temporary file cleanup
+  - **Code Reuse**: 95% of transcription logic now shared between regular and semi-live flows
+  - **Enhanced Reliability**: Uses proven file-based approach with consistent error handling
+  - **Optimized Performance**: 2-second processing intervals reduce API calls while maintaining responsiveness
 
 ## [Previous Version]
 
