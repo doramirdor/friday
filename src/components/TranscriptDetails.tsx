@@ -1372,21 +1372,26 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     isSaving
   ]);
   
-  // Debounced auto-save function to avoid too frequent saves
+  // AUTO-SAVE DISABLED: Debounced auto-save function has been disabled to prevent database conflicts
   const debouncedAutoSave = useCallback(
     debounce(async () => {
-      // Don't auto-save while recording is active or already saving to prevent loops
-      if (isRecording || isSaving) {
-        console.log('Skipping auto-save during active recording or save in progress');
-        return;
-      }
+      // AUTO-SAVE DISABLED: All automatic saves have been disabled
+      console.log('🚫 AUTO-SAVE DISABLED: Debounced auto-save triggered but disabled to prevent database conflicts');
+      return;
       
-      try {
-        await handleSave();
-        console.log('Auto-saved meeting data');
-      } catch (error) {
-        console.error('Error during auto-save:', error);
-      }
+      // This code is now disabled to prevent database conflicts
+      // Don't auto-save while recording is active or already saving to prevent loops
+      // if (isRecording || isSaving) {
+      //   console.log('Skipping auto-save during active recording or save in progress');
+      //   return;
+      // }
+      // 
+      // try {
+      //   await handleSave();
+      //   console.log('Auto-saved meeting data');
+      // } catch (error) {
+      //   console.error('Error during auto-save:', error);
+      // }
     }, 1000), // 1 second debounce
     [handleSave, isRecording, isSaving]
   );
