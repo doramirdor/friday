@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Gemini Semi-Live Speaker Awareness and Performance**: Enhanced semi-live transcription with intelligent speaker tracking and faster processing
+  - **Reduced Default Chunk Duration**: Changed default chunk processing from 5 seconds to 1 second for near real-time transcription
+  - **Speaker Context Across Chunks**: Added intelligent speaker tracking that maintains speaker identity across audio chunks
+  - **Speaker Context Management**: Implemented speaker context storage with configurable timeout (default: 5 minutes)
+  - **Enhanced Speaker Continuity**: Added speaker context prompts to Gemini API calls to maintain consistent speaker identification
+  - **Speaker Context UI**: Added comprehensive UI controls for managing speaker context including toggle, timeout settings, and active context display
+  - **Speaker Statistics Tracking**: Added tracking of speaker segments count and last seen timestamps for better context management
+  - **Automatic Context Cleanup**: Implemented automatic removal of expired speakers from context based on configurable timeout
+  - **Manual Context Management**: Added manual speaker context clearing functionality with UI controls
+  - **Improved Speaker Merging**: Enhanced speaker detection to merge with existing context instead of creating duplicate speakers
+  - **Configurable Chunk Duration**: Made chunk duration fully configurable from 1-10 seconds with 1-second default for responsiveness
+  - **Speaker Context Persistence**: Speaker context persists across recording sessions until manually cleared or expired
 - **Gemini Live Service Interference**: Fixed crashes caused by old gemini-live service interfering with new semi-live implementation
   - **Removed Old Crashing Service**: Deleted the old `gemini-live.ts` service that had global error handlers causing interference
   - **Cleaned Up Dependencies**: Removed old `useGeminiLive` hook and `GeminiLiveTranscript` component that depended on the crashing service

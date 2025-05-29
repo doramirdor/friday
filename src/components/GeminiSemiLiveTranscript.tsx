@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Mic, Square, Sparkles, Trash2 } from 'lucide-react';
+import { Mic, Square, Sparkles, Trash2, Users, Clock } from 'lucide-react';
 import { useGeminiSemiLive } from '@/hooks/useGeminiSemiLive';
 import { GeminiSemiLiveOptions } from '@/services/gemini-semi-live';
 import { cn } from '@/lib/utils';
@@ -27,11 +27,15 @@ const GeminiSemiLiveTranscript: React.FC<GeminiSemiLiveTranscriptProps> = ({
     startRecording,
     stopRecording,
     clearTranscript,
-    speakers
+    speakers,
+    speakerContext,
+    clearSpeakerContext
   } = useGeminiSemiLive();
 
   const [languageCode, setLanguageCode] = useState('en-US');
-  const [chunkDuration, setChunkDuration] = useState(5);
+  const [chunkDuration, setChunkDuration] = useState(1);
+  const [maintainSpeakerContext, setMaintainSpeakerContext] = useState(true);
+  const [speakerContextTimeout, setSpeakerContextTimeout] = useState(5);
 
   const handleStartStop = useCallback(async () => {
     if (isRecording) {
@@ -43,12 +47,14 @@ const GeminiSemiLiveTranscript: React.FC<GeminiSemiLiveTranscriptProps> = ({
         enableSpeakerDiarization: true,
         maxSpeakerCount: maxSpeakers,
         chunkDurationMs: chunkDuration * 1000,
-        encoding: 'LINEAR16'
+        encoding: 'LINEAR16',
+        maintainSpeakerContext,
+        speakerContextTimeoutMs: speakerContextTimeout * 60 * 1000 // Convert minutes to milliseconds
       };
       
       await startRecording(options);
     }
-  }, [isRecording, startRecording, stopRecording, languageCode, maxSpeakers, chunkDuration]);
+  }, [isRecording, startRecording, stopRecording, languageCode, maxSpeakers, chunkDuration, maintainSpeakerContext, speakerContextTimeout]);
 
   const handleAddToMeeting = useCallback(() => {
     if (transcript && onTranscriptAdd) {
@@ -101,14 +107,87 @@ const GeminiSemiLiveTranscript: React.FC<GeminiSemiLiveTranscriptProps> = ({
             <Input
               id="chunk-duration"
               type="number"
-              min="3"
+              min="1"
               max="10"
               value={chunkDuration}
-              onChange={(e) => setChunkDuration(parseInt(e.target.value) || 5)}
+              onChange={(e) => setChunkDuration(parseInt(e.target.value) || 1)}
               disabled={isRecording}
               className="text-sm"
             />
           </div>
+        </div>
+
+        {/* Speaker Context Settings */}
+        <div className="space-y-3 p-3 border rounded-md bg-muted/50">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm font-medium">Speaker Context Settings</Label>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="maintain-speaker-context"
+                checked={maintainSpeakerContext}
+                onChange={(e) => setMaintainSpeakerContext(e.target.checked)}
+                disabled={isRecording}
+                className="rounded"
+              />
+              <Label htmlFor="maintain-speaker-context" className="text-sm">
+                Maintain speaker context
+              </Label>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="speaker-timeout" className="text-sm">Context timeout (minutes)</Label>
+              <Input
+                id="speaker-timeout"
+                type="number"
+                min="1"
+                max="60"
+                value={speakerContextTimeout}
+                onChange={(e) => setSpeakerContextTimeout(parseInt(e.target.value) || 5)}
+                disabled={isRecording || !maintainSpeakerContext}
+                className="text-sm"
+              />
+            </div>
+          </div>
+          
+          {speakerContext.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Active Speaker Context ({speakerContext.length})</Label>
+                <Button
+                  onClick={clearSpeakerContext}
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  disabled={isRecording}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Clear Context
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {speakerContext.map((speaker) => (
+                  <div
+                    key={speaker.id}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-xs border bg-background"
+                    title={`${speaker.totalSegments} segments, last seen ${Math.round((Date.now() - speaker.lastSeen) / 1000)}s ago`}
+                  >
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: speaker.color }}
+                    />
+                    <span>{speaker.name}</span>
+                    <Clock className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">{speaker.totalSegments}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Controls */}
@@ -221,6 +300,9 @@ const GeminiSemiLiveTranscript: React.FC<GeminiSemiLiveTranscriptProps> = ({
           <p>• Uses Gemini 2.0 Flash for high-quality transcription</p>
           <p>• Automatically detects up to {maxSpeakers} speakers</p>
           <p>• Processes audio in {chunkDuration}-second chunks for stability</p>
+          {maintainSpeakerContext && (
+            <p>• Maintains speaker context across chunks for {speakerContextTimeout} minutes</p>
+          )}
         </div>
       </div>
     </div>

@@ -15,6 +15,21 @@ interface UseGeminiSemiLiveReturn {
     name: string;
     color: string;
   }>;
+  speakerContext: Array<{
+    id: string;
+    name: string;
+    color: string;
+    lastSeen: number;
+    totalSegments: number;
+  }>;
+  clearSpeakerContext: () => void;
+  getSpeakerContext: () => Array<{
+    id: string;
+    name: string;
+    color: string;
+    lastSeen: number;
+    totalSegments: number;
+  }>;
 }
 
 export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
@@ -25,6 +40,13 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
     id: string;
     name: string;
     color: string;
+  }>>([]);
+  const [speakerContext, setSpeakerContext] = useState<Array<{
+    id: string;
+    name: string;
+    color: string;
+    lastSeen: number;
+    totalSegments: number;
   }>>([]);
   
   const { toast } = useToast();
@@ -56,6 +78,12 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
           const newSpeakers = result.speakers!.filter(s => !existingSpeakerIds.has(s.id));
           return [...prevSpeakers, ...newSpeakers];
         });
+      }
+
+      // Update speaker context if provided
+      if (result.speakerContext && result.speakerContext.length > 0) {
+        setSpeakerContext(result.speakerContext);
+        console.log(`📊 Speaker context updated: ${result.speakerContext.length} speakers tracked`);
       }
       
       console.log('✅ Transcript updated with new chunk:', newText);
@@ -152,6 +180,24 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
     console.log('🧹 Transcript cleared');
   }, []);
 
+  // Clear speaker context function
+  const clearSpeakerContext = useCallback(() => {
+    if (isAvailable) {
+      geminiSemiLiveService.clearSpeakerContext();
+      setSpeakerContext([]);
+      setSpeakers([]);
+      console.log('🧹 Speaker context cleared');
+    }
+  }, [isAvailable]);
+
+  // Get speaker context function
+  const getSpeakerContext = useCallback(() => {
+    if (isAvailable) {
+      return geminiSemiLiveService.getSpeakerContext();
+    }
+    return [];
+  }, [isAvailable]);
+
   // Sync recording state with service
   useEffect(() => {
     setIsRecording(geminiSemiLiveService.isRecording);
@@ -165,6 +211,9 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
     startRecording,
     stopRecording,
     clearTranscript,
-    speakers
+    speakers,
+    speakerContext,
+    clearSpeakerContext,
+    getSpeakerContext
   };
 }; 

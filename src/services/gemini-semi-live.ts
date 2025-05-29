@@ -11,6 +11,14 @@ export interface GeminiSemiLiveResult {
     name: string;
     color: string;
   }>;
+  // New field for speaker continuity
+  speakerContext?: Array<{
+    id: string;
+    name: string;
+    color: string;
+    lastSeen: number; // timestamp
+    totalSegments: number;
+  }>;
 }
 
 // Interface for semi-live Gemini options
@@ -21,6 +29,9 @@ export interface GeminiSemiLiveOptions {
   maxSpeakerCount?: number;
   chunkDurationMs?: number; // How often to send chunks (in milliseconds)
   encoding?: 'LINEAR16' | 'WEBM_OPUS';
+  // New options for speaker context
+  maintainSpeakerContext?: boolean;
+  speakerContextTimeoutMs?: number; // How long to remember speakers (default: 5 minutes)
 }
 
 // Interface for the semi-live Gemini service
@@ -31,6 +42,9 @@ export interface GeminiSemiLiveService {
   stopRecording: () => void;
   onResult: (callback: (result: GeminiSemiLiveResult) => void) => void;
   onError: (callback: (error: Error) => void) => void;
+  // New speaker context methods
+  clearSpeakerContext: () => void;
+  getSpeakerContext: () => Array<{ id: string; name: string; color: string; lastSeen: number; totalSegments: number }>;
 }
 
 class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
@@ -47,6 +61,16 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
   private audioChunks: Float32Array[] = [];
   private chunkInterval: number | null = null;
   private options: GeminiSemiLiveOptions = {};
+
+  // Speaker context tracking
+  private speakerContext: Map<string, {
+    id: string;
+    name: string;
+    color: string;
+    lastSeen: number;
+    totalSegments: number;
+  }> = new Map();
+  private nextSpeakerId = 1;
 
   constructor() {
     try {
@@ -133,8 +157,10 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
         languageCode: 'en-US',
         enableSpeakerDiarization: true,
         maxSpeakerCount: 4,
-        chunkDurationMs: 5000, // Send chunks every 5 seconds
+        chunkDurationMs: 1000, // Send chunks every 1 second
         encoding: 'LINEAR16',
+        maintainSpeakerContext: true,
+        speakerContextTimeoutMs: 300000, // 5 minutes
         ...options
       };
 
@@ -439,6 +465,21 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       
       console.log('🌐 Sending audio to Gemini API...');
 
+      // Build speaker context information for better continuity
+      let speakerContextPrompt = '';
+      if (this.options.maintainSpeakerContext && this.speakerContext.size > 0) {
+        const activeSpeakers = Array.from(this.speakerContext.values())
+          .filter(speaker => Date.now() - speaker.lastSeen < (this.options.speakerContextTimeoutMs || 300000))
+          .sort((a, b) => b.totalSegments - a.totalSegments); // Sort by activity
+
+        if (activeSpeakers.length > 0) {
+          speakerContextPrompt = `\n\nContext: Previous speakers detected in this conversation:
+${activeSpeakers.map(s => `- ${s.name} (ID: ${s.id}, segments: ${s.totalSegments}, last seen: ${Math.round((Date.now() - s.lastSeen) / 1000)}s ago)`).join('\n')}
+
+Please maintain speaker consistency by using the same speaker IDs when you recognize the same voices. If you detect a speaker that sounds like one of the previous speakers, use their existing ID and name.`;
+        }
+      }
+
       const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=' + this.apiKey, {
         method: 'POST',
         headers: {
@@ -452,7 +493,7 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
                 data: audioData
               }
             }, {
-              text: `Please transcribe this audio with speaker diarization. Format the response as markdown with speaker labels like "**Speaker 1**: [text]". Maximum ${this.options.maxSpeakerCount} speakers. Language: ${this.options.languageCode}.`
+              text: `Please transcribe this audio with speaker diarization. Format the response as markdown with speaker labels like "**Speaker 1**: [text]". Maximum ${this.options.maxSpeakerCount} speakers. Language: ${this.options.languageCode}.${speakerContextPrompt}`
             }]
           }],
           generationConfig: {
@@ -488,7 +529,7 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
   private parseGeminiResponse(text: string): GeminiSemiLiveResult {
     // Parse markdown-formatted response with speaker labels
     const lines = text.split('\n').filter(line => line.trim());
-    const speakers = new Set<string>();
+    const detectedSpeakers = new Set<string>();
     let transcript = '';
 
     for (const line of lines) {
@@ -496,7 +537,7 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       if (speakerMatch) {
         const speakerNum = speakerMatch[1];
         const speakerText = speakerMatch[2];
-        speakers.add(speakerNum);
+        detectedSpeakers.add(speakerNum);
         
         if (transcript) transcript += '\n';
         transcript += `Speaker ${speakerNum}: ${speakerText}`;
@@ -507,24 +548,102 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       }
     }
 
-    // Generate speaker objects
-    const speakerObjects = Array.from(speakers).map(num => ({
-      id: num,
-      name: `Speaker ${num}`,
-      color: this.getSpeakerColor(parseInt(num))
-    }));
+    // Update speaker context if enabled
+    const now = Date.now();
+    const speakerObjects: Array<{ id: string; name: string; color: string }> = [];
+
+    for (const speakerNum of detectedSpeakers) {
+      const speakerId = speakerNum;
+      const speakerName = `Speaker ${speakerNum}`;
+      
+      // Check if this speaker already exists in context
+      const existingSpeaker = this.speakerContext.get(speakerId);
+      
+      if (this.options.maintainSpeakerContext) {
+        if (existingSpeaker) {
+          // Update existing speaker
+          existingSpeaker.lastSeen = now;
+          existingSpeaker.totalSegments += 1;
+          this.speakerContext.set(speakerId, existingSpeaker);
+          
+          speakerObjects.push({
+            id: existingSpeaker.id,
+            name: existingSpeaker.name,
+            color: existingSpeaker.color
+          });
+          
+          console.log(`🔄 Updated existing speaker context: ${existingSpeaker.name} (segments: ${existingSpeaker.totalSegments})`);
+        } else {
+          // Create new speaker in context
+          const newSpeaker = {
+            id: speakerId,
+            name: speakerName,
+            color: this.getSpeakerColor(parseInt(speakerNum)),
+            lastSeen: now,
+            totalSegments: 1
+          };
+          
+          this.speakerContext.set(speakerId, newSpeaker);
+          
+          speakerObjects.push({
+            id: newSpeaker.id,
+            name: newSpeaker.name,
+            color: newSpeaker.color
+          });
+          
+          console.log(`✨ Added new speaker to context: ${newSpeaker.name}`);
+        }
+      } else {
+        // Legacy behavior when context is disabled
+        speakerObjects.push({
+          id: speakerId,
+          name: speakerName,
+          color: this.getSpeakerColor(parseInt(speakerNum))
+        });
+      }
+    }
+
+    // Clean up old speakers from context (older than timeout)
+    if (this.options.maintainSpeakerContext) {
+      const timeout = this.options.speakerContextTimeoutMs || 300000;
+      const expiredSpeakers: string[] = [];
+      
+      for (const [id, speaker] of this.speakerContext.entries()) {
+        if (now - speaker.lastSeen > timeout) {
+          expiredSpeakers.push(id);
+        }
+      }
+      
+      for (const id of expiredSpeakers) {
+        const removed = this.speakerContext.get(id);
+        this.speakerContext.delete(id);
+        console.log(`🧹 Removed expired speaker from context: ${removed?.name} (last seen ${Math.round((now - (removed?.lastSeen || 0)) / 1000)}s ago)`);
+      }
+    }
 
     return {
       transcript: transcript || text,
       isFinal: true, // All results are final in semi-live approach
       confidence: 0.9, // Gemini doesn't provide confidence, use default
-      speakers: speakerObjects
+      speakers: speakerObjects,
+      speakerContext: this.generateSpeakerContext(Array.from(this.speakerContext.values()))
     };
   }
 
   private getSpeakerColor(speakerNum: number): string {
     const colors = ["#28C76F", "#7367F0", "#FF9F43", "#EA5455", "#00CFE8", "#9F44D3", "#666666", "#FE9900"];
     return colors[speakerNum % colors.length];
+  }
+
+  private generateSpeakerContext(speakers: Array<{ id: string; name: string; color: string; lastSeen: number; totalSegments: number }>): Array<{ id: string; name: string; color: string; lastSeen: number; totalSegments: number }> {
+    // Return a copy of the speaker context array for the result
+    return speakers.map(speaker => ({
+      id: speaker.id,
+      name: speaker.name,
+      color: speaker.color,
+      lastSeen: speaker.lastSeen,
+      totalSegments: speaker.totalSegments
+    }));
   }
 
   stopRecording(): void {
@@ -588,6 +707,9 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       // Clear audio chunks
       this.audioChunks.length = 0;
       
+      // Clear speaker context optionally (keep it by default to maintain continuity across recording sessions)
+      // this.clearSpeakerContext();
+      
       console.log('🧹 Gemini Semi-Live cleanup completed');
     } catch (error) {
       console.error('❌ Error during cleanup:', error);
@@ -598,6 +720,22 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       this.mediaStream = null;
       this.audioChunks.length = 0;
     }
+  }
+
+  /**
+   * Clear the speaker context manually
+   */
+  clearSpeakerContext(): void {
+    this.speakerContext.clear();
+    this.nextSpeakerId = 1;
+    console.log('🧹 Speaker context cleared');
+  }
+
+  /**
+   * Get current speaker context for debugging
+   */
+  getSpeakerContext(): Array<{ id: string; name: string; color: string; lastSeen: number; totalSegments: number }> {
+    return Array.from(this.speakerContext.values());
   }
 
   onResult(callback: (result: GeminiSemiLiveResult) => void): void {
