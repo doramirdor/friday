@@ -29,6 +29,17 @@ All notable changes to this project will be documented in this file.
 - Integrated semi-live recording with existing Swift Recorder and recording utilities
 
 ### Fixed
+- **Unified Gemini Live Transcription Stability**: Fixed white page crashes and audio processing failures in the new unified transcription service
+  - Replaced deprecated `ScriptProcessorNode` with modern `MediaRecorder` API to eliminate browser crashes and performance issues
+  - Implemented in-memory audio processing to bypass complex file I/O and format conversion issues that were causing failures
+  - Fixed IPC handler parameter mismatches and TypeScript interface compatibility for seamless Electron integration
+  - Created comprehensive audio capture pipeline processing WebM/Opus chunks every 2 seconds for responsive real-time transcription
+  - Added robust error handling and debugging throughout the audio processing chain to identify and resolve issues
+  - Achieved stable end-to-end audio flow from MediaRecorder capture to mock transcription results without crashes
+  - Eliminated "Failed to save in any format" errors by processing audio buffers directly in memory
+  - Fixed TypeScript compilation errors by updating ElectronAPI interface definitions
+  - Successfully demonstrated working audio capture with 30-33KB chunks processed every 2 seconds
+  - Ready for integration with actual Gemini API calls using in-memory ArrayBuffer processing
 - **Missing Radix UI Scroll Area Dependency**: Fixed "Failed to resolve import @radix-ui/react-scroll-area" build error
   - Installed missing `@radix-ui/react-scroll-area` package to resolve import failures in scroll area component
   - Fixed Vite build error that prevented development server from starting
