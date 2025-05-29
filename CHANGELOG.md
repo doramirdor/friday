@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Missing Radix UI Scroll Area Dependency**: Fixed "Failed to resolve import @radix-ui/react-scroll-area" build error
+  - Installed missing `@radix-ui/react-scroll-area` package to resolve import failures in scroll area component
+  - Fixed Vite build error that prevented development server from starting
+  - Resolved import resolution error in `src/components/ui/scroll-area.tsx`
+  - Added scroll area component dependency to package.json for consistent UI component library
 - **File-Based Gemini Semi-Live Service Interface Compatibility**: Fixed "TypeError: geminiSemiLiveService.onResult is not a function" error
   - Added missing `onResult`, `onError`, and `destroy` methods to FileSemiLiveService
   - Added event handling capabilities with callbacks for transcription results and errors
