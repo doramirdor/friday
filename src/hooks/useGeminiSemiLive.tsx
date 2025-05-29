@@ -220,7 +220,7 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
 
   // Sync recording state with service
   useEffect(() => {
-    setIsRecording(geminiSemiLiveService.isRecording);
+    setIsRecording(geminiSemiLiveService.isRecording());
   }, []);
 
   return {

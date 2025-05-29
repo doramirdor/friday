@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **File-Based Gemini Semi-Live Service Interface Compatibility**: Fixed "TypeError: geminiSemiLiveService.onResult is not a function" error
+  - Added missing `onResult`, `onError`, and `destroy` methods to FileSemiLiveService
+  - Added event handling capabilities with callbacks for transcription results and errors
+  - Made `isAvailable` a property instead of method to match useGeminiSemiLive hook expectations
+  - Added proper TypeScript interfaces for better type safety and error prevention
+  - Updated LegacyAdapter to implement all required methods for backward compatibility with existing code
+  - Fixed file-based transcription service to work seamlessly with existing useGeminiSemiLive hook
+  - Ensured the new file-based approach maintains the same interface as the original memory-based service
+  - Resolved React component crashes that occurred when TranscriptDetails component tried to register result callbacks
+
 ### Changed
 - **Complete Auto-Save System Elimination**: Completely eliminated all automatic save operations to prevent database conflicts
   - **Meeting Auto-Save Disabled**: Disabled auto-save in Gemini Semi-Live transcription buffering system
