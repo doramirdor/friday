@@ -324,6 +324,38 @@ class GeminiLiveUnifiedService {
       }, 100);
       
       setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 200MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 200ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: ===== END 200MS DELAYED CHECK =====');
+      }, 200);
+      
+      setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 300MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 300ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: ===== END 300MS DELAYED CHECK =====');
+      }, 300);
+      
+      setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 400MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 400ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: ===== END 400MS DELAYED CHECK =====');
+      }, 400);
+      
+      setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 500MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 500ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: ===== END 500MS DELAYED CHECK =====');
+      }, 500);
+      
+      setTimeout(() => {
         console.log('🔍 CRASH DEBUG: ===== 1000MS DELAYED CHECK =====');
         console.log('🔍 CRASH DEBUG: 1000ms later - still alive, checking state...');
         console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
