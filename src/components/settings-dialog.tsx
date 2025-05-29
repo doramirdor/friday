@@ -41,16 +41,21 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
     if (!settings) return
     
     try {
-      await updateSettings({ liveTranscript: checked })
+      // AUTO-SAVE DISABLED: Settings updates disabled to prevent database conflicts
+      console.log('🚫 AUTO-SAVE DISABLED: Live transcript setting changed but not automatically saved');
       
       // Notify parent component of change
       if (onSettingsChange) {
         onSettingsChange({ liveTranscript: checked })
       }
       
-      toast.success("Live transcript setting saved")
+      // This code is now disabled to prevent database conflicts:
+      // await updateSettings({ liveTranscript: checked })
+      // toast.success("Live transcript setting saved")
+      
+      toast.success("Live transcript setting changed (not saved to database)")
     } catch (err) {
-      toast.error("Failed to save live transcript setting")
+      toast.error("Failed to update live transcript setting")
     }
   }
   
@@ -59,10 +64,16 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
     if (!settings) return
     
     try {
-      await updateSettings({ apiKey })
-      toast.success("API key saved")
+      // AUTO-SAVE DISABLED: Settings updates disabled to prevent database conflicts
+      console.log('🚫 AUTO-SAVE DISABLED: API key changed but not automatically saved');
+      
+      // This code is now disabled to prevent database conflicts:
+      // await updateSettings({ apiKey })
+      // toast.success("API key saved")
+      
+      toast.success("API key changed (not saved to database)")
     } catch (err) {
-      toast.error("Failed to save API key")
+      toast.error("Failed to update API key")
     }
   }
   
@@ -71,36 +82,43 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
     if (!settings) return
     
     try {
-      await updateSettings({ geminiApiKey })
+      // AUTO-SAVE DISABLED: Settings updates disabled to prevent database conflicts
+      console.log('🚫 AUTO-SAVE DISABLED: Gemini API key changed but not automatically saved');
       
-      // Reinitialize Gemini service with new API key
+      // Reinitialize Gemini service with new API key (this part can stay)
       await geminiService.reinitialize()
       
       // Reinitialize Gemini Semi-Live service (replaced old gemini-live)
       const geminiSemiLiveService = (await import('@/services/gemini-semi-live')).geminiSemiLiveService;
       // Note: gemini-semi-live doesn't need reinitialize method as it checks API key on each use
       
-      toast.success("Gemini API key saved")
+      // This code is now disabled to prevent database conflicts:
+      // await updateSettings({ geminiApiKey })
+      // toast.success("Gemini API key saved")
+      
+      toast.success("Gemini API key changed (not saved to database)")
     } catch (err) {
-      toast.error("Failed to save Gemini API key")
+      toast.error("Failed to update Gemini API key")
     }
   }
-  
-
   
   // Handle theme change
   const handleThemeChange = async (newTheme: "light" | "dark" | "system") => {
     if (!settings) return
     
-    // Update theme provider
+    // Update theme provider (this part can stay)
     setTheme(newTheme)
     
+    // AUTO-SAVE DISABLED: Settings updates disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Theme changed but not automatically saved');
+    
+    // This code is now disabled to prevent database conflicts:
     // Save to database
-    try {
-      await updateSettings({ theme: newTheme })
-    } catch (err) {
-      console.error("Failed to save theme setting:", err)
-    }
+    // try {
+    //   await updateSettings({ theme: newTheme })
+    // } catch (err) {
+    //   console.error("Failed to save theme setting:", err)
+    // }
   }
   
   // Handle auto launch toggle
@@ -108,10 +126,16 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
     if (!settings) return
     
     try {
-      await updateSettings({ autoLaunch: checked })
-      toast.success("Auto launch setting saved")
+      // AUTO-SAVE DISABLED: Settings updates disabled to prevent database conflicts
+      console.log('🚫 AUTO-SAVE DISABLED: Auto launch setting changed but not automatically saved');
+      
+      // This code is now disabled to prevent database conflicts:
+      // await updateSettings({ autoLaunch: checked })
+      // toast.success("Auto launch setting saved")
+      
+      toast.success("Auto launch setting changed (not saved to database)")
     } catch (err) {
-      toast.error("Failed to save auto launch setting")
+      toast.error("Failed to update auto launch setting")
     }
   }
   
@@ -120,8 +144,14 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
     if (!settings) return
     
     try {
-      await updateSettings({ saveLocation: location })
-      toast.success("Save location updated")
+      // AUTO-SAVE DISABLED: Settings updates disabled to prevent database conflicts
+      console.log('🚫 AUTO-SAVE DISABLED: Save location changed but not automatically saved');
+      
+      // This code is now disabled to prevent database conflicts:
+      // await updateSettings({ saveLocation: location })
+      // toast.success("Save location updated")
+      
+      toast.success("Save location changed (not saved to database)")
     } catch (err) {
       toast.error("Failed to update save location")
     }
@@ -327,8 +357,6 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
                     </a>
                   </p>
                 </div>
-                
-
                 
                 <div className="border-t my-4 pt-4">
                   <h3 className="text-sm font-medium mb-4">Audio Devices</h3>

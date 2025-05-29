@@ -700,10 +700,14 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     console.log(`Changing recording source to ${source}`);
     setRecordingSource(source);
     
+    // AUTO-SAVE DISABLED: Settings updates disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Recording source changed but settings not automatically saved');
+    
+    // This code is now disabled to prevent database conflicts:
     // Save to settings if available
-    if (settings && updateSettings) {
-      updateSettings({ recordingSource: source });
-    }
+    // if (settings && updateSettings) {
+    //   updateSettings({ recordingSource: source });
+    // }
     
     toast.success(`Recording source changed to ${source === 'both' ? 'system audio + microphone' : source}`);
   }, [settings, updateSettings]);

@@ -44,11 +44,14 @@ export const useSettings = () => {
             recordingSource: dbSettings.recordingSource || 'system'
           }));
         } else {
-          // No settings in database, check localStorage for legacy settings
+          // AUTO-SAVE DISABLED: No automatic settings creation to prevent database conflicts
+          console.log('🚫 AUTO-SAVE DISABLED: Settings not found in database, using defaults without auto-creation');
+          
+          // Check localStorage for legacy settings but don't auto-save to database
           const localSettings = localStorage.getItem('friday-settings');
           
           if (localSettings) {
-            // Convert legacy localStorage settings to new format
+            // Use legacy localStorage settings but don't auto-save to database
             const parsedLocalSettings = JSON.parse(localSettings);
             const newSettings: UserSettings = {
               ...defaultSettings,
@@ -57,19 +60,21 @@ export const useSettings = () => {
               updatedAt: new Date().toISOString()
             };
             
-            // Save the converted settings to database
-            const savedSettings = await DatabaseService.saveSettings(newSettings);
-            setSettings(savedSettings);
+            // AUTO-SAVE DISABLED: Don't automatically save settings to prevent conflicts
+            // const savedSettings = await DatabaseService.saveSettings(newSettings);
+            console.log('🚫 AUTO-SAVE DISABLED: Legacy settings loaded but not automatically saved to database');
+            setSettings(newSettings);
           } else {
-            // No settings anywhere, create default settings
+            // No settings anywhere, use defaults but don't auto-save
             const newSettings: UserSettings = {
               ...defaultSettings,
               type: 'settings',
               updatedAt: new Date().toISOString()
             };
             
-            const savedSettings = await DatabaseService.saveSettings(newSettings);
-            setSettings(savedSettings);
+            // AUTO-SAVE DISABLED: Don't automatically create default settings to prevent conflicts
+            console.log('🚫 AUTO-SAVE DISABLED: Using default settings without auto-creation');
+            setSettings(newSettings);
           }
         }
       } catch (err) {
@@ -90,6 +95,13 @@ export const useSettings = () => {
           } catch (parseErr) {
             console.error('Error parsing localStorage settings:', parseErr);
           }
+        } else {
+          // Use default settings if everything fails
+          setSettings({
+            ...defaultSettings,
+            type: 'settings',
+            updatedAt: new Date().toISOString()
+          });
         }
       } finally {
         setIsLoading(false);
@@ -113,23 +125,30 @@ export const useSettings = () => {
         updatedAt: new Date().toISOString()
       };
       
-      // Update database
-      const savedSettings = await DatabaseService.saveSettings(updatedSettings);
+      // AUTO-SAVE DISABLED: Settings updates no longer automatically save to database
+      console.log('🚫 AUTO-SAVE DISABLED: Settings updated in memory only, not saved to database');
       
-      // Update state
-      setSettings(savedSettings);
+      // Update state only (no database save)
+      setSettings(updatedSettings);
       
       // Update localStorage for compatibility with existing code
       localStorage.setItem('friday-settings', JSON.stringify({
-        liveTranscript: savedSettings.liveTranscript,
-        theme: savedSettings.theme || 'system',
-        recordingSource: savedSettings.recordingSource || 'system'
+        liveTranscript: updatedSettings.liveTranscript,
+        theme: updatedSettings.theme || 'system',
+        recordingSource: updatedSettings.recordingSource || 'system'
       }));
       
-      return savedSettings;
+      return updatedSettings;
+      
+      // This code is now disabled to prevent database conflicts:
+      // Update database
+      // const savedSettings = await DatabaseService.saveSettings(updatedSettings);
+      // Update state
+      // setSettings(savedSettings);
+      
     } catch (err) {
       console.error('Error updating settings:', err);
-      toast.error('Failed to save settings');
+      toast.error('Failed to update settings');
       throw err;
     }
   }, [settings]);
@@ -145,18 +164,26 @@ export const useSettings = () => {
         updatedAt: new Date().toISOString()
       };
       
-      const savedSettings = await DatabaseService.saveSettings(newSettings);
-      setSettings(savedSettings);
+      // AUTO-SAVE DISABLED: Settings reset no longer automatically saves to database
+      console.log('🚫 AUTO-SAVE DISABLED: Settings reset in memory only, not saved to database');
+      setSettings(newSettings);
       
       // Update localStorage
       localStorage.setItem('friday-settings', JSON.stringify({
-        liveTranscript: savedSettings.liveTranscript,
-        theme: savedSettings.theme || 'system',
-        recordingSource: savedSettings.recordingSource || 'system'
+        liveTranscript: newSettings.liveTranscript,
+        theme: newSettings.theme || 'system',
+        recordingSource: newSettings.recordingSource || 'system'
       }));
       
-      toast.success('Settings reset to defaults');
-      return savedSettings;
+      toast.success('Settings reset to defaults (not saved to database)');
+      return newSettings;
+      
+      // This code is now disabled to prevent database conflicts:
+      // const savedSettings = await DatabaseService.saveSettings(newSettings);
+      // setSettings(savedSettings);
+      // toast.success('Settings reset to defaults');
+      // return savedSettings;
+      
     } catch (err) {
       console.error('Error resetting settings:', err);
       toast.error('Failed to reset settings');
