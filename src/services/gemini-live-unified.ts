@@ -2,7 +2,7 @@
 import geminiService, { GeminiTranscriptionResult } from './gemini';
 
 // Unified Gemini Live Transcription Service
-// Reuses existing proven Gemini transcribeAudio method and file-based approach
+// Captures audio using MediaRecorder and transcribes using Gemini 2.0 Flash API in real-time
 
 export interface GeminiLiveOptions {
   languageCode?: string;
@@ -298,7 +298,7 @@ class GeminiLiveUnifiedService {
       
       const startTime = Date.now();
 
-      console.log('🔍 GEMINI DEBUG: 🚀 Processing in-memory audio buffer...');
+      console.log('🔍 GEMINI DEBUG: 🚀 Calling actual Gemini API with audio buffer...');
       console.log('🔍 GEMINI DEBUG: Request details:', {
         size: chunk.size,
         duration: chunk.duration,
@@ -306,20 +306,25 @@ class GeminiLiveUnifiedService {
         timestamp: new Date().toISOString()
       });
 
-      // For now, create a mock result to test the flow
-      // TODO: Implement actual Gemini API call with in-memory buffer
-      const result: GeminiTranscriptionResult = {
-        transcript: `[${new Date().toLocaleTimeString()}] Live transcription chunk ${this.stats.chunksProcessed + 1} - ${(chunk.size / 1024).toFixed(1)}KB audio processed successfully!`,
-        speakers: [
-          { 
-            id: "1", 
-            name: "Speaker 1", 
-            color: "#28C76F",
-            meetingId: "live-unified-session",
-            type: "speaker"
-          }
-        ]
-      };
+      // Convert ArrayBuffer to Blob with WebM format for Gemini API
+      const audioBlob = new Blob([chunk.audioBuffer], { type: 'audio/webm' });
+      
+      // Create a File object from the blob (Gemini service expects File | string)
+      const audioFile = new File([audioBlob], `live-chunk-${chunk.timestamp}.webm`, { 
+        type: 'audio/webm' 
+      });
+
+      console.log('🔍 GEMINI DEBUG: Created audio file for transcription:', {
+        name: audioFile.name,
+        type: audioFile.type,
+        size: audioFile.size
+      });
+
+      // Call actual Gemini transcription service
+      const result: GeminiTranscriptionResult = await geminiService.transcribeAudio(
+        audioFile,
+        this.options.maxSpeakers
+      );
 
       const processingTime = Date.now() - startTime;
       console.log(`🔍 GEMINI DEBUG: ✅ Received response from Gemini API (${processingTime}ms)`);
