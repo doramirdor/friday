@@ -244,8 +244,16 @@ All notable changes to this project will be documented in this file.
   - Improved error logging with detailed crash information, stack traces, and timestamps
   - Added safety checks to prevent crashes during WebSocket initialization and audio processing setup
 - **CRITICAL**: Fixed crash issue in all live transcription services (gemini-live-unified.ts, gemini-live-transcript.ts, gemini-semi-live.ts) by replacing deprecated ScriptProcessorNode with MediaRecorder API
+- **CRITICAL**: Fixed audio file saving failure in MediaRecorder implementation by adding proper audio format detection (WebM/Opus) and native format saving
 - Live transcription services were crashing due to ScriptProcessorNode deprecation and performance issues in Electron environment
-- Switched to modern MediaRecorder API which is more stable and avoids Web Audio API performance pitfalls
+- MediaRecorder audio blobs (WebM/Opus format) were failing to save because main process expected WAV format
+
+### Changed
+- Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
+- Audio file saving now detects native format (WebM, WAV, OGG, MP3) from buffer headers and saves in native format first
+- FFmpeg conversion now properly converts from detected native format to requested target formats
+- Improved audio processing pipeline with better blob handling and error recovery
+- Removed extensive debug logging that was potentially contributing to performance issues
 
 ## [2024-12-19] - Gemini Semi-Live Service Integration
 
