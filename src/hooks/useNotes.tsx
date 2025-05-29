@@ -29,31 +29,16 @@ export function useNotes(transcriptId: string) {
     fetchNotes();
   }, [transcriptId]);
   
-  // Save notes to database (debounced with longer delay to reduce frequency)
+  // AUTO-SAVE DISABLED: Notes auto-save has been disabled to prevent database conflicts
+  // Notes will only be saved when the user manually saves the meeting
   useEffect(() => {
     if (!transcriptId || transcriptId === 'new' || !notes || notes.trim().length < 3) {
       return;
     }
     
-    const saveTimer = setTimeout(async () => {
-      try {
-        setIsSaving(true);
-        await DatabaseService.saveNotes({
-          meetingId: transcriptId,
-          content: notes,
-          type: 'notes',
-          updatedAt: new Date().toISOString(),
-        });
-        setError(null);
-      } catch (err) {
-        console.error('Error saving notes:', err);
-        setError('Failed to save notes');
-      } finally {
-        setIsSaving(false);
-      }
-    }, 3000); // 3 second debounce to reduce auto-save frequency
+    console.log('🚫 AUTO-SAVE DISABLED: Notes changes will not be automatically saved to database');
+    // Auto-save is disabled - no timer or database save operation
     
-    return () => clearTimeout(saveTimer);
   }, [notes, transcriptId]);
   
   // Function to handle text formatting

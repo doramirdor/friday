@@ -193,14 +193,8 @@ export default function useTranscript(meetingId: string) {
     
     setTranscriptLines(prev => [...prev, newLine]);
     
-    // Auto-save if enabled
-    if (isAutoSaveEnabled && isElectron) {
-      const transcriptAPI = (window as unknown as TranscriptWindowAPI).transcriptAPI;
-      if (transcriptAPI) {
-        transcriptAPI.updateTranscript(meetingId, [...transcriptLines, newLine], speakers)
-          .catch(err => console.error('Auto-save error:', err));
-      }
-    }
+    // AUTO-SAVE DISABLED: Transcript auto-save has been disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Transcript line added but not automatically saved');
     
     return newLine;
   }, [meetingId, transcriptLines, speakers, isAutoSaveEnabled, isElectron]);
@@ -213,34 +207,16 @@ export default function useTranscript(meetingId: string) {
       )
     );
     
-    // Auto-save if enabled
-    if (isAutoSaveEnabled && isElectron) {
-      const updatedLines = transcriptLines.map(line => 
-        line.id === id ? { ...line, ...updates } : line
-      );
-      
-      const transcriptAPI = (window as unknown as TranscriptWindowAPI).transcriptAPI;
-      if (transcriptAPI) {
-        transcriptAPI.updateTranscript(meetingId, updatedLines, speakers)
-          .catch(err => console.error('Auto-save error:', err));
-      }
-    }
+    // AUTO-SAVE DISABLED: Transcript auto-save has been disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Transcript line updated but not automatically saved');
   }, [meetingId, transcriptLines, speakers, isAutoSaveEnabled, isElectron]);
 
   // Delete a transcript line
   const deleteTranscriptLine = useCallback((id: string) => {
     setTranscriptLines(prev => prev.filter(line => line.id !== id));
     
-    // Auto-save if enabled
-    if (isAutoSaveEnabled && isElectron) {
-      const updatedLines = transcriptLines.filter(line => line.id !== id);
-      
-      const transcriptAPI = (window as unknown as TranscriptWindowAPI).transcriptAPI;
-      if (transcriptAPI) {
-        transcriptAPI.updateTranscript(meetingId, updatedLines, speakers)
-          .catch(err => console.error('Auto-save error:', err));
-      }
-    }
+    // AUTO-SAVE DISABLED: Transcript auto-save has been disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Transcript line deleted but not automatically saved');
   }, [meetingId, transcriptLines, speakers, isAutoSaveEnabled, isElectron]);
 
   // Add a speaker
@@ -252,14 +228,8 @@ export default function useTranscript(meetingId: string) {
     
     setSpeakers(prev => [...prev, newSpeaker]);
     
-    // Auto-save if enabled
-    if (isAutoSaveEnabled && isElectron) {
-      const transcriptAPI = (window as unknown as TranscriptWindowAPI).transcriptAPI;
-      if (transcriptAPI) {
-        transcriptAPI.updateTranscript(meetingId, transcriptLines, [...speakers, newSpeaker])
-          .catch(err => console.error('Auto-save error:', err));
-      }
-    }
+    // AUTO-SAVE DISABLED: Speaker auto-save has been disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Speaker added but not automatically saved');
     
     return newSpeaker;
   }, [meetingId, transcriptLines, speakers, isAutoSaveEnabled, isElectron]);
@@ -272,34 +242,16 @@ export default function useTranscript(meetingId: string) {
       )
     );
     
-    // Auto-save if enabled
-    if (isAutoSaveEnabled && isElectron) {
-      const updatedSpeakers = speakers.map(speaker => 
-        speaker.id === id ? { ...speaker, ...updates } : speaker
-      );
-      
-      const transcriptAPI = (window as unknown as TranscriptWindowAPI).transcriptAPI;
-      if (transcriptAPI) {
-        transcriptAPI.updateTranscript(meetingId, transcriptLines, updatedSpeakers)
-          .catch(err => console.error('Auto-save error:', err));
-      }
-    }
+    // AUTO-SAVE DISABLED: Speaker auto-save has been disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Speaker updated but not automatically saved');
   }, [meetingId, transcriptLines, speakers, isAutoSaveEnabled, isElectron]);
 
   // Delete a speaker
   const deleteSpeaker = useCallback((id: string) => {
     setSpeakers(prev => prev.filter(speaker => speaker.id !== id));
     
-    // Auto-save if enabled
-    if (isAutoSaveEnabled && isElectron) {
-      const updatedSpeakers = speakers.filter(speaker => speaker.id !== id);
-      
-      const transcriptAPI = (window as unknown as TranscriptWindowAPI).transcriptAPI;
-      if (transcriptAPI) {
-        transcriptAPI.updateTranscript(meetingId, transcriptLines, updatedSpeakers)
-          .catch(err => console.error('Auto-save error:', err));
-      }
-    }
+    // AUTO-SAVE DISABLED: Speaker auto-save has been disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Speaker deleted but not automatically saved');
   }, [meetingId, transcriptLines, speakers, isAutoSaveEnabled, isElectron]);
 
   // Toggle auto-save
@@ -312,14 +264,8 @@ export default function useTranscript(meetingId: string) {
     setTranscriptLines([]);
     setSavedFilePath(null);
     
-    // Auto-save if enabled
-    if (isAutoSaveEnabled && isElectron) {
-      const transcriptAPI = (window as unknown as TranscriptWindowAPI).transcriptAPI;
-      if (transcriptAPI) {
-        transcriptAPI.updateTranscript(meetingId, [], speakers)
-          .catch(err => console.error('Auto-save error:', err));
-      }
-    }
+    // AUTO-SAVE DISABLED: Transcript auto-save has been disabled to prevent database conflicts
+    console.log('🚫 AUTO-SAVE DISABLED: Transcript cleared but not automatically saved');
   }, [meetingId, speakers, isAutoSaveEnabled, isElectron]);
 
   return {

@@ -653,8 +653,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           }
           
           toast.success("Recording stopped");
-          // Auto-save when recording stops
-          debouncedAutoSave();
+          // AUTO-SAVE DISABLED: Auto-save when recording stops has been disabled to prevent database conflicts
+          console.log('🚫 AUTO-SAVE DISABLED: Recording stopped but auto-save is disabled');
         } else {
           toast.error("Failed to stop recording");
         }
@@ -857,8 +857,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           
           setTranscriptLines(prev => [...prev, ...lines]);
           toast.success('Transcription completed', { id: 'transcribing' });
-          // Auto-save when transcript is generated
-          debouncedAutoSave();
+          // AUTO-SAVE DISABLED: Auto-save when transcript is generated has been disabled to prevent database conflicts
+          console.log('🚫 AUTO-SAVE DISABLED: Transcript generated but auto-save is disabled');
         } else if (result.error) {
           console.log('result.error');
           if (result.error.includes('payload size exceeds')) {
@@ -1435,25 +1435,17 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     console.log('Debug - transcriptLines.length:', transcriptLines.length);
   }, [recordedAudioUrl, isNewMeeting, transcriptLines.length]);
 
-  // Auto-save when leaving the page
+  // AUTO-SAVE DISABLED: Auto-save when leaving the page has been disabled to prevent database conflicts
   useEffect(() => {
     const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
-      // Trigger auto-save
-      try {
-        await handleSave();
-      } catch (error) {
-        console.error('Error auto-saving before unload:', error);
-      }
+      // AUTO-SAVE DISABLED: Auto-save before unload has been disabled
+      console.log('🚫 AUTO-SAVE DISABLED: Page unload detected but auto-save is disabled');
     };
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState === 'hidden') {
-        // Page is being hidden, auto-save
-        try {
-          await handleSave();
-        } catch (error) {
-          console.error('Error auto-saving on visibility change:', error);
-        }
+        // AUTO-SAVE DISABLED: Auto-save on visibility change has been disabled
+        console.log('🚫 AUTO-SAVE DISABLED: Page hidden but auto-save is disabled');
       }
     };
 
@@ -1461,15 +1453,13 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Cleanup function to auto-save when component unmounts
+    // Cleanup function - auto-save disabled
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       
-      // Auto-save when component unmounts (navigating away)
-      handleSave().catch(error => {
-        console.error('Error auto-saving on unmount:', error);
-      });
+      // AUTO-SAVE DISABLED: Auto-save when component unmounts has been disabled
+      console.log('🚫 AUTO-SAVE DISABLED: Component unmounting but auto-save is disabled');
     };
   }, [handleSave]);
 
@@ -1537,8 +1527,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
 
       toast.success("AI analysis completed! Meeting details have been updated.");
       
-      // Auto-save after AI analysis
-      debouncedAutoSave();
+      // AUTO-SAVE DISABLED: Auto-save after AI analysis has been disabled to prevent database conflicts
+      console.log('🚫 AUTO-SAVE DISABLED: AI analysis completed but auto-save is disabled');
       
     } catch (error) {
       console.error('Error during AI analysis:', error);
@@ -1598,8 +1588,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           variant="ghost" 
           size="sm"
           onClick={async () => {
-            // Auto-save before navigating back
-            await handleSave();
+            // AUTO-SAVE DISABLED: Auto-save before navigating back has been disabled to prevent database conflicts
+            console.log('🚫 AUTO-SAVE DISABLED: Navigating back but auto-save is disabled');
             navigate("/library");
           }}
           className="h-8 w-8 p-0 rounded-full"

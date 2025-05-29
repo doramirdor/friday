@@ -94,20 +94,19 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
         console.log(`📊 Speaker context updated: ${result.speakerContext.length} speakers tracked`);
       }
       
-      // Save to database every 5 seconds or when buffer gets large
+      // AUTO-SAVE DISABLED: Database saving has been disabled to prevent conflicts
+      // The buffering system no longer saves to database automatically
       const now = Date.now();
       const timeSinceLastSave = now - lastSaveRef.current;
-      const shouldSave = timeSinceLastSave > 5000 || pendingTranscriptRef.current.length > 10;
       
-      if (shouldSave && pendingTranscriptRef.current.length > 0) {
-        console.log(`💾 Saving ${pendingTranscriptRef.current.length} transcript chunks to database`);
-        // Here you would save the buffered results to database
-        // For now, just clear the buffer and update timestamp
+      if (timeSinceLastSave > 5000 && pendingTranscriptRef.current.length > 0) {
+        console.log(`🚫 AUTO-SAVE DISABLED: Would have saved ${pendingTranscriptRef.current.length} transcript chunks to database`);
+        // Clear the buffer without saving
         pendingTranscriptRef.current = [];
         lastSaveRef.current = now;
       }
       
-      console.log('✅ Transcript updated with new chunk:', newText);
+      console.log('✅ Transcript updated with new chunk (auto-save disabled):', newText);
     }
   }, []);
 

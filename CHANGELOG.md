@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Auto-Save System Disabled**: Completely disabled all auto-save functionality to prevent database conflicts
+  - Disabled auto-save in Gemini Semi-Live transcription buffering system
+  - Disabled auto-save in notes hook (3-second debounced saves)
+  - Disabled auto-save in transcript hook for line and speaker changes
+  - Disabled auto-save triggers on recording stopped, transcript generated, and AI analysis completed
+  - Disabled auto-save on page unload, visibility change, and component unmount
+  - Disabled auto-save when navigating back to library
+  - All data changes now require manual save using the "Save Changes" button
+  - Added console logging to indicate when auto-save operations would have occurred
+  - Prevents "Document update conflict" errors caused by frequent automatic database saves
+
+### Fixed
+- **Database Document Update Conflicts**: Eliminated 409 conflict errors by disabling automatic saves
+  - No more conflicts from 1-second Gemini Semi-Live bulk processing
+  - No more conflicts from overlapping auto-save operations during transcription
+  - Manual save operations still work normally through the UI save button
+  - Users now have full control over when data is saved to the database
+
+## [Previous Version]
+
 ### Fixed
 - **Gemini Semi-Live Audio Capture Issues**: Fixed "no audio chunks to process" error preventing transcription
   - **Enhanced Audio Chain Setup**: Fixed ScriptProcessorNode connection order with proper gain node to prevent feedback
