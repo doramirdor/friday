@@ -164,8 +164,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   
   // Audio File methods
-  saveAudioFile: async (buffer, filename, formats = ['wav', 'mp3']) => {
+  saveAudioFile: async (buffer, filename, formats) => {
     return await ipcRenderer.invoke("save-audio-file", { buffer, filename, formats });
+  },
+
+  // Expose writeTemporaryFile for simple file writing
+  writeTemporaryFile: async (buffer, filename) => {
+    return await ipcRenderer.invoke("writeTemporaryFile", buffer, filename);
   },
 
   // Load audio file as data URL to avoid security restrictions

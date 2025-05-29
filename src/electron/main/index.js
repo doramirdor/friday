@@ -1707,6 +1707,45 @@ ipcMain.handle("stop-semi-live-recording", async () => {
   }
 });
 
+// Handle writing temporary audio files for live transcription
+ipcMain.handle("writeTemporaryFile", async (event, buffer, filename) => {
+  try {
+    console.log(`🔄 main.js: Writing temporary file: ${filename}`);
+    
+    // Create output directory if it doesn't exist
+    const outputDir = path.join(app.getPath('userData'), 'recordings');
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+    
+    // Generate output path
+    const outputPath = path.join(outputDir, filename);
+    
+    // Write the buffer directly to file
+    fs.writeFileSync(outputPath, buffer);
+    
+    // Verify file was created
+    if (fs.existsSync(outputPath)) {
+      const fileStats = fs.statSync(outputPath);
+      console.log(`✅ main.js: Temporary file written successfully: ${outputPath} (${fileStats.size} bytes)`);
+      
+      return {
+        success: true,
+        filePath: outputPath,
+        size: fileStats.size
+      };
+    } else {
+      throw new Error(`File was not created: ${outputPath}`);
+    }
+  } catch (error) {
+    console.error('❌ main.js: Error writing temporary file:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 

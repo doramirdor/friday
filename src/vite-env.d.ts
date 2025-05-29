@@ -12,6 +12,12 @@ interface ElectronAPI {
     files?: Array<{ format: string; path: string }>;
     error?: string;
   }>;
+  writeTemporaryFile?: (buffer: ArrayBuffer, filename: string) => Promise<{
+    success: boolean;
+    filePath?: string;
+    size?: number;
+    error?: string;
+  }>;
   deleteFile?: (filePath: string) => Promise<{ success: boolean; error?: string }>;
 }
 

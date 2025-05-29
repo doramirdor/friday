@@ -266,50 +266,36 @@ class GeminiLiveUnifiedService {
 
   private async saveAudioChunk(audioBuffer: ArrayBuffer): Promise<AudioChunk | null> {
     try {
-      console.log('🔍 DEBUG: saveAudioChunk called');
-      console.log('🔍 DEBUG: audioBuffer size:', audioBuffer.byteLength, 'bytes');
-      console.log('🔍 DEBUG: audioBuffer type:', audioBuffer.constructor.name);
+      console.log('🔍 Saving audio chunk using simple file write...');
+      console.log('🔍 Audio buffer size:', audioBuffer.byteLength, 'bytes');
       
       const electronAPI = window.electronAPI;
-      console.log('🔍 DEBUG: electronAPI exists:', !!electronAPI);
-      console.log('🔍 DEBUG: saveAudioFile method exists:', !!electronAPI?.saveAudioFile);
-      
-      if (!electronAPI?.saveAudioFile) {
-        throw new Error('Electron saveAudioFile API not available');
+      if (!electronAPI?.writeTemporaryFile) {
+        throw new Error('writeTemporaryFile API not available');
       }
 
-      const fileName = `gemini_live_chunk_${this.tempFileCounter++}_${Date.now()}`;
-      console.log('🔍 DEBUG: Generated filename:', fileName);
+      const filename = `gemini_live_chunk_${this.tempFileCounter++}_${Date.now()}.webm`;
+      console.log('🔍 Generated filename:', filename);
       
-      // Save in native MediaRecorder format (likely WebM) instead of trying to convert to WAV
-      // This avoids format conversion issues
-      console.log('🔍 DEBUG: Calling electronAPI.saveAudioFile...');
-      const result = await electronAPI.saveAudioFile(audioBuffer, fileName, ['webm', 'wav', 'mp3']);
-      console.log('🔍 DEBUG: saveAudioFile result:', JSON.stringify(result, null, 2));
+      // Write the audio buffer to a temporary file
+      const result = await electronAPI.writeTemporaryFile(audioBuffer, filename);
       
-      if (result.success && result.files && result.files.length > 0) {
-        const savedFile = result.files[0]; // Use the first successfully saved format
-        const filePath = savedFile.path;
-        
-        console.log(`✅ Audio chunk saved successfully: ${filePath} (${savedFile.format} format)`);
+      if (result && result.success && result.filePath) {
+        console.log(`✅ Audio chunk saved successfully: ${result.filePath}`);
 
         return {
           timestamp: Date.now(),
-          filePath: filePath,
+          filePath: result.filePath,
           size: audioBuffer.byteLength,
           duration: audioBuffer.byteLength / (16000 * 2) // Approximate duration
         };
       } else {
-        console.error('❌ Failed to save audio chunk - details:');
-        console.error('❌ Success:', result.success);
-        console.error('❌ Files:', result.files);
-        console.error('❌ Error:', result.error);
+        console.error('❌ Failed to save temporary file:', result?.error);
         return null;
       }
 
     } catch (error) {
       console.error('❌ Exception in saveAudioChunk:', error);
-      console.error('❌ Error stack:', error.stack);
       return null;
     }
   }
