@@ -38,6 +38,7 @@ import { useGeminiSemiLive } from '@/hooks/useGeminiSemiLive';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import GeminiLiveTranscriptNew from '@/components/GeminiLiveTranscriptNew';
 import GoogleLiveTranscriptNew from '@/components/GoogleLiveTranscriptNew';
+import GeminiLiveUnifiedTest from '@/components/GeminiLiveUnifiedTest';
 
 // Simple debounce function
 const debounce = <T extends unknown[]>(func: (...args: T) => void, wait: number) => {
@@ -2602,6 +2603,16 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Temporary: Add unified test component */}
+      <div className="p-4 bg-blue-50 border-b">
+        <details className="cursor-pointer">
+          <summary className="text-sm font-medium text-blue-700">🧪 Test New Unified Gemini Live (Click to expand)</summary>
+          <div className="mt-4">
+            <GeminiLiveUnifiedTest />
+          </div>
+        </details>
+      </div>
     </div>
   );
 };

@@ -61,6 +61,21 @@ All notable changes to this project will be documented in this file.
   - More reliable and stable than previous memory-based approach
   - Leverages existing, working transcription pipeline for consistency
 
+### Added
+- **Unified Gemini Live Transcription Service**: Created a new live transcription service that reuses existing proven Gemini tools
+  - Built `gemini-live-unified.ts` service that leverages the existing working `geminiService.transcribeAudio()` method
+  - Implements file-based semi-live approach with configurable chunk duration (default: 2 seconds for responsive feel)
+  - Supports both "continuous" processing (real-time) and "send-at-end" batch processing modes
+  - Reuses existing stable APIs: `saveAudioFile`, `deleteFile`, and proven file-based transcription pipeline
+  - Added `useGeminiLiveUnified` React hook for easy integration with existing components
+  - Created comprehensive test component `GeminiLiveUnifiedTest` for validating the unified approach
+  - Includes intelligent speaker diarization and speaker context management with configurable timeouts
+  - Provides detailed processing statistics (chunks collected, processing times, average latency)
+  - Automatic cleanup of temporary audio files after processing
+  - Robust error handling with fallbacks and proper resource cleanup
+  - Leverages proven tools instead of reinventing WebSocket or streaming approaches
+  - More reliable than previous implementations due to reuse of tested, working transcription flow
+
 ## [Previous Version]
 
 ### Fixed
