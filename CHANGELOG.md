@@ -14,6 +14,11 @@ All notable changes to this project will be documented in this file.
   - Fixed file-based transcription service to work seamlessly with existing useGeminiSemiLive hook
   - Ensured the new file-based approach maintains the same interface as the original memory-based service
   - Resolved React component crashes that occurred when TranscriptDetails component tried to register result callbacks
+- **Method Binding Error in useGeminiSemiLive Hook**: Fixed "TypeError: Cannot read properties of undefined (reading 'fileService')" error
+  - Fixed method binding issue in useGeminiSemiLive hook where `isRecording` was accessed as property instead of method
+  - Changed `geminiSemiLiveService.isRecording` to `geminiSemiLiveService.isRecording()` to properly call the method
+  - Resolved TypeError that occurred during React useState initialization and component rendering
+  - Fixed "this" context binding issue in LegacyAdapter class methods
 
 ### Changed
 - **Complete Auto-Save System Elimination**: Completely eliminated all automatic save operations to prevent database conflicts
