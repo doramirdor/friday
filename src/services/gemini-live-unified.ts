@@ -1,22 +1,6 @@
 // Import types
 import geminiService, { GeminiTranscriptionResult } from './gemini';
 
-interface ExtendedElectronAPI {
-  saveAudioFile: (buffer: ArrayBuffer, filename: string, formats: string[]) => Promise<{
-    success: boolean;
-    files?: Array<{ format: string; path: string }>;
-    error?: string;
-  }>;
-  deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-  [key: string]: unknown;
-}
-
-declare global {
-  interface Window {
-    electronAPI: ExtendedElectronAPI;
-  }
-}
-
 // Unified Gemini Live Transcription Service
 // Reuses existing proven Gemini transcribeAudio method and file-based approach
 
@@ -282,7 +266,7 @@ class GeminiLiveUnifiedService {
 
   private async saveAudioChunk(audioBuffer: ArrayBuffer): Promise<AudioChunk | null> {
     try {
-      const electronAPI = window.electronAPI as ExtendedElectronAPI;
+      const electronAPI = window.electronAPI;
       if (!electronAPI?.saveAudioFile) {
         throw new Error('Electron saveAudioFile API not available');
       }
@@ -407,7 +391,7 @@ class GeminiLiveUnifiedService {
 
   private async cleanupFile(filePath: string): Promise<void> {
     try {
-      const electronAPI = window.electronAPI as ExtendedElectronAPI;
+      const electronAPI = window.electronAPI;
       if (electronAPI?.deleteFile) {
         const deleteResult = await electronAPI.deleteFile(filePath);
         console.log(`🗑️ Cleaned up temp file: ${filePath}`);
