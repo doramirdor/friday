@@ -184,9 +184,15 @@ class GeminiLiveUnifiedService {
       console.log('🔍 CRASH DEBUG: Step 5 - ScriptProcessor created, setting up audio process handler...');
       
       // Add crash detection around the audio process handler
+      let audioProcessEventCount = 0;
       this.processor.onaudioprocess = (event) => {
         try {
-          console.log('🔍 CRASH DEBUG: *** AUDIO PROCESS EVENT FIRED ***');
+          audioProcessEventCount++;
+          if (audioProcessEventCount === 1) {
+            console.log('🔍 CRASH DEBUG: *** FIRST AUDIO PROCESS EVENT FIRED ***');
+            console.log('🔍 CRASH DEBUG: First audio event at:', Date.now());
+          }
+          console.log(`🔍 CRASH DEBUG: *** AUDIO PROCESS EVENT #${audioProcessEventCount} FIRED ***`);
           
           if (!this.isRecording) {
             console.log('🔍 CRASH DEBUG: Audio process - not recording, returning');
@@ -332,36 +338,42 @@ class GeminiLiveUnifiedService {
       }, 200);
       
       setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 225MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 225ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
+        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
+        console.log('🔍 CRASH DEBUG: ===== END 225MS DELAYED CHECK =====');
+      }, 225);
+      
+      setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 250MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 250ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
+        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
+        console.log('🔍 CRASH DEBUG: ===== END 250MS DELAYED CHECK =====');
+      }, 250);
+      
+      setTimeout(() => {
+        console.log('🔍 CRASH DEBUG: ===== 275MS DELAYED CHECK =====');
+        console.log('🔍 CRASH DEBUG: 275ms later - still alive, checking state...');
+        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
+        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
+        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
+        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
+        console.log('🔍 CRASH DEBUG: ===== END 275MS DELAYED CHECK =====');
+      }, 275);
+      
+      setTimeout(() => {
         console.log('🔍 CRASH DEBUG: ===== 300MS DELAYED CHECK =====');
         console.log('🔍 CRASH DEBUG: 300ms later - still alive, checking state...');
         console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
         console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
         console.log('🔍 CRASH DEBUG: ===== END 300MS DELAYED CHECK =====');
       }, 300);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 400MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 400ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: ===== END 400MS DELAYED CHECK =====');
-      }, 400);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 500MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 500ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: ===== END 500MS DELAYED CHECK =====');
-      }, 500);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 1000MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 1000ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: ===== END 1000MS DELAYED CHECK =====');
-      }, 1000);
 
     } catch (error) {
       console.error('🔍 CRASH DEBUG: ERROR during startup:', error);
