@@ -117,7 +117,7 @@ The Gemini Semi-Live service provides **real-time audio transcription** using Ge
     const result = {
       transcript: "transcribed text",
       isFinal: true,
-      speakers: [{ id: "speaker_1", name: "Speaker 1", color: "#FF5733" }],
+      speakers: [{ id: "speaker_1", name: "Speaker 1", color: "#FF5733" }], 
       timestamp: Date.now()
     };
     ```

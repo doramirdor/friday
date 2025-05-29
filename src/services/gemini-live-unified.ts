@@ -67,9 +67,7 @@ interface AudioChunk {
 
 class GeminiLiveUnifiedService {
   private mediaStream: MediaStream | null = null;
-  private audioContext: AudioContext | null = null;
-  private processor: ScriptProcessorNode | null = null;
-  private audioBuffer: Float32Array[] = [];
+  private mediaRecorder: MediaRecorder | null = null;
   private processingInterval: number | null = null;
   private isRecording = false;
   private tempFileCounter = 0;
@@ -82,7 +80,8 @@ class GeminiLiveUnifiedService {
     processingMode: 'continuous'
   };
 
-  // Audio chunks for processing
+  // Audio chunks for processing (storing Blobs temporarily)
+  private audioBlobs: Blob[] = [];
   private audioChunks: AudioChunk[] = [];
   private stats: GeminiLiveStats = {
     isRecording: false,
@@ -112,30 +111,6 @@ class GeminiLiveUnifiedService {
 
   constructor() {
     this.updateStats();
-    
-    // Add global error handlers to catch crashes
-    console.log('🔍 CRASH DEBUG: Setting up global error handlers...');
-    
-    if (typeof window !== 'undefined') {
-      // Catch unhandled errors
-      window.addEventListener('error', (event) => {
-        console.error('🔍 CRASH DEBUG: *** GLOBAL UNHANDLED ERROR ***:', event.error);
-        console.error('🔍 CRASH DEBUG: Error message:', event.message);
-        console.error('🔍 CRASH DEBUG: Error filename:', event.filename);
-        console.error('🔍 CRASH DEBUG: Error line:', event.lineno);
-        console.error('🔍 CRASH DEBUG: Error column:', event.colno);
-        console.error('🔍 CRASH DEBUG: Error stack:', event.error?.stack);
-      });
-      
-      // Catch unhandled promise rejections
-      window.addEventListener('unhandledrejection', (event) => {
-        console.error('🔍 CRASH DEBUG: *** GLOBAL UNHANDLED PROMISE REJECTION ***:', event.reason);
-        console.error('🔍 CRASH DEBUG: Promise:', event.promise);
-        console.error('🔍 CRASH DEBUG: Reason stack:', event.reason?.stack);
-      });
-      
-      console.log('🔍 CRASH DEBUG: Global error handlers set up successfully');
-    }
   }
 
   get isAvailable(): boolean {
@@ -159,7 +134,6 @@ class GeminiLiveUnifiedService {
 
     try {
       console.log('🎤 Starting Unified Gemini Live Transcription...', this.options);
-      console.log('🔍 CRASH DEBUG: Step 1 - Starting microphone access...');
 
       // Get microphone access
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -170,253 +144,52 @@ class GeminiLiveUnifiedService {
           noiseSuppression: true,
         }
       });
-      console.log('🔍 CRASH DEBUG: Step 2 - Microphone access granted, creating AudioContext...');
 
-      // Create audio context
-      this.audioContext = new AudioContext({ sampleRate: 16000 });
-      console.log('🔍 CRASH DEBUG: Step 3 - AudioContext created, creating MediaStreamSource...');
+      // Use MediaRecorder instead of ScriptProcessor to avoid crashes
+      console.log('🔄 Using MediaRecorder instead of ScriptProcessor...');
       
-      const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-      console.log('🔍 CRASH DEBUG: Step 4 - MediaStreamSource created, creating ScriptProcessor...');
+      // Find supported audio format
+      const supportedTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm', 
+        'audio/mp4',
+        'audio/wav'
+      ];
       
-      // Create processor
-      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-      console.log('🔍 CRASH DEBUG: Step 5 - ScriptProcessor created, setting up audio process handler...');
+      let mimeType = '';
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type;
+          break;
+        }
+      }
       
-      // Add crash detection around the audio process handler
-      let audioProcessEventCount = 0;
-      this.processor.onaudioprocess = (event) => {
-        try {
-          audioProcessEventCount++;
-          if (audioProcessEventCount === 1) {
-            console.log('🔍 CRASH DEBUG: *** FIRST AUDIO PROCESS EVENT FIRED ***');
-            console.log('🔍 CRASH DEBUG: First audio event at:', Date.now());
-          }
-          console.log(`🔍 CRASH DEBUG: *** AUDIO PROCESS EVENT #${audioProcessEventCount} FIRED ***`);
-          
-          if (!this.isRecording) {
-            console.log('🔍 CRASH DEBUG: Audio process - not recording, returning');
-            return;
-          }
-          
-          console.log('🔍 CRASH DEBUG: Audio process - getting channel data...');
-          const inputData = event.inputBuffer.getChannelData(0);
-          console.log('🔍 CRASH DEBUG: Audio process - channel data length:', inputData?.length || 'undefined');
-          
-          if (inputData && inputData.length > 0) {
-            console.log('🔍 CRASH DEBUG: Audio process - creating Float32Array copy...');
-            const audioCopy = new Float32Array(inputData);
-            console.log('🔍 CRASH DEBUG: Audio process - pushing to buffer...');
-            this.audioBuffer.push(audioCopy);
-            console.log('🔍 CRASH DEBUG: Audio process - buffer now has', this.audioBuffer.length, 'chunks');
-            
-            // Log audio activity periodically (every 100 events to avoid spam)
-            if (this.audioBuffer.length % 100 === 0) {
-              console.log(`🔍 CRASH DEBUG: Audio processing - buffer size: ${this.audioBuffer.length}, input length: ${inputData.length}`);
-            }
-          } else {
-            console.log('🔍 CRASH DEBUG: Audio process - no input data or empty');
-          }
-          
-          console.log('🔍 CRASH DEBUG: *** AUDIO PROCESS EVENT COMPLETED ***');
-        } catch (error) {
-          console.error('🔍 CRASH DEBUG: *** CRITICAL ERROR in onaudioprocess handler ***:', error);
-          console.error('🔍 CRASH DEBUG: Audio process error stack:', error.stack);
-          this.emitError(error as Error);
+      // Create MediaRecorder
+      this.mediaRecorder = new MediaRecorder(this.mediaStream, {
+        mimeType: mimeType || undefined,
+        audioBitsPerSecond: 128000
+      });
+      
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && this.isRecording) {
+          this.audioBlobs.push(event.data);
         }
       };
-      console.log('🔍 CRASH DEBUG: Step 6 - Audio process handler set, connecting audio chain...');
-
-      // Connect audio chain
-      source.connect(this.processor);
-      this.processor.connect(this.audioContext.destination);
-      console.log('🔍 CRASH DEBUG: Step 7 - Audio chain connected successfully');
+      
+      // Start recording with chunk intervals
+      this.mediaRecorder.start(this.options.chunkDurationMs);
 
       // Start processing interval based on mode
       if (this.options.processingMode === 'continuous') {
-        console.log('🔍 CRASH DEBUG: Step 8 - Setting up continuous processing interval...');
-        
         this.processingInterval = window.setInterval(() => {
-          try {
-            console.log('🔍 CRASH DEBUG: ===== INTERVAL CALLBACK START =====');
-            console.log('🔍 CRASH DEBUG: Processing interval triggered, calling processAudioBuffer...');
-            console.log('🔍 CRASH DEBUG: Current recording state:', this.isRecording);
-            console.log('🔍 CRASH DEBUG: Audio buffer length:', this.audioBuffer.length);
-            
-            // Add even more granular error handling
-            this.processAudioBuffer().then(() => {
-              console.log('🔍 CRASH DEBUG: processAudioBuffer Promise resolved successfully');
-            }).catch((error) => {
-              console.error('🔍 CRASH DEBUG: ERROR in processAudioBuffer Promise rejection:', error);
-              console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
-              console.error('🔍 CRASH DEBUG: Error name:', error.name);
-              console.error('🔍 CRASH DEBUG: Error message:', error.message);
-              this.emitError(error as Error);
-            });
-            
-            console.log('🔍 CRASH DEBUG: processAudioBuffer call dispatched, interval callback completing...');
-            console.log('🔍 CRASH DEBUG: ===== INTERVAL CALLBACK END =====');
-          } catch (error) {
-            console.error('🔍 CRASH DEBUG: ERROR in processing interval callback:', error);
-            console.error('🔍 CRASH DEBUG: Sync error stack:', error.stack);
-            this.emitError(error as Error);
-          }
+          this.processAccumulatedChunks();
         }, this.options.chunkDurationMs);
-        
-        console.log(`🔍 CRASH DEBUG: Step 9 - Processing interval set up with ${this.options.chunkDurationMs}ms duration`);
-      } else {
-        console.log('🔍 CRASH DEBUG: Step 8 - Skipping interval setup (send-at-end mode)');
       }
 
       this.isRecording = true;
-      console.log('🔍 CRASH DEBUG: Step 10 - Recording state set to true, updating stats...');
-      
-      this.updateStats();
-      console.log('🔍 CRASH DEBUG: Step 11 - Stats updated successfully');
-      
-      console.log('✅ Unified Gemini Live Transcription started');
-      console.log('🔍 CRASH DEBUG: Step 12 - Startup completed successfully');
-
-      // Add post-startup monitoring
-      console.log('🔍 CRASH DEBUG: ===== POST-STARTUP MONITORING =====');
-      console.log('🔍 CRASH DEBUG: Setting up heartbeat monitor...');
-      
-      // Start a heartbeat to monitor if the main thread is alive
-      let heartbeatCounter = 0;
-      console.log('🔍 CRASH DEBUG: Creating heartbeat function...');
-      
-      const heartbeatFunction = () => {
-        try {
-          heartbeatCounter++;
-          console.log(`🔍 CRASH DEBUG: ❤️ HEARTBEAT ${heartbeatCounter} - Main thread alive at ${Date.now()}`);
-          console.log(`🔍 CRASH DEBUG: ❤️ Recording state: ${this.isRecording}, buffer length: ${this.audioBuffer.length}`);
-          
-          if (heartbeatCounter >= 10) { // Stop after 10 heartbeats
-            clearInterval(heartbeatInterval);
-            console.log('🔍 CRASH DEBUG: ❤️ Heartbeat monitoring stopped');
-          }
-        } catch (heartbeatError) {
-          console.error('🔍 CRASH DEBUG: *** ERROR IN HEARTBEAT FUNCTION ***:', heartbeatError);
-        }
-      };
-      
-      console.log('🔍 CRASH DEBUG: About to call setInterval...');
-      const heartbeatInterval = setInterval(heartbeatFunction, 500); // Every 500ms
-      console.log('🔍 CRASH DEBUG: setInterval called successfully, interval ID:', heartbeatInterval);
-      
-      console.log('🔍 CRASH DEBUG: Heartbeat monitor started');
-      console.log('🔍 CRASH DEBUG: About to wait for interval to fire...');
-      console.log(`🔍 CRASH DEBUG: Interval should fire in ${this.options.chunkDurationMs}ms`);
-      console.log('🔍 CRASH DEBUG: ===== END POST-STARTUP MONITORING =====');
-      
-      // Add immediate post-setup checks
-      console.log('🔍 CRASH DEBUG: ===== IMMEDIATE POST-SETUP CHECKS =====');
-      console.log('🔍 CRASH DEBUG: Checking this.isRecording:', this.isRecording);
-      console.log('🔍 CRASH DEBUG: Checking this.audioBuffer:', !!this.audioBuffer);
-      console.log('🔍 CRASH DEBUG: Checking this.audioBuffer.length:', this.audioBuffer?.length);
-      console.log('🔍 CRASH DEBUG: Checking this.processor:', !!this.processor);
-      console.log('🔍 CRASH DEBUG: Checking this.audioContext:', !!this.audioContext);
-      console.log('🔍 CRASH DEBUG: Checking this.mediaStream:', !!this.mediaStream);
-      console.log('🔍 CRASH DEBUG: Checking this.processingInterval:', this.processingInterval);
-      console.log('🔍 CRASH DEBUG: ===== END IMMEDIATE POST-SETUP CHECKS =====');
-      
-      // Add a small delay then check if everything is still working
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 100MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 100ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: ===== END 100MS DELAYED CHECK =====');
-      }, 100);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 200MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 200ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: ===== END 200MS DELAYED CHECK =====');
-      }, 200);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 225MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 225ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
-        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
-        console.log('🔍 CRASH DEBUG: ===== END 225MS DELAYED CHECK =====');
-      }, 225);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 250MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 250ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
-        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
-        console.log('🔍 CRASH DEBUG: ===== END 250MS DELAYED CHECK =====');
-      }, 250);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 275MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 275ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
-        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
-        console.log('🔍 CRASH DEBUG: ===== END 275MS DELAYED CHECK =====');
-      }, 275);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 280MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 280ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
-        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
-        console.log('🔍 CRASH DEBUG: ===== END 280MS DELAYED CHECK =====');
-      }, 280);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 285MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 285ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
-        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
-        console.log('🔍 CRASH DEBUG: ===== END 285MS DELAYED CHECK =====');
-      }, 285);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 290MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 290ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
-        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
-        console.log('🔍 CRASH DEBUG: ===== END 290MS DELAYED CHECK =====');
-      }, 290);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 295MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 295ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: AudioContext state:', this.audioContext?.state);
-        console.log('🔍 CRASH DEBUG: MediaStream active:', this.mediaStream?.active);
-        console.log('🔍 CRASH DEBUG: ===== END 295MS DELAYED CHECK =====');
-      }, 295);
-      
-      setTimeout(() => {
-        console.log('🔍 CRASH DEBUG: ===== 300MS DELAYED CHECK =====');
-        console.log('🔍 CRASH DEBUG: 300ms later - still alive, checking state...');
-        console.log('🔍 CRASH DEBUG: Recording state:', this.isRecording);
-        console.log('🔍 CRASH DEBUG: Buffer length:', this.audioBuffer?.length);
-        console.log('🔍 CRASH DEBUG: ===== END 300MS DELAYED CHECK =====');
-      }, 300);
+      console.log('✅ Unified Gemini Live Transcription started with MediaRecorder');
 
     } catch (error) {
-      console.error('🔍 CRASH DEBUG: ERROR during startup:', error);
       this.cleanup();
       throw new Error(`Failed to start recording: ${error.message}`);
     }
@@ -440,15 +213,9 @@ class GeminiLiveUnifiedService {
 
     try {
       // Process any remaining audio buffer
-      if (this.audioBuffer.length > 0) {
+      if (this.audioBlobs.length > 0) {
         console.log('📝 Processing final audio buffer...');
-        await this.processAudioBuffer();
-      }
-
-      // In 'send-at-end' mode, process all collected chunks now
-      if (this.options.processingMode === 'send-at-end') {
-        console.log('📤 Processing all audio chunks at end...');
-        results = await this.processAllChunks();
+        results = await this.processAllBlobs();
       }
 
       // Cleanup temporary files
@@ -466,183 +233,105 @@ class GeminiLiveUnifiedService {
     return results;
   }
 
-  private async processAudioBuffer(): Promise<void> {
+  private async processAccumulatedChunks(): Promise<void> {
     try {
-      console.log('🔍 CRASH DEBUG: ===== PROCESS AUDIO BUFFER START =====');
-      console.log('🔍 CRASH DEBUG: processAudioBuffer called, checking buffer...');
-      console.log('🔍 CRASH DEBUG: Audio buffer exists:', !!this.audioBuffer);
-      console.log('🔍 CRASH DEBUG: Audio buffer type:', typeof this.audioBuffer);
-      console.log('🔍 CRASH DEBUG: Audio buffer length:', this.audioBuffer?.length || 'undefined');
+      console.log('📝 Processing accumulated audio chunks...');
+      console.log(`📊 Audio blobs to process: ${this.audioBlobs.length}`);
       
-      if (!this.audioBuffer) {
-        console.error('🔍 CRASH DEBUG: Audio buffer is null/undefined!');
-        return;
-      }
-      
-      if (this.audioBuffer.length === 0) {
-        console.log('🔍 CRASH DEBUG: Audio buffer is empty, returning early');
+      if (!this.audioBlobs || this.audioBlobs.length === 0) {
+        console.log('No audio blobs to process, returning early');
         return;
       }
 
-      console.log(`🔍 CRASH DEBUG: Processing audio buffer with ${this.audioBuffer.length} chunks`);
-      console.log('🔍 CRASH DEBUG: About to reduce audio chunks...');
-      
-      // Combine audio chunks with extra safety
-      let totalLength = 0;
-      try {
-        totalLength = this.audioBuffer.reduce((sum, chunk, index) => {
-          console.log(`🔍 CRASH DEBUG: Processing chunk ${index}, length: ${chunk?.length || 'undefined'}, sum so far: ${sum}`);
-          return sum + (chunk?.length || 0);
-        }, 0);
-        console.log(`🔍 CRASH DEBUG: Total audio length calculated: ${totalLength} samples`);
-      } catch (reduceError) {
-        console.error('🔍 CRASH DEBUG: ERROR during reduce operation:', reduceError);
-        throw reduceError;
-      }
-      
-      if (totalLength < 8000) { // Less than 0.5 seconds at 16kHz
-        console.log('🔍 CRASH DEBUG: Audio too short, skipping processing');
-        return;
-      }
+      // Process each blob individually instead of combining them
+      for (const blob of this.audioBlobs) {
+        if (blob.size < 1000) { // Skip very small blobs (less than 1KB)
+          console.log('Skipping small audio blob');
+          continue;
+        }
 
-      console.log('🔍 CRASH DEBUG: Creating combined buffer...');
-      
-      let combinedBuffer: Float32Array;
-      try {
-        combinedBuffer = new Float32Array(totalLength);
-        console.log('🔍 CRASH DEBUG: Float32Array created successfully');
-      } catch (arrayError) {
-        console.error('🔍 CRASH DEBUG: ERROR creating Float32Array:', arrayError);
-        throw arrayError;
-      }
-      
-      let offset = 0;
-      try {
-        for (let i = 0; i < this.audioBuffer.length; i++) {
-          const chunk = this.audioBuffer[i];
-          console.log(`🔍 CRASH DEBUG: Setting chunk ${i}, offset: ${offset}, chunk length: ${chunk?.length || 'undefined'}`);
-          if (chunk && chunk.length > 0) {
-            combinedBuffer.set(chunk, offset);
-            offset += chunk.length;
+        try {
+          console.log(`Processing blob of size: ${blob.size} bytes`);
+          const arrayBuffer = await blob.arrayBuffer();
+          const audioChunk = await this.saveAudioChunk(arrayBuffer);
+          
+          if (audioChunk) {
+            this.audioChunks.push(audioChunk);
+            this.stats.audioChunksCollected++;
+            
+            // In continuous mode, process immediately
+            if (this.options.processingMode === 'continuous') {
+              await this.processChunk(audioChunk);
+            }
           }
-        }
-        console.log('🔍 CRASH DEBUG: Combined buffer created successfully');
-      } catch (setError) {
-        console.error('🔍 CRASH DEBUG: ERROR setting combined buffer:', setError);
-        throw setError;
-      }
-
-      // Clear buffer
-      this.audioBuffer = [];
-      console.log('🔍 CRASH DEBUG: Audio buffer cleared');
-
-      // Save as temporary audio file (reusing proven file-based approach)
-      console.log('🔍 CRASH DEBUG: About to call saveAudioChunk...');
-      const audioChunk = await this.saveAudioChunk(combinedBuffer);
-      console.log('🔍 CRASH DEBUG: saveAudioChunk completed:', audioChunk ? 'success' : 'failed');
-      
-      if (audioChunk) {
-        this.audioChunks.push(audioChunk);
-        this.stats.audioChunksCollected++;
-        console.log(`🔍 CRASH DEBUG: Audio chunk added, total chunks: ${this.audioChunks.length}`);
-        
-        this.updateStats();
-        console.log('🔍 CRASH DEBUG: Stats updated after chunk');
-
-        // In continuous mode, process immediately
-        if (this.options.processingMode === 'continuous') {
-          console.log('🔍 CRASH DEBUG: Continuous mode - calling processChunk...');
-          await this.processChunk(audioChunk);
-          console.log('🔍 CRASH DEBUG: processChunk completed successfully');
+        } catch (error) {
+          console.error('Error processing individual blob:', error);
         }
       }
-      
-      console.log('🔍 CRASH DEBUG: ===== PROCESS AUDIO BUFFER END =====');
+
+      // Clear processed blobs
+      this.audioBlobs = [];
+      this.updateStats();
+      console.log('✅ Accumulated chunks processed');
 
     } catch (error) {
-      console.error('🔍 CRASH DEBUG: ===== CRITICAL ERROR IN PROCESS AUDIO BUFFER =====');
-      console.error('🔍 CRASH DEBUG: ERROR in processAudioBuffer:', error);
-      console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
-      console.error('🔍 CRASH DEBUG: Error name:', error.name);
-      console.error('🔍 CRASH DEBUG: Error message:', error.message);
-      console.error('🔍 CRASH DEBUG: Error toString:', error.toString());
-      console.error('🔍 CRASH DEBUG: ===== END CRITICAL ERROR =====');
+      console.error('ERROR in processAccumulatedChunks:', error);
       this.emitError(error as Error);
-      throw error; // Re-throw to see if this causes the white page
     }
   }
 
-  private async saveAudioChunk(audioBuffer: Float32Array): Promise<AudioChunk | null> {
+  private async saveAudioChunk(audioBuffer: ArrayBuffer): Promise<AudioChunk | null> {
     try {
-      console.log('🔍 CRASH DEBUG: saveAudioChunk called, creating WAV buffer...');
-      
-      // Convert to WAV buffer (reusing file-based approach)
-      const wavBuffer = this.createWavBuffer(audioBuffer, 16000, 1);
-      console.log(`🔍 CRASH DEBUG: WAV buffer created, size: ${wavBuffer.byteLength} bytes`);
-      
       const electronAPI = window.electronAPI as ExtendedElectronAPI;
       if (!electronAPI?.saveAudioFile) {
         throw new Error('Electron saveAudioFile API not available');
       }
-      console.log('🔍 CRASH DEBUG: Electron API available, saving file...');
 
       const fileName = `gemini_live_chunk_${this.tempFileCounter++}_${Date.now()}`;
-      console.log(`🔍 CRASH DEBUG: Saving file with name: ${fileName}`);
-      
-      const result = await electronAPI.saveAudioFile(wavBuffer, fileName, ['wav']);
-      console.log('🔍 CRASH DEBUG: saveAudioFile result:', result);
+      const result = await electronAPI.saveAudioFile(audioBuffer, fileName, ['wav']);
       
       if (result.success && result.files && result.files.length > 0) {
         const wavFile = result.files.find((f: { format: string; path: string }) => f.format === 'wav');
         const filePath = wavFile ? wavFile.path : result.files[0].path;
-        console.log(`🔍 CRASH DEBUG: File saved successfully: ${filePath}`);
 
         return {
           timestamp: Date.now(),
           filePath: filePath,
-          size: wavBuffer.byteLength,
-          duration: audioBuffer.length / 16000 // Duration in seconds
+          size: audioBuffer.byteLength,
+          duration: audioBuffer.byteLength / (16000 * 2) // Approximate duration based on 16kHz, 16-bit
         };
       } else {
-        console.error('🔍 CRASH DEBUG: Failed to save audio chunk:', result.error);
+        console.error('Failed to save audio chunk:', result.error);
         return null;
       }
 
     } catch (error) {
-      console.error('🔍 CRASH DEBUG: ERROR in saveAudioChunk:', error);
-      console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
+      console.error('Error in saveAudioChunk:', error);
       return null;
     }
   }
 
   private async processChunk(chunk: AudioChunk): Promise<void> {
     try {
-      console.log(`🔍 CRASH DEBUG: processChunk called for: ${chunk.filePath}`);
-      console.log(`🔍 CRASH DEBUG: Processing audio chunk: ${chunk.filePath}`);
+      console.log(`📝 Processing audio chunk: ${chunk.filePath}`);
       const startTime = Date.now();
 
-      console.log('🔍 CRASH DEBUG: Calling geminiService.transcribeAudio...');
       // Use existing proven Gemini transcribeAudio method
       const result: GeminiTranscriptionResult = await geminiService.transcribeAudio(
         chunk.filePath, 
         this.options.maxSpeakers
       );
-      console.log('🔍 CRASH DEBUG: geminiService.transcribeAudio completed');
 
       const processingTime = Date.now() - startTime;
       this.stats.totalProcessingTime += processingTime;
       this.stats.chunksProcessed++;
       this.stats.lastProcessedTime = Date.now();
-      console.log(`🔍 CRASH DEBUG: Stats updated, processing time: ${processingTime}ms`);
       
       this.updateStats();
-      console.log('🔍 CRASH DEBUG: updateStats completed');
 
       if (result.transcript && result.transcript.trim()) {
-        console.log('🔍 CRASH DEBUG: Got transcript, updating speaker context...');
         // Update speaker context
         this.updateSpeakerContext(result.speakers);
-        console.log('🔍 CRASH DEBUG: Speaker context updated');
 
         const liveResult: GeminiLiveResult = {
           transcript: result.transcript,
@@ -652,69 +341,35 @@ class GeminiLiveUnifiedService {
           timestamp: chunk.timestamp
         };
 
-        console.log('🔍 CRASH DEBUG: Emitting result...');
         this.emitResult(liveResult);
         console.log(`✅ Transcription result (${processingTime}ms):`, result.transcript);
-        console.log('🔍 CRASH DEBUG: Result emitted successfully');
       } else {
-        console.log('🔍 CRASH DEBUG: No transcript received from Gemini');
+        console.log('🔇 No transcript received from Gemini');
       }
 
     } catch (error) {
-      console.error('🔍 CRASH DEBUG: ERROR in processChunk:', error);
-      console.error('🔍 CRASH DEBUG: Error stack:', error.stack);
+      console.error('❌ Error in processChunk:', error);
       this.emitError(error as Error);
     }
   }
 
-  private async processAllChunks(): Promise<GeminiLiveResult[]> {
+  private async processAllBlobs(): Promise<GeminiLiveResult[]> {
     const results: GeminiLiveResult[] = [];
     
-    for (const chunk of this.audioChunks) {
+    for (const blob of this.audioBlobs) {
       try {
-        await this.processChunk(chunk);
+        const arrayBuffer = await blob.arrayBuffer();
+        const chunk = await this.saveAudioChunk(arrayBuffer);
+        if (chunk) {
+          await this.processChunk(chunk);
+        }
       } catch (error) {
         console.error(`❌ Error processing chunk in batch:`, error);
       }
     }
 
-    this.audioChunks = [];
+    this.audioBlobs = [];
     return results;
-  }
-
-  private createWavBuffer(audioData: Float32Array, sampleRate: number, channels: number): ArrayBuffer {
-    const length = audioData.length;
-    const buffer = new ArrayBuffer(44 + length * 2);
-    const view = new DataView(buffer);
-
-    // WAV header
-    const writeString = (offset: number, string: string) => {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-      }
-    };
-
-    writeString(0, 'RIFF');
-    view.setUint32(4, 36 + length * 2, true);
-    writeString(8, 'WAVE');
-    writeString(12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, channels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * channels * 2, true);
-    view.setUint16(32, channels * 2, true);
-    view.setUint16(34, 16, true);
-    writeString(36, 'data');
-    view.setUint32(40, length * 2, true);
-
-    // Convert float32 to int16
-    const int16Array = new Int16Array(buffer, 44, length);
-    for (let i = 0; i < length; i++) {
-      int16Array[i] = Math.max(-32768, Math.min(32767, audioData[i] * 32767));
-    }
-
-    return buffer;
   }
 
   private updateSpeakerContext(speakers: Array<{ id: string; name: string; color: string }>): void {
@@ -770,14 +425,9 @@ class GeminiLiveUnifiedService {
       this.processingInterval = null;
     }
 
-    if (this.processor) {
-      this.processor.disconnect();
-      this.processor = null;
-    }
-
-    if (this.audioContext) {
-      this.audioContext.close();
-      this.audioContext = null;
+    if (this.mediaRecorder) {
+      this.mediaRecorder.stop();
+      this.mediaRecorder = null;
     }
 
     if (this.mediaStream) {
@@ -785,7 +435,6 @@ class GeminiLiveUnifiedService {
       this.mediaStream = null;
     }
 
-    this.audioBuffer = [];
     this.isRecording = false;
   }
 
@@ -793,7 +442,7 @@ class GeminiLiveUnifiedService {
     this.stats.isRecording = this.isRecording;
     this.stats.processingMode = this.options.processingMode;
     this.stats.chunkDurationMs = this.options.chunkDurationMs;
-    this.stats.currentChunkSize = this.audioBuffer.length;
+    this.stats.currentChunkSize = this.audioChunks.length;
   }
 
   private emitResult(result: GeminiLiveResult): void {

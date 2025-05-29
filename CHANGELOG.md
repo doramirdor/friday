@@ -243,6 +243,9 @@ All notable changes to this project will be documented in this file.
   - Added crash detection to startConnectionHealthCheck method with graceful fallback
   - Improved error logging with detailed crash information, stack traces, and timestamps
   - Added safety checks to prevent crashes during WebSocket initialization and audio processing setup
+- **CRITICAL**: Fixed crash issue in all live transcription services (gemini-live-unified.ts, gemini-live-transcript.ts, gemini-semi-live.ts) by replacing deprecated ScriptProcessorNode with MediaRecorder API
+- Live transcription services were crashing due to ScriptProcessorNode deprecation and performance issues in Electron environment
+- Switched to modern MediaRecorder API which is more stable and avoids Web Audio API performance pitfalls
 
 ## [2024-12-19] - Gemini Semi-Live Service Integration
 
