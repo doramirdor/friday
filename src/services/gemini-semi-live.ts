@@ -32,6 +32,8 @@ export interface GeminiSemiLiveOptions {
   // New options for speaker context
   maintainSpeakerContext?: boolean;
   speakerContextTimeoutMs?: number; // How long to remember speakers (default: 5 minutes)
+  // New option for processing mode
+  processingMode?: 'continuous' | 'send-at-end'; // How to process audio
 }
 
 // Interface for the semi-live Gemini service
@@ -161,6 +163,7 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
         encoding: 'LINEAR16',
         maintainSpeakerContext: true,
         speakerContextTimeoutMs: 300000, // 5 minutes
+        processingMode: 'continuous',
         ...options
       };
 
@@ -169,28 +172,37 @@ class GeminiSemiLiveServiceImpl implements GeminiSemiLiveService {
       // Start microphone capture
       await this.startMicrophoneCapture();
 
-      // Set up interval to process chunks
-      console.log('🔄 Setting up audio processing interval...');
-      this.chunkInterval = window.setInterval(() => {
-        try {
-          console.log('🔄 Audio processing interval triggered');
-          this.processAudioChunk().catch(error => {
-            console.error('❌ Unhandled error in processAudioChunk:', error);
+      // Set up processing based on mode
+      if (this.options.processingMode === 'send-at-end') {
+        console.log('📥 Using "send-at-end" mode - audio will be processed when recording stops');
+        // Don't set up interval, just collect audio
+      } else {
+        // Default continuous mode
+        console.log('🔄 Using continuous bulk mode - processing every', this.options.chunkDurationMs, 'ms');
+        
+        // Set up interval to process chunks
+        console.log('🔄 Setting up audio processing interval...');
+        this.chunkInterval = window.setInterval(() => {
+          try {
+            console.log('🔄 Audio processing interval triggered');
+            this.processAudioChunk().catch(error => {
+              console.error('❌ Unhandled error in processAudioChunk:', error);
+              if (this.errorCallback) {
+                this.errorCallback(new Error(`Audio processing failed: ${error.message}`));
+              }
+            });
+            console.log('🔄 Audio processing interval completed');
+          } catch (error) {
+            console.error('❌ Error setting up audio chunk processing:', error);
             if (this.errorCallback) {
-              this.errorCallback(new Error(`Audio processing failed: ${error.message}`));
+              this.errorCallback(new Error(`Audio processing setup failed: ${error.message}`));
             }
-          });
-          console.log('🔄 Audio processing interval completed');
-        } catch (error) {
-          console.error('❌ Error setting up audio chunk processing:', error);
-          if (this.errorCallback) {
-            this.errorCallback(new Error(`Audio processing setup failed: ${error.message}`));
           }
-        }
-      }, this.options.chunkDurationMs);
+        }, this.options.chunkDurationMs);
+        
+        console.log('✅ Audio processing interval set successfully');
+      }
       
-      console.log('✅ Audio processing interval set successfully');
-
       this._isRecording = true;
       console.log('✅ Gemini Semi-Live recording started successfully');
       
@@ -701,6 +713,17 @@ Please maintain speaker consistency by using the same speaker IDs when you recog
     }
 
     try {
+      // Process any remaining audio if in "send-at-end" mode
+      if (this.options.processingMode === 'send-at-end' && this.audioChunks.length > 0) {
+        console.log('📥 Processing all accumulated audio at end of recording...');
+        this.processAudioChunk().catch(error => {
+          console.error('❌ Error processing final audio chunk:', error);
+          if (this.errorCallback) {
+            this.errorCallback(new Error(`Final audio processing failed: ${error.message}`));
+          }
+        });
+      }
+      
       this.cleanup();
       this._isRecording = false;
       console.log('✅ Gemini Semi-Live recording stopped');

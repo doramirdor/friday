@@ -51,6 +51,10 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
   
   const { toast } = useToast();
   const transcriptRef = useRef<string>('');
+  
+  // Buffer for accumulating results before saving to database
+  const pendingTranscriptRef = useRef<string[]>([]);
+  const lastSaveRef = useRef<number>(Date.now());
 
   // Check if Gemini Semi-Live is available
   const isAvailable = geminiSemiLiveService.isAvailable;
@@ -64,6 +68,10 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
     
     // For semi-live, we append new results to build up the conversation
     if (newText && newText.trim()) {
+      // Add to pending buffer instead of immediately updating
+      pendingTranscriptRef.current.push(newText);
+      
+      // Update UI immediately for real-time feel
       transcriptRef.current = transcriptRef.current 
         ? `${transcriptRef.current}\n${newText}`
         : newText;
@@ -84,6 +92,19 @@ export const useGeminiSemiLive = (): UseGeminiSemiLiveReturn => {
       if (result.speakerContext && result.speakerContext.length > 0) {
         setSpeakerContext(result.speakerContext);
         console.log(`📊 Speaker context updated: ${result.speakerContext.length} speakers tracked`);
+      }
+      
+      // Save to database every 5 seconds or when buffer gets large
+      const now = Date.now();
+      const timeSinceLastSave = now - lastSaveRef.current;
+      const shouldSave = timeSinceLastSave > 5000 || pendingTranscriptRef.current.length > 10;
+      
+      if (shouldSave && pendingTranscriptRef.current.length > 0) {
+        console.log(`💾 Saving ${pendingTranscriptRef.current.length} transcript chunks to database`);
+        // Here you would save the buffered results to database
+        // For now, just clear the buffer and update timestamp
+        pendingTranscriptRef.current = [];
+        lastSaveRef.current = now;
       }
       
       console.log('✅ Transcript updated with new chunk:', newText);

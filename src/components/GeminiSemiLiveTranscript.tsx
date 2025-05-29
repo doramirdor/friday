@@ -36,6 +36,7 @@ const GeminiSemiLiveTranscript: React.FC<GeminiSemiLiveTranscriptProps> = ({
   const [chunkDuration, setChunkDuration] = useState(1);
   const [maintainSpeakerContext, setMaintainSpeakerContext] = useState(true);
   const [speakerContextTimeout, setSpeakerContextTimeout] = useState(5);
+  const [processingMode, setProcessingMode] = useState<'continuous' | 'send-at-end'>('continuous');
 
   const handleStartStop = useCallback(async () => {
     if (isRecording) {
@@ -49,12 +50,13 @@ const GeminiSemiLiveTranscript: React.FC<GeminiSemiLiveTranscriptProps> = ({
         chunkDurationMs: chunkDuration * 1000,
         encoding: 'LINEAR16',
         maintainSpeakerContext,
-        speakerContextTimeoutMs: speakerContextTimeout * 60 * 1000 // Convert minutes to milliseconds
+        speakerContextTimeoutMs: speakerContextTimeout * 60 * 1000, // Convert minutes to milliseconds
+        processingMode
       };
       
       await startRecording(options);
     }
-  }, [isRecording, startRecording, stopRecording, languageCode, maxSpeakers, chunkDuration, maintainSpeakerContext, speakerContextTimeout]);
+  }, [isRecording, startRecording, stopRecording, languageCode, maxSpeakers, chunkDuration, maintainSpeakerContext, speakerContextTimeout, processingMode]);
 
   const handleAddToMeeting = useCallback(() => {
     if (transcript && onTranscriptAdd) {
@@ -103,6 +105,22 @@ const GeminiSemiLiveTranscript: React.FC<GeminiSemiLiveTranscriptProps> = ({
             />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="processing-mode">Processing Mode</Label>
+            <select
+              id="processing-mode"
+              value={processingMode}
+              onChange={(e) => setProcessingMode(e.target.value as 'continuous' | 'send-at-end')}
+              disabled={isRecording}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="continuous">Continuous (every {chunkDuration}s)</option>
+              <option value="send-at-end">Send at End (no database conflicts)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
             <Label htmlFor="chunk-duration">Chunk Duration (seconds)</Label>
             <Input
               id="chunk-duration"
@@ -111,9 +129,17 @@ const GeminiSemiLiveTranscript: React.FC<GeminiSemiLiveTranscriptProps> = ({
               max="10"
               value={chunkDuration}
               onChange={(e) => setChunkDuration(parseInt(e.target.value) || 1)}
-              disabled={isRecording}
+              disabled={isRecording || processingMode === 'send-at-end'}
               className="text-sm"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="chunk-duration" className="text-sm text-muted-foreground">
+              {processingMode === 'continuous' 
+                ? `Processes audio every ${chunkDuration} seconds` 
+                : 'Processes all audio when recording stops'
+              }
+            </Label>
           </div>
         </div>
 

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Gemini Semi-Live Audio Capture Issues**: Fixed "no audio chunks to process" error preventing transcription
+  - **Enhanced Audio Chain Setup**: Fixed ScriptProcessorNode connection order with proper gain node to prevent feedback
+  - **Added Audio Level Detection**: Implemented real-time audio level monitoring to detect microphone activity
+  - **Comprehensive Audio Debugging**: Added detailed audio chain verification including sample rate, buffer size, and stream status
+  - **Audio Processing Verification**: Added 2-second delay check to verify audio chunks are being collected
+  - **Troubleshooting Guidance**: Added automatic troubleshooting tips when no audio is detected
+  - **Reduced Log Spam**: Limited audio processing logs to every 50-100 events for better debugging experience
+  - **Audio Activity Monitoring**: Added threshold-based detection to distinguish between silence and actual audio
 - **Gemini Semi-Live Speaker Awareness and Performance**: Enhanced semi-live transcription with intelligent speaker tracking and faster processing
   - **Reduced Default Chunk Duration**: Changed default chunk processing from 5 seconds to 1 second for near real-time transcription
   - **Speaker Context Across Chunks**: Added intelligent speaker tracking that maintains speaker identity across audio chunks
