@@ -288,17 +288,22 @@ class GeminiLiveUnifiedService {
       }
 
       const fileName = `gemini_live_chunk_${this.tempFileCounter++}_${Date.now()}`;
-      const result = await electronAPI.saveAudioFile(audioBuffer, fileName, ['wav']);
+      
+      // Save in native MediaRecorder format (likely WebM) instead of trying to convert to WAV
+      // This avoids format conversion issues
+      const result = await electronAPI.saveAudioFile(audioBuffer, fileName, ['webm', 'wav', 'mp3']);
       
       if (result.success && result.files && result.files.length > 0) {
-        const wavFile = result.files.find((f: { format: string; path: string }) => f.format === 'wav');
-        const filePath = wavFile ? wavFile.path : result.files[0].path;
+        const savedFile = result.files[0]; // Use the first successfully saved format
+        const filePath = savedFile.path;
+        
+        console.log(`✅ Audio chunk saved successfully: ${filePath} (${savedFile.format} format)`);
 
         return {
           timestamp: Date.now(),
           filePath: filePath,
           size: audioBuffer.byteLength,
-          duration: audioBuffer.byteLength / (16000 * 2) // Approximate duration based on 16kHz, 16-bit
+          duration: audioBuffer.byteLength / (16000 * 2) // Approximate duration
         };
       } else {
         console.error('Failed to save audio chunk:', result.error);
