@@ -5,7 +5,7 @@ export interface GoogleLiveTranscriptOptions {
   languageCode?: string;
   enableSpeakerDiarization?: boolean;
   maxSpeakers?: number;
-  encoding?: 'LINEAR16' | 'WEBM_OPUS';
+  encoding?: 'LINEAR16' | 'WEBM_OPUS' | 'MP3';
   sampleRateHertz?: number;
   chunkDurationMs?: number;
   recordingSource?: 'system' | 'mic' | 'both';
@@ -422,9 +422,9 @@ class GoogleLiveTranscriptService {
       languageCode: 'en-US',
       enableSpeakerDiarization: true,
       maxSpeakers: 4,
-      encoding: 'LINEAR16' as const,
-      sampleRateHertz: 16000,
-      chunkDurationMs: 1000, // 1 second chunks for near real-time
+      encoding: 'MP3' as const,
+      sampleRateHertz: 44100,
+      chunkDurationMs: 1000,
       recordingSource: 'mic' as const,
       ...options
     };
