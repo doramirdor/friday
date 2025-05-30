@@ -291,11 +291,13 @@ All notable changes to this project will be documented in this file.
   - **Detailed Logging**: Added comprehensive format compatibility debugging and decision rationale
   - **Cross-Browser Support**: Works with different MediaRecorder implementations across browsers
 - **Gemini Live Transcription Format Handling**: Fixed 400 Bad Request errors and improved error management for audio format conversion failures
-  - Fixed MIME type detection for .bin files to use MP3 instead of WebM format when MP3 conversion fails
-  - Prevents 400 "Request contains an invalid argument" errors when .bin files from failed MP3 conversion are sent to Gemini API
+  - Fixed MIME type detection for .bin files to correctly use WebM format when they contain WebM data from failed MP3 conversion
+  - Added graceful skipping of problematic .bin files that cause 400 errors instead of stopping entire transcription process
+  - Enhanced logging to analyze why file saving is inconsistent between .webm and .bin formats for better debugging
+  - System now continues processing other chunks normally when individual .bin files fail with format errors
   - Improved file cleanup error handling to prevent non-critical cleanup failures from appearing as critical errors
-  - Added better error logging and validation for problematic file types with enhanced debug information
-  - Enhanced system to distinguish between expected .bin file format errors and actual transcription failures
+  - Added detailed file format analysis logging to help diagnose audio conversion inconsistencies
+  - Enhanced error handling to distinguish between recoverable format issues and critical transcription failures
   - System now handles format conversion failures more gracefully while maintaining overall transcription functionality
 
 ### Changed
@@ -905,13 +907,14 @@ All notable changes to this project will be documented in this file.
   - **Detailed Logging**: Added comprehensive format compatibility debugging and decision rationale
   - **Cross-Browser Support**: Works with different MediaRecorder implementations across browsers
 - **Gemini Live Transcription Format Handling**: Fixed 400 Bad Request errors and improved error management for audio format conversion failures
-  - Fixed MIME type detection for .bin files to use MP3 instead of WebM format when MP3 conversion fails
-  - Prevents 400 "Request contains an invalid argument" errors when .bin files from failed MP3 conversion are sent to Gemini API
+  - Fixed MIME type detection for .bin files to correctly use WebM format when they contain WebM data from failed MP3 conversion
+  - Added graceful skipping of problematic .bin files that cause 400 errors instead of stopping entire transcription process
+  - Enhanced logging to analyze why file saving is inconsistent between .webm and .bin formats for better debugging
+  - System now continues processing other chunks normally when individual .bin files fail with format errors
   - Improved file cleanup error handling to prevent non-critical cleanup failures from appearing as critical errors
-  - Added better error logging and validation for problematic file types with enhanced debug information
-  - Enhanced system to distinguish between expected .bin file format errors and actual transcription failures
+  - Added detailed file format analysis logging to help diagnose audio conversion inconsistencies
+  - Enhanced error handling to distinguish between recoverable format issues and critical transcription failures
   - System now handles format conversion failures more gracefully while maintaining overall transcription functionality
-- **Unified Gemini Live MIME Type Detection**: Fixed 400 Bad Request errors by implementing proper audio format detection for Gemini API
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
