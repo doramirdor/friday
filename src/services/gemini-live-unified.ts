@@ -3,7 +3,7 @@ import geminiService, { GeminiTranscriptionResult } from './gemini';
 import { Speaker } from '@/models/types';
 
 // Unified Gemini Live Transcription Service
-// Captures audio using MediaRecorder and provides mock transcription results for stability
+// Captures audio using MediaRecorder, saves as temporary files, and transcribes using Gemini 2.0 Flash
 
 export interface GeminiLiveOptions {
   languageCode?: string;
@@ -268,20 +268,39 @@ class GeminiLiveUnifiedService {
 
   private async saveAudioChunk(audioBuffer: ArrayBuffer): Promise<AudioChunk | null> {
     try {
-      console.log('🔍 Processing audio chunk directly (bypass file saving)...');
+      console.log('🔍 Saving audio chunk as temporary file for Gemini transcription...');
       console.log('🔍 Audio buffer size:', audioBuffer.byteLength, 'bytes');
       
-      // Create a fake file path for logging purposes
-      const fakeFilePath = `in-memory-chunk-${this.tempFileCounter++}-${Date.now()}.webm`;
-      console.log('🔍 Processing chunk:', fakeFilePath);
+      // Create a temporary filename with .mp3 extension (Gemini service handles format detection)
+      const timestamp = Date.now();
+      const filename = `live-chunk-${this.tempFileCounter++}-${timestamp}.mp3`;
+      
+      console.log('🔍 Saving chunk as:', filename);
 
-      return {
-        timestamp: Date.now(),
-        filePath: fakeFilePath,
-        size: audioBuffer.byteLength,
-        duration: audioBuffer.byteLength / (16000 * 2), // Approximate duration
-        audioBuffer: audioBuffer // Include the buffer directly
-      };
+      // Save audio buffer as temporary file using existing IPC
+      const electronAPI = window.electronAPI;
+      if (electronAPI?.saveAudioFile) {
+        const saveResult = await electronAPI.saveAudioFile(audioBuffer, filename, ['mp3']);
+        
+        if (saveResult.success && saveResult.files && saveResult.files.length > 0) {
+          const savedFile = saveResult.files[0]; // Get the first saved file
+          console.log('✅ Audio chunk saved successfully:', savedFile.path);
+          
+          return {
+            timestamp: timestamp,
+            filePath: savedFile.path,
+            size: audioBuffer.byteLength,
+            duration: audioBuffer.byteLength / (16000 * 2), // Approximate duration
+            audioBuffer: audioBuffer
+          };
+        } else {
+          console.error('❌ Failed to save audio chunk:', saveResult.error || 'No files saved');
+          return null;
+        }
+      } else {
+        console.error('❌ saveAudioFile API not available');
+        return null;
+      }
 
     } catch (error) {
       console.error('❌ Exception in saveAudioChunk:', error);
@@ -299,27 +318,25 @@ class GeminiLiveUnifiedService {
       
       const startTime = Date.now();
 
-      console.log('🔍 GEMINI DEBUG: 🚀 Processing in-memory audio buffer (mock transcription)...');
+      console.log('🔍 GEMINI DEBUG: 🚀 Calling real Gemini API with saved audio file...');
       console.log('🔍 GEMINI DEBUG: Request details:', {
+        filePath: chunk.filePath,
         size: chunk.size,
         duration: chunk.duration,
         maxSpeakers: this.options.maxSpeakers,
         timestamp: new Date().toISOString()
       });
 
-      // Use mock transcription results to ensure stability (no crashes)
-      const result: GeminiTranscriptionResult = {
-        transcript: `[${new Date().toLocaleTimeString()}] Live transcription chunk ${this.stats.chunksProcessed + 1} - ${(chunk.size / 1024).toFixed(1)}KB audio processed successfully!`,
-        speakers: [
-          { 
-            id: "1", 
-            name: "Speaker 1", 
-            color: "#28C76F",
-            meetingId: "live-unified-session",
-            type: "speaker"
-          }
-        ]
-      };
+      // Check if Gemini service is available
+      if (!geminiService.isAvailable()) {
+        throw new Error('Gemini AI is not initialized. Please check your API key.');
+      }
+
+      // Use the existing stable geminiService.transcribeAudio() method with the saved file
+      const result: GeminiTranscriptionResult = await geminiService.transcribeAudio(
+        chunk.filePath,
+        this.options.maxSpeakers
+      );
 
       const processingTime = Date.now() - startTime;
       console.log(`🔍 GEMINI DEBUG: ✅ Received response from Gemini API (${processingTime}ms)`);
@@ -362,6 +379,9 @@ class GeminiLiveUnifiedService {
         });
       }
 
+      // Clean up the temporary file after successful processing
+      await this.cleanupFile(chunk.filePath);
+
     } catch (error) {
       console.error('❌ Error in processChunk:', error);
       console.error('🔍 GEMINI DEBUG: ❌ Gemini API error details:', {
@@ -370,6 +390,14 @@ class GeminiLiveUnifiedService {
         chunkPath: chunk.filePath,
         chunkSize: chunk.size
       });
+      
+      // Try to cleanup the file even on error
+      try {
+        await this.cleanupFile(chunk.filePath);
+      } catch (cleanupError) {
+        console.error('❌ Error cleaning up failed chunk:', cleanupError);
+      }
+      
       this.emitError(error as Error);
     }
   }
