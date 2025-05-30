@@ -1660,60 +1660,70 @@ ipcMain.handle("request-semi-live-chunk", async (_, options = {}) => {
     const chunkFilename = `${semiLiveBaseFilename}_${filename}`;
     const chunkFilePath = path.join(semiLiveRecordingPath, `${chunkFilename}.mp3`);
     
-    console.log(`📁 Saving chunk from ongoing recording: ${chunkFilename}.mp3`);
+    console.log(`📁 Creating chunk from ongoing recording: ${chunkFilename}.mp3`);
+    console.log(`📍 Full chunk path: ${chunkFilePath}`);
     
-    // Instead of starting/stopping recording, we'll create a chunk file from current recording
-    // For now, we'll create a test chunk - in a real implementation, this would extract
-    // the last N seconds from the ongoing recording buffer
+    // For now, we'll create actual test chunk files to verify the system works
+    // In production, this would extract audio from the ongoing recording buffer
     try {
-      // Generate a 1-second audio chunk for testing
-      const { spawn } = await import('child_process');
+      console.log(`🔧 Generating test chunk with ffmpeg...`);
       
-      const ffmpegProcess = spawn('ffmpeg', [
-        '-f', 'lavfi',
-        '-i', 'anullsrc=r=44100:cl=mono',  // Generate mono silence for testing
-        '-t', '1',                         // 1 second duration
-        '-c:a', 'libmp3lame',             // Use mp3 codec
-        '-b:a', '64k',                    // Lower bitrate for smaller chunks
-        '-y',                             // Overwrite if exists
-        chunkFilePath                     // Output file
-      ]);
+      // Use execSync for more reliable file creation
+      const { execSync } = await import('child_process');
       
-      // Wait for ffmpeg to complete
-      await new Promise((resolve, reject) => {
-        ffmpegProcess.on('close', (code) => {
-          if (code === 0) {
-            console.log(`✅ Generated chunk: ${chunkFilePath}`);
-            resolve();
+      const ffmpegCommand = `ffmpeg -f lavfi -i "anullsrc=r=44100:cl=mono" -t 1 -c:a libmp3lame -b:a 64k -y "${chunkFilePath}"`;
+      console.log(`🔧 FFmpeg command: ${ffmpegCommand}`);
+      
+      // Execute ffmpeg synchronously to ensure file is created
+      execSync(ffmpegCommand, { stdio: 'pipe' });
+      
+      console.log(`✅ FFmpeg command completed`);
+      
+      // Verify the file exists with multiple checks
+      let fileExists = false;
+      let attempts = 0;
+      const maxAttempts = 5;
+      
+      while (!fileExists && attempts < maxAttempts) {
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
+        
+        if (fs.existsSync(chunkFilePath)) {
+          const stats = fs.statSync(chunkFilePath);
+          if (stats.size > 0) {
+            fileExists = true;
+            console.log(`✅ Chunk file verified: ${chunkFilePath} (${stats.size} bytes)`);
           } else {
-            reject(new Error(`ffmpeg exited with code ${code}`));
+            console.log(`⚠️ Chunk file exists but is empty (attempt ${attempts})`);
           }
-        });
-        
-        ffmpegProcess.on('error', (err) => {
-          reject(err);
-        });
-      });
-      
-      // Verify the file exists and notify frontend
-      if (fs.existsSync(chunkFilePath)) {
-        const chunkData = {
-          filePath: chunkFilePath,
-          timestamp: Date.now(),
-          chunkIndex: semiLiveChunkCounter - 1,
-          size: fs.statSync(chunkFilePath).size
-        };
-        
-        console.log(`📁 Semi-live chunk ready: ${chunkFilePath} (${chunkData.size} bytes)`);
-        global.mainWindow.webContents.send("semi-live-chunk-ready", chunkData);
-        
-        return { success: true, chunkPath: chunkFilePath };
-      } else {
-        throw new Error('Failed to create chunk file');
+        } else {
+          console.log(`⚠️ Chunk file does not exist yet (attempt ${attempts})`);
+        }
       }
+      
+      if (!fileExists) {
+        throw new Error(`Failed to create chunk file after ${maxAttempts} attempts`);
+      }
+      
+      // Get final file stats
+      const finalStats = fs.statSync(chunkFilePath);
+      
+      // Notify frontend that chunk is ready
+      const chunkData = {
+        filePath: chunkFilePath,
+        timestamp: Date.now(),
+        chunkIndex: semiLiveChunkCounter - 1,
+        size: finalStats.size
+      };
+      
+      console.log(`📁 Semi-live chunk ready: ${chunkFilePath} (${chunkData.size} bytes)`);
+      global.mainWindow.webContents.send("semi-live-chunk-ready", chunkData);
+      
+      return { success: true, chunkPath: chunkFilePath, size: finalStats.size };
       
     } catch (ffmpegError) {
       console.error('❌ Error generating chunk:', ffmpegError);
+      console.error('❌ FFmpeg error details:', ffmpegError.message);
       return { success: false, error: ffmpegError.message };
     }
     

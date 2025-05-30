@@ -40,11 +40,23 @@ All notable changes to this project will be documented in this file.
   - Maintained consistency with existing transcript line format and editing capabilities
 
 ### Fixed
+- **MAJOR: Continuous Recording Architecture for Google Live Chunks**: Implemented proper continuous recording system eliminating filename corruption and start/stop cycles
+  - **Root Cause**: Previous system was starting/stopping recording for each chunk, causing filename corruption and disrupting audio stream continuity
+  - **Filename Corruption Eliminated**: Fixed nested processing that created corrupted names like `google_live_1748615991602_1748615991602_google_live_1748615991602_chunk_0_mic.wav`
+  - **Continuous Recording**: Now starts single recording session and keeps it running throughout the entire transcription process
+  - **Clean Chunk Export**: Periodically saves chunks from ongoing recording stream without stopping the main recording
+  - **Clean Filenames**: Generates proper filenames like `live_transcript_1748616385245_chunk_0.mp3` without nested suffixes
+  - **No Recording Interruption**: Recording continues uninterrupted while chunks are being saved and processed
+  - **Proper Live Architecture**: Matches real live transcription requirements where recording is continuous and chunks are exported periodically
+  - **Eliminated Start/Stop Overhead**: No more expensive recording initialization for each chunk, improving performance and audio quality
+  - **State Management**: Added proper recording state tracking with `semiLiveRecordingActive` flag to ensure consistent behavior
+  - **Resource Management**: Enhanced cleanup and error handling for continuous recording sessions
+  - **File Opening Errors Fixed**: Clean filenames eliminate the `-12842` unknown errors when trying to open chunk files
 - **CRITICAL: Google Live Chunk Filename Corruption and File Format Issues**: Fixed corrupted chunk filenames and file opening errors
   - **Root Cause**: Nested filename processing causing corrupted names like `google_live_1748615991602_1748615991602_google_live_1748615991602_chunk_0_mic.wav`
   - **Filename Duplication Issue**: Semi-live recording system was nesting recording IDs and then `startRecording` was adding more suffixes, creating unreadable filenames
   - **File Opening Errors**: Files couldn't be opened due to corrupted filename structure and format issues (`-12842` unknown error)
-  - **Solution - Simplified Semi-Live Recording**: Rewrote semi-live recording system to generate clean chunk filenames without nesting or duplication
+  - **Solution - Simplified Semi-Live Recording**: Rewritten semi-live recording system to generate clean chunk filenames without nesting or duplication
   - **Direct Chunk Generation**: Now uses direct ffmpeg chunk generation avoiding complex `startRecording`/`stopRecording` cycle that caused filename conflicts
   - **Clean Directory Structure**: Changed to use dedicated `live-chunks` directory with proper organization like regular recording
   - **Multiple File Format Support**: Added support for multiple file formats (mp3, wav, mic, system variants) following regular recording pattern

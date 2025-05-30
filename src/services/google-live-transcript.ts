@@ -265,10 +265,15 @@ class GoogleLiveTranscriptService {
           encoding: options.encoding,
           sampleRateHertz: options.sampleRateHertz,
           languageCode: options.languageCode,
-          enableSpeakerDiarization: options.enableSpeakerDiarization,
-          diarizationSpeakerCount: options.maxSpeakers,
           model: 'latest_long',
           useEnhanced: true,
+          enableAutomaticPunctuation: true,
+          // Correct diarization configuration structure
+          diarizationConfig: {
+            enableSpeakerDiarization: options.enableSpeakerDiarization,
+            minSpeakerCount: 1,
+            maxSpeakerCount: options.maxSpeakers
+          }
         },
         audio: {
           content: audioData
@@ -280,7 +285,7 @@ class GoogleLiveTranscriptService {
         sampleRateHertz: options.sampleRateHertz,
         languageCode: options.languageCode,
         enableSpeakerDiarization: options.enableSpeakerDiarization,
-        diarizationSpeakerCount: options.maxSpeakers,
+        maxSpeakers: options.maxSpeakers,
         audioDataLength: audioData.length
       });
 
