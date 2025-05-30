@@ -136,10 +136,11 @@ class GeminiLiveUnifiedService {
       
       // Find supported audio format
       const supportedTypes = [
-        'audio/webm;codecs=opus',
-        'audio/webm', 
-        'audio/mp4',
-        'audio/wav'
+        'audio/mp3',
+        'audio/mpeg',
+        'audio/wav', 
+        'audio/ogg; codecs=opus',
+        'audio/aac'
       ];
       
       let mimeType = '';
@@ -153,7 +154,7 @@ class GeminiLiveUnifiedService {
       // Create MediaRecorder
       this.mediaRecorder = new MediaRecorder(this.mediaStream, {
         mimeType: mimeType || undefined,
-        audioBitsPerSecond: 128000
+        bitsPerSecond: 128000
       });
       
       this.mediaRecorder.ondataavailable = (event) => {
@@ -271,16 +272,43 @@ class GeminiLiveUnifiedService {
       console.log('🔍 Saving audio chunk as temporary file for Gemini transcription...');
       console.log('🔍 Audio buffer size:', audioBuffer.byteLength, 'bytes');
       
-      // Create a temporary filename with .webm extension (save in native MediaRecorder format)
-      const timestamp = Date.now();
-      const filename = `live-chunk-${this.tempFileCounter++}-${timestamp}.webm`;
+      // Determine the correct file extension based on MediaRecorder MIME type
+      const mimeType = this.mediaRecorder?.mimeType || 'audio/mp3';
+      console.log('🔍 MediaRecorder MIME type:', mimeType);
       
-      console.log('🔍 Saving chunk as:', filename);
+      let fileExtension = 'mp3'; // Default fallback
+      let saveFormat = 'mp3';
+      
+      // Map MIME types to file extensions and save formats
+      if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+        fileExtension = 'mp3';
+        saveFormat = 'mp3';
+      } else if (mimeType.includes('wav')) {
+        fileExtension = 'wav';
+        saveFormat = 'wav';
+      } else if (mimeType.includes('ogg')) {
+        fileExtension = 'ogg';
+        saveFormat = 'ogg';
+      } else if (mimeType.includes('aac')) {
+        fileExtension = 'aac';
+        saveFormat = 'aac';
+      } else if (mimeType.includes('mp4')) {
+        fileExtension = 'm4a';
+        saveFormat = 'mp4';
+      } else {
+        console.warn('⚠️ Unknown MIME type, defaulting to MP3:', mimeType);
+      }
+      
+      // Create a temporary filename with correct extension
+      const timestamp = Date.now();
+      const filename = `live-chunk-${this.tempFileCounter++}-${timestamp}.${fileExtension}`;
+      
+      console.log('🔍 Saving chunk as:', filename, 'format:', saveFormat);
 
       // Save audio buffer as temporary file using existing IPC
       const electronAPI = window.electronAPI;
       if (electronAPI?.saveAudioFile) {
-        const saveResult = await electronAPI.saveAudioFile(audioBuffer, filename, ['webm']);
+        const saveResult = await electronAPI.saveAudioFile(audioBuffer, filename, [saveFormat]);
         
         if (saveResult.success && saveResult.files && saveResult.files.length > 0) {
           const savedFile = saveResult.files[0]; // Get the first saved file
@@ -300,7 +328,7 @@ class GeminiLiveUnifiedService {
           // Return a mock chunk that will generate a mock transcription result
           return {
             timestamp: timestamp,
-            filePath: `mock-chunk-${this.tempFileCounter}-${timestamp}.webm`,
+            filePath: `mock-chunk-${this.tempFileCounter}-${timestamp}.${fileExtension}`,
             size: audioBuffer.byteLength,
             duration: audioBuffer.byteLength / (16000 * 2),
             audioBuffer: audioBuffer
