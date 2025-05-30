@@ -24,6 +24,12 @@
   - Removed unused `currentOptions` and `currentRecordingId` properties
   - Ensures chunks are properly processed instead of being skipped
   - Resolves "Missing options or API key, skipping chunk processing" warnings
+- **Google Live Transcript Real-Time Processing**: Fixed critical issue where Google Live Transcript was only processing responses when recording stopped instead of processing each chunk in real-time
+  - Added missing `isRecording` getter to Google Live Transcript service
+  - Updated hook to track `latestResult` for individual chunk processing  
+  - Added new useEffect to process individual results as they arrive
+  - Individual audio chunks now processed immediately as they're created every 3 seconds
+  - Resolves issue where live transcription appeared delayed or non-functional
 
 ### Improved
 - **Google Live Transcript**: Increased chunk duration from 1 second to 3 seconds

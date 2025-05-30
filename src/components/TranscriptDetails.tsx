@@ -30,16 +30,8 @@ import useMicrophoneRecording from "@/hooks/useMicrophoneRecording";
 import useSystemAudioRecording from "@/hooks/useSystemAudioRecording";
 import useCombinedRecording from "@/hooks/useCombinedRecording";
 import AudioPlayer from "@/components/AudioPlayer";
-import { useStreamingSpeech } from '@/hooks/useStreamingSpeech';
-import { SemiLiveSpeechOptions } from '@/services/semi-live-speech';
 import { Switch } from "@/components/ui/switch";
-import GeminiSemiLiveTranscript from '@/components/GeminiSemiLiveTranscript';
-import { useGeminiSemiLive } from '@/hooks/useGeminiSemiLive';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
-import GeminiLiveTranscriptNew from '@/components/GeminiLiveTranscriptNew';
-import GoogleLiveTranscriptNew from '@/components/GoogleLiveTranscriptNew';
-import GeminiLiveUnifiedTest from '@/components/GeminiLiveUnifiedTest';
-import { useGoogleLiveTranscript } from '@/hooks/useGoogleLiveTranscript';
 
 // Simple debounce function
 const debounce = <T extends unknown[]>(func: (...args: T) => void, wait: number) => {
@@ -188,9 +180,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     interimResults: true,
     language: 'en-US',
   });
-  
-  // Add streaming speech hook
-  const streamingSpeech = useStreamingSpeech();
   
   // Add Gemini Live hook
   const geminiLive = useGeminiSemiLive();
