@@ -73,6 +73,11 @@ interface ProcessingState {
   lastProcessedTime: number;
   totalChunksProcessed: number;
   chunkCounter: number;
+  languageCode?: string;
+  enableSpeakerDiarization?: boolean;
+  maxSpeakers?: number;
+  encoding?: 'LINEAR16' | 'WEBM_OPUS' | 'MP3';
+  sampleRateHertz?: number;
 }
 
 class GoogleLiveTranscriptService {
@@ -208,18 +213,14 @@ class GoogleLiveTranscriptService {
 
       // Call Google Speech API
       console.log(`🌐 Google Live: Calling Google Speech API...`);
-      const transcriptionResult = await this.callGoogleSpeechAPI(audioData, this.currentOptions as Required<GoogleLiveTranscriptOptions>);
+      const transcriptionResult = await this.callGoogleSpeechAPI(audioData);
       
       if (transcriptionResult) {
-        console.log(`🎯 Google Live: Received transcription result:`, transcriptionResult);
-        if (this.resultCallback) {
-          console.log(`📡 Google Live: Calling result callback...`);
-          this.resultCallback(transcriptionResult);
-        } else {
-          console.warn(`⚠️ Google Live: No result callback registered`);
-        }
+        console.log('🎯 Google Live: Received transcription result:', transcriptionResult);
+        console.log('📡 Google Live: Calling result callback...');
+        this.resultCallback?.(transcriptionResult);
       } else {
-        console.log(`🤐 Google Live: No transcription result from API call`);
+        console.log('🤐 Google Live: No transcription result from API call');
       }
 
       // Remove chunk from pending list and cleanup file
@@ -258,36 +259,46 @@ class GoogleLiveTranscriptService {
     return btoa(binary);
   }
 
-  private async callGoogleSpeechAPI(audioData: string, options: Required<GoogleLiveTranscriptOptions>): Promise<GoogleLiveTranscriptResult | null> {
+  private async callGoogleSpeechAPI(audioData: string): Promise<GoogleLiveTranscriptResult | null> {
+    if (!this.apiKey) {
+      console.error('❌ Google Live: No API key available');
+      return null;
+    }
+
+    // Check if service is still active before processing
+    if (!this.state.isRecording) {
+      console.log('🔇 Google Live: Service stopped, skipping chunk processing');
+      return null;
+    }
+
     try {
+      console.log('🔍 Google Live: Calling Speech API for transcription with config:', {
+        encoding: this.state.encoding,
+        sampleRateHertz: this.state.sampleRateHertz,
+        languageCode: this.state.languageCode,
+        enableSpeakerDiarization: this.state.enableSpeakerDiarization,
+        maxSpeakers: this.state.maxSpeakers
+      });
+
       const requestBody = {
         config: {
-          encoding: options.encoding,
-          sampleRateHertz: options.sampleRateHertz,
-          languageCode: options.languageCode,
+          encoding: this.state.encoding,
+          sampleRateHertz: this.state.sampleRateHertz,
+          languageCode: this.state.languageCode,
           model: 'latest_long',
           useEnhanced: true,
           enableAutomaticPunctuation: true,
           // Correct diarization configuration structure
           diarizationConfig: {
-            enableSpeakerDiarization: options.enableSpeakerDiarization,
+            enableSpeakerDiarization: this.state.enableSpeakerDiarization,
             minSpeakerCount: 1,
-            maxSpeakerCount: options.maxSpeakers
+            maxSpeakerCount: this.state.maxSpeakers
           }
         },
         audio: {
           content: audioData
         }
       };
-
-      console.log(`🔍 Google Live: Calling Speech API for transcription with config:`, {
-        encoding: options.encoding,
-        sampleRateHertz: options.sampleRateHertz,
-        languageCode: options.languageCode,
-        enableSpeakerDiarization: options.enableSpeakerDiarization,
-        maxSpeakers: options.maxSpeakers,
-        audioDataLength: audioData.length
-      });
 
       const response = await fetch(`https://speech.googleapis.com/v1/speech:recognize?key=${this.apiKey}`, {
         method: 'POST',
@@ -418,65 +429,70 @@ class GoogleLiveTranscriptService {
       return;
     }
 
+    // Clear any previous state
+    this.clearTranscript();
+    this.speakers.splice(0); // Clear speakers array properly
+
     const opts = {
       languageCode: 'en-US',
       enableSpeakerDiarization: true,
       maxSpeakers: 4,
-      encoding: 'MP3' as const,
-      sampleRateHertz: 44100,
-      chunkDurationMs: 3000,
+      encoding: 'MP3' as const, // Changed from LINEAR16 to MP3 to match generated files
+      sampleRateHertz: 44100,   // Changed from 16000 to 44100 for MP3
+      chunkDurationMs: 3000, // Changed from 1000 to 3000 (3 seconds) for better audio capture
       recordingSource: 'mic' as const,
       ...options
     };
 
+    // Store all options in state for chunk processing
+    this.state = {
+      isRecording: true,
+      chunkDurationMs: opts.chunkDurationMs,
+      recordingSource: opts.recordingSource,
+      audioChunks: [],
+      lastProcessedTime: 0,
+      totalChunksProcessed: 0,
+      chunkCounter: 0,
+      languageCode: opts.languageCode,
+      enableSpeakerDiarization: opts.enableSpeakerDiarization,
+      maxSpeakers: opts.maxSpeakers,
+      encoding: opts.encoding,
+      sampleRateHertz: opts.sampleRateHertz
+    };
+
     console.log('🎤 Google Live: Final options:', opts);
 
-    this.currentOptions = opts;
-    this.state.chunkDurationMs = opts.chunkDurationMs;
-    this.state.recordingSource = opts.recordingSource;
-    this.state.isRecording = true;
-    this.state.totalChunksProcessed = 0;
-    this.state.audioChunks = [];
+    // Generate a unique recording ID
+    const recordingId = `google_live_${Date.now()}`;
+    console.log('🎤 Google Live: Generated recording ID:', recordingId);
 
-    // Generate unique recording ID
-    this.currentRecordingId = `google_live_${Date.now()}`;
-    console.log('🎤 Google Live: Generated recording ID:', this.currentRecordingId);
+    console.log('🎤 Starting Google Live Transcript with semi-live recording...');
 
     try {
-      console.log('🎤 Starting Google Live Transcript with semi-live recording...');
-
-      const electronAPI = window.electronAPI as ExtendedElectronAPI;
-      
       // Start semi-live recording
-      console.log(`🎤 Google Live: Starting ${opts.recordingSource} recording...`);
+      console.log('🎤 Google Live: Starting mic recording...');
+      const electronAPI = window.electronAPI as ExtendedElectronAPI;
       const result = await electronAPI.startSemiLiveRecording({
         chunkDurationMs: opts.chunkDurationMs,
         source: opts.recordingSource,
-        filename: 'google_live'  // Use simple base filename
+        filename: recordingId
       });
 
       console.log('🎤 Google Live: Recording start result:', result);
 
-      if (!result.success) {
-        console.error('❌ Google Live: Recording failed to start:', result.error);
-        throw new Error(result.error || 'Failed to start recording');
+      if (result && result.success) {
+        console.log('✅ Google Live Transcript started with semi-live recording');
+        console.log('📊 Google Live: Final state after start:', this.state);
+        
+        // Start requesting chunks
+        this.setupChunkingInterval();
+      } else {
+        throw new Error('Failed to start semi-live recording');
       }
-
-      console.log('✅ Google Live Transcript started with semi-live recording');
-      console.log('📊 Google Live: Final state after start:', {
-        isRecording: this.state.isRecording,
-        chunkDurationMs: this.state.chunkDurationMs,
-        recordingSource: this.state.recordingSource,
-        recordingId: this.currentRecordingId
-      });
-
-      // Start chunking interval to process recording periodically
-      this.setupChunkingInterval();
-
     } catch (error) {
-      console.error('❌ Google Live: Error during recording start:', error);
+      console.error('❌ Google Live: Error starting recording:', error);
       this.state.isRecording = false;
-      throw new Error(`Failed to start recording: ${error.message}`);
+      throw error;
     }
   }
 
