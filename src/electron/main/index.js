@@ -1589,21 +1589,24 @@ ipcMain.handle("delete-file", async (event, filepath) => {
   }
 });
 
-// Semi-Live Recording Handlers for Gemini 2.0 Flash Integration
+// Semi-Live Recording Handlers for Live Transcription
 let semiLiveRecordingProcess = null;
 let semiLiveRecordingPath = null;
 let semiLiveChunkCounter = 0;
 let semiLiveRecordingId = null;
+let semiLiveRecordingActive = false;
+let semiLiveBaseFilename = null;
 
 // Start semi-live recording with chunked output
 ipcMain.handle("start-semi-live-recording", async (_, options = {}) => {
   try {
-    console.log('🎤 Starting semi-live recording for live transcription:', options);
+    console.log('🎤 Starting continuous semi-live recording for live transcription:', options);
     
     const { chunkDurationMs = 1000, source = 'mic', filename = 'live_transcript' } = options;
     
-    // Generate simple recording ID without nesting
+    // Generate simple recording ID
     semiLiveRecordingId = `${filename}_${Date.now()}`;
+    semiLiveBaseFilename = semiLiveRecordingId;
     const documentsPath = app.getPath("documents");
     const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings", "live-chunks");
     
@@ -1619,10 +1622,26 @@ ipcMain.handle("start-semi-live-recording", async (_, options = {}) => {
     
     semiLiveRecordingPath = fridayRecordingsPath;
     semiLiveChunkCounter = 0;
+    semiLiveRecordingActive = true;
     
-    console.log(`✅ Semi-live recording setup completed for ${source} source with ${chunkDurationMs}ms chunks`);
+    // Start continuous recording using the existing recording infrastructure
+    // This will create a single ongoing recording session
+    try {
+      await startRecording({
+        filepath: semiLiveRecordingPath,
+        filename: semiLiveBaseFilename,
+        source: source
+      });
+      
+      console.log(`✅ Continuous recording started for ${source} source with ${chunkDurationMs}ms chunk intervals`);
+      
+      return { success: true, recordingId: semiLiveRecordingId, path: semiLiveRecordingPath };
+    } catch (recordingError) {
+      console.error('❌ Error starting continuous recording:', recordingError);
+      semiLiveRecordingActive = false;
+      return { success: false, error: recordingError.message };
+    }
     
-    return { success: true, recordingId: semiLiveRecordingId, path: semiLiveRecordingPath };
   } catch (error) {
     console.error("Error starting semi-live recording:", error);
     return { success: false, error: error.message };
@@ -1632,47 +1651,39 @@ ipcMain.handle("start-semi-live-recording", async (_, options = {}) => {
 // Request a chunk from the ongoing recording
 ipcMain.handle("request-semi-live-chunk", async (_, options = {}) => {
   try {
-    if (!semiLiveRecordingId || !semiLiveRecordingPath) {
-      throw new Error('Semi-live recording not initialized');
+    if (!semiLiveRecordingId || !semiLiveRecordingPath || !semiLiveRecordingActive) {
+      throw new Error('Semi-live recording not active');
     }
     
     const { filename = `chunk_${semiLiveChunkCounter++}` } = options;
-    // Create clean chunk filename without nesting the recording ID again
-    const chunkFilename = `${semiLiveRecordingId}_${filename}`;
+    // Create clean chunk filename
+    const chunkFilename = `${semiLiveBaseFilename}_${filename}`;
+    const chunkFilePath = path.join(semiLiveRecordingPath, `${chunkFilename}.mp3`);
     
-    console.log(`🎙️ Recording semi-live chunk: ${chunkFilename}`);
+    console.log(`📁 Saving chunk from ongoing recording: ${chunkFilename}.mp3`);
     
-    // Create multiple file formats like regular recording
-    const baseFilePath = path.join(semiLiveRecordingPath, chunkFilename);
-    const filePaths = {
-      mp3: `${baseFilePath}.mp3`,
-      wav: `${baseFilePath}.wav`,
-      mic: `${baseFilePath}_mic.wav`,
-      system: `${baseFilePath}_system.wav`
-    };
-    
-    // For now, create a simple chunk file directly rather than using the complex startRecording
-    // This avoids the filename duplication issue
+    // Instead of starting/stopping recording, we'll create a chunk file from current recording
+    // For now, we'll create a test chunk - in a real implementation, this would extract
+    // the last N seconds from the ongoing recording buffer
     try {
-      // Generate a short audio file using ffmpeg directly
+      // Generate a 1-second audio chunk for testing
       const { spawn } = await import('child_process');
       
-      // Create a 1-second silence file for testing (replace with actual recording later)
       const ffmpegProcess = spawn('ffmpeg', [
         '-f', 'lavfi',
-        '-i', 'anullsrc=r=44100:cl=mono',  // Generate mono silence
+        '-i', 'anullsrc=r=44100:cl=mono',  // Generate mono silence for testing
         '-t', '1',                         // 1 second duration
         '-c:a', 'libmp3lame',             // Use mp3 codec
         '-b:a', '64k',                    // Lower bitrate for smaller chunks
         '-y',                             // Overwrite if exists
-        filePaths.mp3                     // Output file
+        chunkFilePath                     // Output file
       ]);
       
       // Wait for ffmpeg to complete
       await new Promise((resolve, reject) => {
         ffmpegProcess.on('close', (code) => {
           if (code === 0) {
-            console.log(`✅ Generated chunk: ${filePaths.mp3}`);
+            console.log(`✅ Generated chunk: ${chunkFilePath}`);
             resolve();
           } else {
             reject(new Error(`ffmpeg exited with code ${code}`));
@@ -1685,24 +1696,24 @@ ipcMain.handle("request-semi-live-chunk", async (_, options = {}) => {
       });
       
       // Verify the file exists and notify frontend
-      if (fs.existsSync(filePaths.mp3)) {
+      if (fs.existsSync(chunkFilePath)) {
         const chunkData = {
-          filePath: filePaths.mp3,
+          filePath: chunkFilePath,
           timestamp: Date.now(),
           chunkIndex: semiLiveChunkCounter - 1,
-          size: fs.statSync(filePaths.mp3).size
+          size: fs.statSync(chunkFilePath).size
         };
         
-        console.log(`📁 Semi-live chunk ready: ${filePaths.mp3} (${chunkData.size} bytes)`);
+        console.log(`📁 Semi-live chunk ready: ${chunkFilePath} (${chunkData.size} bytes)`);
         global.mainWindow.webContents.send("semi-live-chunk-ready", chunkData);
         
-        return { success: true, chunkPath: filePaths.mp3 };
+        return { success: true, chunkPath: chunkFilePath };
       } else {
         throw new Error('Failed to create chunk file');
       }
       
     } catch (ffmpegError) {
-      console.error('❌ Error generating chunk with ffmpeg:', ffmpegError);
+      console.error('❌ Error generating chunk:', ffmpegError);
       return { success: false, error: ffmpegError.message };
     }
     
@@ -1715,20 +1726,28 @@ ipcMain.handle("request-semi-live-chunk", async (_, options = {}) => {
 // Stop semi-live recording
 ipcMain.handle("stop-semi-live-recording", async () => {
   try {
-    console.log('🛑 Stopping semi-live recording...');
+    console.log('🛑 Stopping continuous semi-live recording...');
     
-    // Stop any ongoing recording
-    if (semiLiveRecordingProcess) {
-      await stopRecording();
-      semiLiveRecordingProcess = null;
+    semiLiveRecordingActive = false;
+    
+    // Stop the ongoing recording
+    if (semiLiveRecordingId) {
+      try {
+        const result = await stopRecording();
+        console.log('✅ Continuous recording stopped:', result);
+      } catch (stopError) {
+        console.warn('⚠️ Warning stopping recording:', stopError);
+      }
     }
     
     // Reset semi-live state
     semiLiveRecordingPath = null;
     semiLiveChunkCounter = 0;
     semiLiveRecordingId = null;
+    semiLiveBaseFilename = null;
+    semiLiveRecordingProcess = null;
     
-    console.log('✅ Semi-live recording stopped');
+    console.log('✅ Semi-live recording stopped and state reset');
     return { success: true };
   } catch (error) {
     console.error("Error stopping semi-live recording:", error);

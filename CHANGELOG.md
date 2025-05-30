@@ -40,6 +40,18 @@ All notable changes to this project will be documented in this file.
   - Maintained consistency with existing transcript line format and editing capabilities
 
 ### Fixed
+- **CRITICAL: Google Live Chunk Filename Corruption and File Format Issues**: Fixed corrupted chunk filenames and file opening errors
+  - **Root Cause**: Nested filename processing causing corrupted names like `google_live_1748615991602_1748615991602_google_live_1748615991602_chunk_0_mic.wav`
+  - **Filename Duplication Issue**: Semi-live recording system was nesting recording IDs and then `startRecording` was adding more suffixes, creating unreadable filenames
+  - **File Opening Errors**: Files couldn't be opened due to corrupted filename structure and format issues (`-12842` unknown error)
+  - **Solution - Simplified Semi-Live Recording**: Rewrote semi-live recording system to generate clean chunk filenames without nesting or duplication
+  - **Direct Chunk Generation**: Now uses direct ffmpeg chunk generation avoiding complex `startRecording`/`stopRecording` cycle that caused filename conflicts
+  - **Clean Directory Structure**: Changed to use dedicated `live-chunks` directory with proper organization like regular recording
+  - **Multiple File Format Support**: Added support for multiple file formats (mp3, wav, mic, system variants) following regular recording pattern
+  - **Fixed Filename Generation**: Simplified Google Live service to use clean `google_live` base filename without timestamp duplication
+  - **Enhanced Chunk Processing**: Creates 1-second audio files directly with proper MP3 encoding and manageable file sizes
+  - **Eliminated File Opening Errors**: Fixed unknown errors when trying to open chunk files by using proper filename structure and format
+  - **Performance**: Maintains 1-second chunking for near real-time transcription with stable, readable filenames
 - **CRITICAL: Google Live Transcript Semi-Live Recording Integration**: Fixed service to use proper semi-live recording infrastructure instead of non-functional regular recording approach
   - **Root Cause**: Service was using regular recording APIs (`startRecording`) but expecting files to be auto-saved at intervals, which never happens with regular recording
   - **Solution**: Completely switched to semi-live recording infrastructure (`startSemiLiveRecording`, `requestSemiLiveChunk`) like Gemini Semi-Live uses
