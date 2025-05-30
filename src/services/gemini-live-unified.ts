@@ -247,24 +247,25 @@ class GeminiLiveUnifiedService {
       console.log('🔍 Audio buffer size:', audioBuffer.byteLength, 'bytes');
       
       // Get the actual MIME type that MediaRecorder is using (not what we requested)
-      const actualMimeType = this.mediaRecorder?.mimeType || 'audio/mp3';
+      const actualMimeType = this.mediaRecorder?.mimeType || 'audio/webm';
       console.log('🔍 MediaRecorder actual MIME type:', actualMimeType);
       
-      let fileExtension = 'mp3'; // Default fallback for Gemini compatibility
-      let saveFormat = 'mp3'; // What to tell saveAudioFile to convert to
-      
-      // Check if MediaRecorder is actually producing a Gemini-compatible format
+      // Gemini supported formats: WAV, MP3, AIFF, AAC, OGG Vorbis, FLAC (NOT WebM)
       const isGeminiCompatible = 
         actualMimeType.includes('mp3') || 
         actualMimeType.includes('mpeg') ||
         actualMimeType.includes('wav') ||
         actualMimeType.includes('aac') ||
         actualMimeType.includes('ogg') ||
-        actualMimeType.includes('flac');
+        actualMimeType.includes('flac') ||
+        actualMimeType.includes('aiff');
+      
+      let fileExtension: string;
+      let saveFormat: string;
       
       if (isGeminiCompatible) {
-        console.log('✅ MediaRecorder format is Gemini-compatible:', actualMimeType);
-        // Map to appropriate file extension
+        console.log('✅ MediaRecorder format is directly Gemini-compatible:', actualMimeType);
+        // Map to appropriate file extension and keep the same format
         if (actualMimeType.includes('mp3') || actualMimeType.includes('mpeg')) {
           fileExtension = 'mp3';
           saveFormat = 'mp3';
@@ -277,11 +278,21 @@ class GeminiLiveUnifiedService {
         } else if (actualMimeType.includes('aac')) {
           fileExtension = 'aac';
           saveFormat = 'aac';
+        } else if (actualMimeType.includes('flac')) {
+          fileExtension = 'flac';
+          saveFormat = 'flac';
+        } else if (actualMimeType.includes('aiff')) {
+          fileExtension = 'aiff';
+          saveFormat = 'aiff';
+        } else {
+          // Fallback to MP3 conversion
+          fileExtension = 'mp3';
+          saveFormat = 'mp3';
         }
       } else {
         console.warn('⚠️ MediaRecorder format is NOT Gemini-compatible:', actualMimeType);
-        console.log('🔄 Will request conversion to MP3 for Gemini compatibility');
-        // Force conversion to MP3 regardless of input format
+        console.log('🔄 Will convert to MP3 for Gemini compatibility');
+        // Force conversion to MP3 for Gemini compatibility
         fileExtension = 'mp3';
         saveFormat = 'mp3';
       }
@@ -290,11 +301,11 @@ class GeminiLiveUnifiedService {
       const timestamp = Date.now();
       const filename = `live-chunk-${this.tempFileCounter++}-${timestamp}.${fileExtension}`;
       
-      console.log('🔍 Saving audio chunk:');
-      console.log(`  Original format: ${actualMimeType}`);
-      console.log(`  Filename: ${filename}`);
-      console.log(`  Requested save format: ${saveFormat}`);
+      console.log('🔍 Audio file processing plan:');
+      console.log(`  MediaRecorder format: ${actualMimeType}`);
       console.log(`  Gemini compatible: ${isGeminiCompatible}`);
+      console.log(`  Filename: ${filename}`);
+      console.log(`  Conversion target: ${saveFormat}`);
 
       // Save audio buffer as temporary file using existing IPC
       const electronAPI = window.electronAPI;
@@ -304,9 +315,10 @@ class GeminiLiveUnifiedService {
         if (saveResult.success && saveResult.files && saveResult.files.length > 0) {
           const savedFile = saveResult.files[0]; // Get the first saved file
           console.log('✅ Audio chunk saved successfully:');
-          console.log(`  File path: ${savedFile.path}`);
-          console.log(`  File format: ${savedFile.format}`);
-          console.log(`  Expected for Gemini: ${saveFormat}`);
+          console.log(`  Original format: ${actualMimeType}`);
+          console.log(`  Saved file: ${savedFile.path}`);
+          console.log(`  Saved format: ${savedFile.format}`);
+          console.log(`  Ready for Gemini: ${saveFormat}`);
           
           return {
             timestamp: timestamp,
@@ -635,46 +647,64 @@ class GeminiLiveUnifiedService {
   private async initializeMediaRecorder(stream: MediaStream): Promise<void> {
     console.log('🔍 Initializing MediaRecorder for unified transcription...');
     
-    // Check MediaRecorder support for different MIME types
-    // Gemini supports: WAV, MP3, AIFF, AAC, OGG, FLAC - NOT WebM!
-    const supportedTypes = [
-      'audio/mp3',
+    // First, check what MediaRecorder actually supports (typically WebM, sometimes others)
+    const mediaRecorderFormats = [
+      'audio/webm',
+      'audio/webm;codecs=opus', 
+      'audio/ogg',
+      'audio/ogg;codecs=opus',
+      'audio/wav',
+      'audio/mp4',
       'audio/mpeg',
-      'audio/wav', 
-      'audio/ogg; codecs=opus',
-      'audio/aac'
+      'audio/mp3'
     ];
     
-    console.log('🔍 Checking MediaRecorder MIME type support:');
-    for (const type of supportedTypes) {
+    console.log('🔍 Checking MediaRecorder actual format support:');
+    const supportedByMediaRecorder = [];
+    for (const type of mediaRecorderFormats) {
       const isSupported = MediaRecorder.isTypeSupported(type);
       console.log(`  ${type}: ${isSupported ? '✅' : '❌'}`);
-    }
-    
-    let selectedMimeType = 'audio/mp3'; // Default fallback
-    
-    for (const mimeType of supportedTypes) {
-      if (MediaRecorder.isTypeSupported(mimeType)) {
-        selectedMimeType = mimeType;
-        console.log(`✅ Selected MIME type: ${mimeType}`);
-        break;
+      if (isSupported) {
+        supportedByMediaRecorder.push(type);
       }
     }
     
-    if (!supportedTypes.some(type => MediaRecorder.isTypeSupported(type))) {
-      console.warn('⚠️ No preferred audio formats supported by MediaRecorder');
-      // Check what MediaRecorder actually supports
-      const commonTypes = [
-        'audio/webm',
-        'audio/webm;codecs=opus',
-        'audio/mp4',
-        'audio/wav',
-        'audio/ogg'
-      ];
-      console.log('🔍 MediaRecorder fallback format support:');
-      for (const type of commonTypes) {
-        console.log(`  ${type}: ${MediaRecorder.isTypeSupported(type) ? '✅' : '❌'}`);
+    if (supportedByMediaRecorder.length === 0) {
+      throw new Error('No MediaRecorder formats supported by this browser');
+    }
+    
+    // Gemini 2.0 Flash supported formats: WAV, MP3, AIFF, AAC, OGG Vorbis, FLAC (NOT WebM)
+    const geminiSupportedFormats = ['wav', 'mp3', 'aiff', 'aac', 'ogg', 'flac'];
+    
+    // Find intersection: formats supported by both MediaRecorder AND Gemini
+    const compatibleFormats = supportedByMediaRecorder.filter(mediaFormat => 
+      geminiSupportedFormats.some(geminiFormat => 
+        mediaFormat.toLowerCase().includes(geminiFormat)
+      )
+    );
+    
+    console.log('🔍 MediaRecorder formats supported by browser:', supportedByMediaRecorder);
+    console.log('🔍 Formats compatible with both MediaRecorder and Gemini:', compatibleFormats);
+    
+    let selectedMimeType: string;
+    
+    if (compatibleFormats.length > 0) {
+      // Use the first compatible format
+      selectedMimeType = compatibleFormats[0];
+      console.log(`✅ Using compatible format: ${selectedMimeType}`);
+    } else {
+      // No direct compatibility - use MediaRecorder's best format and rely on conversion
+      // Prefer WebM with Opus codec as it's widely supported by MediaRecorder
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        selectedMimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        selectedMimeType = 'audio/webm';
+      } else {
+        selectedMimeType = supportedByMediaRecorder[0];
       }
+      console.log(`⚠️ No direct format compatibility found`);
+      console.log(`🔄 Using MediaRecorder format: ${selectedMimeType}`);
+      console.log(`📝 Will rely on saveAudioFile conversion to MP3 for Gemini compatibility`);
     }
 
     try {
