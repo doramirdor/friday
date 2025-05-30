@@ -1149,14 +1149,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                 const speakerId = speakerMatch[1];
                 const text = speakerMatch[2];
                 
-                // Check if this is a continuation of the current speaker's text
-                if (newLines.length > 0 && newLines[newLines.length - 1].speakerId === speakerId) {
-                  // Update the last line to append the new text
-                  newLines[newLines.length - 1] = {
-                    ...newLines[newLines.length - 1],
-                    text: newLines[newLines.length - 1].text + ' ' + text,
-                  };
-                } else {
+                // Check if we already have this exact line to avoid duplicates
+                const existingLine = newLines.find(l => l.text === text && l.speakerId === speakerId);
+                if (!existingLine) {
                   // Add a new line
                   newLines.push({
                     id: `gl${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
@@ -1167,12 +1162,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
               } else {
                 // If no speaker pattern, add to current speaker or create new line
                 const speakerId = currentSpeakerId;
-                if (newLines.length > 0 && newLines[newLines.length - 1].speakerId === speakerId) {
-                  newLines[newLines.length - 1] = {
-                    ...newLines[newLines.length - 1],
-                    text: newLines[newLines.length - 1].text + ' ' + trimmedLine,
-                  };
-                } else {
+                const existingLine = newLines.find(l => l.text === trimmedLine && l.speakerId === speakerId);
+                if (!existingLine) {
                   newLines.push({
                     id: `gl${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
                     text: trimmedLine,

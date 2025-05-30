@@ -23,11 +23,18 @@ export const useGoogleLiveTranscript = (): UseGoogleLiveTranscriptReturn => {
   const handleResult = useCallback((result: GoogleLiveTranscriptResult) => {
     console.log('🎯 Google Live result:', result);
     
-    // Append new transcript
+    // Append new transcript with proper formatting
     if (result.transcript) {
-      const newTranscript = transcriptRef.current + '\n' + result.transcript;
-      transcriptRef.current = newTranscript;
-      setTranscript(newTranscript);
+      const formattedResult = result.transcript.trim();
+      if (formattedResult) {
+        const currentTranscript = transcriptRef.current.trim();
+        const newTranscript = currentTranscript 
+          ? currentTranscript + '\n' + formattedResult
+          : formattedResult;
+        
+        transcriptRef.current = newTranscript;
+        setTranscript(newTranscript);
+      }
     }
     
     // Update speakers
