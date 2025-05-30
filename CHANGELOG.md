@@ -1,6 +1,19 @@
 # Changelog
 
-## [Latest] - 2025-01-30
+## [Latest] - 2025-01-29
+
+### Removed
+- **Complete Live Transcript System Cleanup**: Removed all live transcript and semi-live transcript functionality to start fresh
+  - Deleted Google Live Transcript service, hook, and component
+  - Deleted Gemini Live Transcript service, hook, and component  
+  - Deleted Gemini Semi-Live service, hook, and component
+  - Deleted Streaming Speech service and hook
+  - Deleted Semi-Live Speech service and hook
+  - Deleted Gemini Live Unified service, hook, and test component
+  - Removed all Electron handlers for live transcript functionality
+  - Removed all live transcript types and documentation
+  - Cleaned up TranscriptDetails component (in progress)
+  - Total: 22 files deleted, 5489 lines of code removed
 
 ### Fixed
 - **Google Live Transcript**: Fixed encoding mismatch causing 400 Bad Request errors

@@ -26,16 +26,6 @@ const { google } = pkg;
 import { setupTranscriptHandlers } from "./transcript-handler.js";
 import { setupDatabaseHandlers } from "./database-handler.js";
 
-// Import streaming speech handler (CommonJS module)
-const streamingSpeechHandlerModule = await import("./streaming-speech-handler.cjs");
-const streamingSpeechHandler = streamingSpeechHandlerModule.default || streamingSpeechHandlerModule;
-console.log('🔍 Streaming handler module keys:', Object.keys(streamingSpeechHandlerModule));
-
-// Import semi-live speech handler (CommonJS module) and ensure it's initialized
-const semiLiveSpeechHandlerModule = await import("./semi-live-speech-handler.cjs");
-const semiLiveSpeechHandler = semiLiveSpeechHandlerModule.default || semiLiveSpeechHandlerModule;
-console.log('🔍 Semi-live handler module keys:', Object.keys(semiLiveSpeechHandlerModule));
-
 // Import local modules using dynamic import since they're CommonJS
 const { checkPermissions } = await import("./utils/permission.js");
 const { startRecording, stopRecording } = await import("./utils/recording.js");
@@ -537,13 +527,6 @@ const createWindow = async () => {
     setupCombinedRecordingHandlers(recordingsPath);
     setupTranscriptHandlers();
     setupDatabaseHandlers(ipcMain);
-    
-    // Initialize speech handlers (they set up their own IPC handlers)
-    console.log('🔧 Initializing speech handlers...');
-    // The streaming and semi-live speech handlers are already imported and automatically set up their IPC handlers
-    // No additional setup needed as they register handlers in their constructors
-    console.log('✅ Semi-live speech handler initialized:', !!semiLiveSpeechHandler);
-    console.log('✅ Streaming speech handler initialized:', !!streamingSpeechHandler);
     
     // Create the browser window
     global.mainWindow = new BrowserWindow({
