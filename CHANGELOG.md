@@ -8,6 +8,11 @@
   - Updated sample rate from 16kHz to 44.1kHz for proper MP3 compatibility
   - Resolves "Specify MP3 encoding to match audio file" API errors
 
+### Improved
+- **Google Live Transcript**: Increased chunk duration from 1 second to 3 seconds
+  - Ensures better audio capture and reduces empty chunk generation
+  - Improves transcription accuracy by providing more audio content per API call
+
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
