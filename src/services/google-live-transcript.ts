@@ -228,12 +228,12 @@ class GoogleLiveTranscriptService {
       console.log(`📊 Google Live: Chunk processing complete. Total processed: ${this.state.totalChunksProcessed}`);
 
       // Cleanup the temporary file
-      try {
-        // await electronAPI.deleteFile(chunk.filePath);
-        console.log(`🧹 Google Live: Cleaned up chunk file: ${chunk.filePath}`);
-      } catch (cleanupError) {
-        console.warn(`⚠️ Google Live: Failed to cleanup chunk file: ${cleanupError}`);
-      }
+      // try {
+      //   await electronAPI.deleteFile(chunk.filePath);
+      //   console.log(`🧹 Google Live: Cleaned up chunk file: ${chunk.filePath}`);
+      // } catch (cleanupError) {
+      //   console.warn(`⚠️ Google Live: Failed to cleanup chunk file: ${cleanupError}`);
+      // }
 
     } catch (error) {
       console.error(`❌ Error processing audio chunk ${chunk.filePath}:`, error);

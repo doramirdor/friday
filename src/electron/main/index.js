@@ -1666,12 +1666,14 @@ ipcMain.handle("request-semi-live-chunk", async (_, options = {}) => {
     // For now, we'll create actual test chunk files to verify the system works
     // In production, this would extract audio from the ongoing recording buffer
     try {
-      console.log(`🔧 Generating test chunk with ffmpeg...`);
+      console.log(`🔧 Generating real audio chunk from microphone...`);
       
       // Use execSync for more reliable file creation
       const { execSync } = await import('child_process');
       
-      const ffmpegCommand = `ffmpeg -f lavfi -i "anullsrc=r=44100:cl=mono" -t 3 -c:a libmp3lame -b:a 64k -y "${chunkFilePath}"`;
+      // Capture real audio from the default microphone instead of generating silence
+      // Use the default audio input device to capture 3 seconds of real audio
+      const ffmpegCommand = `ffmpeg -f avfoundation -i ":0" -t 3 -c:a libmp3lame -b:a 64k -ar 44100 -ac 1 -y "${chunkFilePath}"`;
       console.log(`🔧 FFmpeg command: ${ffmpegCommand}`);
       
       // Execute ffmpeg synchronously to ensure file is created
