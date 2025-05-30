@@ -19,6 +19,11 @@ interface ElectronAPI {
     error?: string;
   }>;
   deleteFile?: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  readAudioFile?: (filePath: string) => Promise<{
+    success?: boolean;
+    buffer?: ArrayBuffer;
+    error?: string;
+  }>;
 }
 
 // Extend Window interface to include our ElectronAPI

@@ -180,32 +180,26 @@ class GeminiService {
             throw new Error(`Failed to process audio URL: ${fetchError.message}`);
           }
         } else {
-          // For file paths, we need to read the file first
-          const electronAPI = (window as { electronAPI?: { readAudioFile?: (path: string) => Promise<{ success: boolean; buffer?: ArrayBuffer; error?: string }>; checkFileExists?: (path: string) => Promise<boolean> } }).electronAPI;
-          if (electronAPI?.readAudioFile) {
+          // Handle file paths - read the file using electron API
+          if (window.electronAPI?.readAudioFile) {
             console.log('Reading audio file via Electron API:', audioFile);
+            const audioData = await window.electronAPI.readAudioFile(audioFile);
             
-            // First check if file exists
-            if (electronAPI?.checkFileExists) {
-              const fileExists = await electronAPI.checkFileExists(audioFile);
-              if (!fileExists) {
-                throw new Error(`Audio file not found or is empty: ${audioFile}`);
-              }
-            }
-            
-            const audioData = await electronAPI.readAudioFile(audioFile);
-            if (!audioData.success) {
-              console.error('Failed to read audio file:', audioData);
-              throw new Error(`Failed to read audio file: ${audioData.error || 'Unknown error'}`);
+            if (!audioData || !audioData.buffer) {
+              throw new Error('Failed to read audio file - no data returned');
             }
             
             console.log('Audio file read successfully, size:', audioData.buffer?.byteLength || 'unknown');
             
-            // Convert the audio data to a Blob
-            const audioBlob = new Blob([audioData.buffer], { type: 'audio/mp3' });
+            // Detect the correct MIME type from the file path
+            const mimeType = this.detectAudioMimeType(audioFile as string);
+            console.log('Detected MIME type:', mimeType);
+            
+            // Convert the audio data to a Blob with correct MIME type
+            const audioBlob = new Blob([audioData.buffer], { type: mimeType });
             uploadedFile = await this.genAI.files.upload({
               file: audioBlob,
-              config: { mimeType: 'audio/mp3' }
+              config: { mimeType: mimeType }
             });
           } else {
             throw new Error('File reading not available in this environment');
@@ -514,6 +508,39 @@ Please provide the transcription:`;
     } catch (error) {
       console.error('Gemini connection test failed:', error);
       return false;
+    }
+  }
+
+  private detectAudioMimeType(filePath: string): string {
+    // Get file extension from path
+    const extension = filePath.split('.').pop()?.toLowerCase();
+    
+    switch (extension) {
+      case 'webm':
+        return 'audio/webm';
+      case 'mp3':
+        return 'audio/mp3';
+      case 'wav':
+        return 'audio/wav';
+      case 'ogg':
+        return 'audio/ogg';
+      case 'aac':
+        return 'audio/aac';
+      case 'flac':
+        return 'audio/flac';
+      case 'aiff':
+        return 'audio/aiff';
+      case 'm4a':
+        return 'audio/m4a';
+      case 'mp4':
+        return 'audio/mp4';
+      case 'opus':
+        return 'audio/opus';
+      case 'pcm':
+        return 'audio/pcm';
+      default:
+        console.warn(`Unknown audio file extension: ${extension}, defaulting to audio/mp3`);
+        return 'audio/mp3';
     }
   }
 }
