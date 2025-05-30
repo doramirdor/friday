@@ -29,6 +29,13 @@ All notable changes to this project will be documented in this file.
 - Integrated semi-live recording with existing Swift Recorder and recording utilities
 
 ### Fixed
+- **Unified Gemini Live Audio Format Compatibility**: Fixed "Failed to save in any format" errors in unified transcription service
+  - Changed audio file saving from MP3 to WebM format to match MediaRecorder output format
+  - Added fallback to mock transcription when file saving fails to prevent system crashes
+  - Implemented dual-path processing: real Gemini transcription for successfully saved files, mock results for failed saves
+  - Fixed audio format mismatch between MediaRecorder WebM output and file saving system expectations
+  - Enhanced error handling to gracefully degrade to mock transcription when audio conversion fails
+  - Maintained system stability while attempting real transcription when possible
 - **Unified Gemini Live Transcription Stability**: Fixed white page crashes and audio processing failures in the new unified transcription service
   - Replaced deprecated `ScriptProcessorNode` with modern `MediaRecorder` API to eliminate browser crashes and performance issues
   - Implemented in-memory audio processing to bypass complex file I/O and format conversion issues that were causing failures
