@@ -39,6 +39,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFoo
 import GeminiLiveTranscriptNew from '@/components/GeminiLiveTranscriptNew';
 import GoogleLiveTranscriptNew from '@/components/GoogleLiveTranscriptNew';
 import GeminiLiveUnifiedTest from '@/components/GeminiLiveUnifiedTest';
+import { useGoogleLiveTranscript } from '@/hooks/useGoogleLiveTranscript';
 
 // Simple debounce function
 const debounce = <T extends unknown[]>(func: (...args: T) => void, wait: number) => {
@@ -194,6 +195,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   // Add Gemini Live hook
   const geminiLive = useGeminiSemiLive();
   
+  // Add Google Live Transcript hook
+  const googleLiveTranscript = useGoogleLiveTranscript();
+  
   // Determine which speech recognition method to use
   const speech = isElectron ? googleSpeech : webSpeech;
   
@@ -213,6 +217,9 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   
   // Add state for Gemini Live mode
   const [isGeminiLiveMode, setIsGeminiLiveMode] = useState(true);
+  
+  // Add state for Google Live Transcript mode
+  const [isGoogleLiveMode, setIsGoogleLiveMode] = useState(false);
   
   // Audio recording and playback references and states
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -1101,6 +1108,90 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     }
   }, [speech.transcript, isRecording, currentSpeakerId, isLiveTranscript]);
 
+  // Process Google Live Transcript updates with speaker detection
+  useEffect(() => {
+    if (googleLiveTranscript.transcript && isGoogleLiveMode && googleLiveTranscript.isRecording) {
+      const transcriptText = googleLiveTranscript.transcript.trim();
+      if (transcriptText) {
+        // Update speakers from Google Live Transcript
+        if (googleLiveTranscript.speakers && googleLiveTranscript.speakers.length > 0) {
+          setSpeakers(prevSpeakers => {
+            const existingSpeakers = new Map(prevSpeakers.map(s => [s.id, s]));
+            const newSpeakers = [...prevSpeakers];
+            
+            googleLiveTranscript.speakers!.forEach(googleSpeaker => {
+              if (!existingSpeakers.has(googleSpeaker.id)) {
+                newSpeakers.push({
+                  id: googleSpeaker.id,
+                  name: googleSpeaker.name,
+                  color: googleSpeaker.color
+                });
+              }
+            });
+            
+            return newSpeakers;
+          });
+        }
+
+        // Parse the transcript to extract speaker lines
+        const lines = transcriptText.split('\n').filter(line => line.trim());
+        
+        setTranscriptLines(prevLines => {
+          const newLines = [...prevLines];
+          
+          lines.forEach(line => {
+            const trimmedLine = line.trim();
+            if (trimmedLine) {
+              // Check if line starts with "Speaker X:" pattern
+              const speakerMatch = trimmedLine.match(/^Speaker (\d+):\s*(.+)$/);
+              
+              if (speakerMatch) {
+                const speakerId = speakerMatch[1];
+                const text = speakerMatch[2];
+                
+                // Check if this is a continuation of the current speaker's text
+                if (newLines.length > 0 && newLines[newLines.length - 1].speakerId === speakerId) {
+                  // Update the last line to append the new text
+                  newLines[newLines.length - 1] = {
+                    ...newLines[newLines.length - 1],
+                    text: newLines[newLines.length - 1].text + ' ' + text,
+                  };
+                } else {
+                  // Add a new line
+                  newLines.push({
+                    id: `gl${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                    text: text,
+                    speakerId: speakerId,
+                  });
+                }
+              } else {
+                // If no speaker pattern, add to current speaker or create new line
+                const speakerId = currentSpeakerId;
+                if (newLines.length > 0 && newLines[newLines.length - 1].speakerId === speakerId) {
+                  newLines[newLines.length - 1] = {
+                    ...newLines[newLines.length - 1],
+                    text: newLines[newLines.length - 1].text + ' ' + trimmedLine,
+                  };
+                } else {
+                  newLines.push({
+                    id: `gl${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                    text: trimmedLine,
+                    speakerId: speakerId,
+                  });
+                }
+              }
+            }
+          });
+          
+          return newLines;
+        });
+
+        // Clear the transcript to avoid duplication on next update
+        googleLiveTranscript.clearTranscript();
+      }
+    }
+  }, [googleLiveTranscript.transcript, googleLiveTranscript.speakers, googleLiveTranscript.isRecording, isGoogleLiveMode, currentSpeakerId]);
+
   // Determine if we should show empty transcript area for new meeting
   useEffect(() => {
     if (meetingState?.isNew) {
@@ -1827,7 +1918,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                           id="live-transcript"
                           checked={isLiveTranscript}
                           onCheckedChange={setIsLiveTranscript}
-                          disabled={!streamingSpeech.isAvailable && !geminiLive.isAvailable}
+                          disabled={!streamingSpeech.isAvailable && !geminiLive.isAvailable && !googleLiveTranscript.isAvailable}
                         />
                         <Label htmlFor="live-transcript" className="text-sm">
                           Live Transcript
@@ -1838,9 +1929,12 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       {isLiveTranscript && (
                         <div className="flex items-center gap-2 p-2 rounded-md border border-input">
                           <Button
-                            variant={isGeminiLiveMode ? "secondary" : "ghost"}
+                            variant={isGeminiLiveMode && !isGoogleLiveMode ? "secondary" : "ghost"}
                             size="sm"
-                            onClick={() => setIsGeminiLiveMode(true)}
+                            onClick={() => {
+                              setIsGeminiLiveMode(true);
+                              setIsGoogleLiveMode(false);
+                            }}
                             className="flex gap-2 items-center"
                             disabled={!geminiLive.isAvailable}
                             title={!geminiLive.isAvailable ? "Gemini Live not available - check API key" : "Use Gemini Live for real-time transcription"}
@@ -1849,9 +1943,26 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                             <span>Gemini Live</span>
                           </Button>
                           <Button
-                            variant={!isGeminiLiveMode ? "secondary" : "ghost"}
+                            variant={isGoogleLiveMode ? "secondary" : "ghost"}
                             size="sm"
-                            onClick={() => setIsGeminiLiveMode(false)}
+                            onClick={() => {
+                              setIsGeminiLiveMode(false);
+                              setIsGoogleLiveMode(true);
+                            }}
+                            className="flex gap-2 items-center"
+                            disabled={!googleLiveTranscript.isAvailable}
+                            title={!googleLiveTranscript.isAvailable ? "Google Live Transcript not available - check API key" : "Use Google Live Transcript for real-time transcription with speaker detection"}
+                          >
+                            <Mic className="h-4 w-4" />
+                            <span>Google Live</span>
+                          </Button>
+                          <Button
+                            variant={!isGeminiLiveMode && !isGoogleLiveMode ? "secondary" : "ghost"}
+                            size="sm"
+                            onClick={() => {
+                              setIsGeminiLiveMode(false);
+                              setIsGoogleLiveMode(false);
+                            }}
                             className="flex gap-2 items-center"
                             disabled={!streamingSpeech.isAvailable}
                             title={!streamingSpeech.isAvailable ? "Google Speech not available - check API key" : "Use Google Cloud Speech for semi-live transcription (sends audio chunks every few seconds)"}
@@ -1866,12 +1977,104 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                     {/* Live transcript interface */}
                     {isLiveTranscript && (
                       <>
-                        {isGeminiLiveMode ? (
+                        {isGeminiLiveMode && !isGoogleLiveMode ? (
                           <GeminiSemiLiveTranscript
                             maxSpeakers={maxSpeakers}
                             onTranscriptAdd={handleAddGeminiTranscript}
                             className="mb-4"
                           />
+                        ) : isGoogleLiveMode ? (
+                          <div className="flex flex-col items-center gap-4 mb-4 p-4 border rounded-lg bg-green-50">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant={googleLiveTranscript.isRecording ? "destructive" : "default"}
+                                size="sm"
+                                onClick={() => {
+                                  if (googleLiveTranscript.isRecording) {
+                                    googleLiveTranscript.stopRecording();
+                                  } else {
+                                    googleLiveTranscript.startRecording({
+                                      languageCode: 'en-US',
+                                      enableSpeakerDiarization: true,
+                                      maxSpeakers: maxSpeakers,
+                                      encoding: 'LINEAR16',
+                                      sampleRateHertz: 16000,
+                                    });
+                                  }
+                                }}
+                                className="flex items-center gap-2"
+                              >
+                                {googleLiveTranscript.isRecording ? (
+                                  <>
+                                    <Square className="h-4 w-4" />
+                                    Stop Google Live
+                                  </>
+                                ) : (
+                                  <>
+                                    <Mic className="h-4 w-4" />
+                                    Start Google Live
+                                  </>
+                                )}
+                              </Button>
+                              
+                              {googleLiveTranscript.isRecording && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={googleLiveTranscript.clearTranscript}
+                                >
+                                  Clear
+                                </Button>
+                              )}
+                            </div>
+
+                            {/* Live transcript display */}
+                            {googleLiveTranscript.transcript && (
+                              <div className="w-full max-w-2xl">
+                                <div className="p-3 border rounded bg-white min-h-[100px] max-h-[200px] overflow-y-auto">
+                                  <div className="text-sm">
+                                    <pre className="whitespace-pre-wrap">{googleLiveTranscript.transcript}</pre>
+                                  </div>
+                                </div>
+                                
+                                {/* Speakers display */}
+                                {googleLiveTranscript.speakers && googleLiveTranscript.speakers.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {googleLiveTranscript.speakers.map((speaker) => (
+                                      <div
+                                        key={speaker.id}
+                                        className="flex items-center gap-1 px-2 py-1 rounded-full text-xs"
+                                        style={{ backgroundColor: speaker.color, color: 'white' }}
+                                      >
+                                        {speaker.name}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Button to manually add transcript to meeting */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="mt-2 w-full"
+                                  onClick={() => {
+                                    // The transcript is already being processed automatically
+                                    // This button just provides feedback that it's working
+                                    toast.success('Google Live transcript is automatically added to meeting');
+                                  }}
+                                >
+                                  Auto-Adding to Meeting Transcript
+                                </Button>
+                              </div>
+                            )}
+
+                            {/* Error display */}
+                            {googleLiveTranscript.error && (
+                              <div className="text-red-600 text-sm text-center">
+                                Error: {googleLiveTranscript.error}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           streamingSpeech.isAvailable && (
                             <div className="flex flex-col items-center gap-4 mb-4 p-4 border rounded-lg bg-blue-50">
@@ -2585,6 +2788,16 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           <summary className="text-sm font-medium text-blue-700">🧪 Test New Unified Gemini Live (Click to expand)</summary>
           <div className="mt-4">
             <GeminiLiveUnifiedTest />
+          </div>
+        </details>
+      </div>
+
+      {/* Temporary: Add Google Live Transcript test component */}
+      <div className="p-4 bg-green-50 border-b">
+        <details className="cursor-pointer">
+          <summary className="text-sm font-medium text-green-700">🧪 Test Google Live Transcript (Click to expand)</summary>
+          <div className="mt-4">
+            <GoogleLiveTranscriptNew />
           </div>
         </details>
       </div>
