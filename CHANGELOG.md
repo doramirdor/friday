@@ -272,6 +272,15 @@ All notable changes to this project will be documented in this file.
 - **CRITICAL**: Fixed audio file saving failure in MediaRecorder implementation by adding proper audio format detection (WebM/Opus) and native format saving
 - Live transcription services were crashing due to ScriptProcessorNode deprecation and performance issues in Electron environment
 - MediaRecorder audio blobs (WebM/Opus format) were failing to save because main process expected WAV format
+- **CRITICAL: Unified Gemini Live Audio Format Incompatibility**: Fixed 400 Bad Request errors caused by using unsupported WebM audio format
+  - **Root Cause**: MediaRecorder was creating WebM audio files, but Gemini 2.0 Flash API does not support WebM for audio transcription
+  - **Gemini Supported Formats**: WAV, MP3, AIFF, AAC, OGG Vorbis, FLAC (WebM is NOT supported)
+  - **Solution**: Changed MediaRecorder to use supported audio formats (MP3, WAV, OGG, AAC) instead of WebM
+  - **Format Selection**: Added intelligent MIME type detection and fallback to MP3 if no supported formats available
+  - **File Extension Mapping**: Proper file extension mapping based on MediaRecorder output format
+  - **Backward Compatibility**: Maintained existing file saving infrastructure while using supported formats
+  - **Error Resolution**: Eliminated "Request contains an invalid argument" errors from Gemini API
+  - **Performance**: Maintained real-time audio capture and processing while ensuring API compatibility
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
