@@ -13,8 +13,12 @@
   - Uses `-f avfoundation -i ":0"` to capture from default microphone on macOS
 - **Google Live Transcript**: Fixed UI components overriding service defaults with wrong encoding
   - Updated `GoogleLiveTranscriptNew.tsx` and `TranscriptDetails.tsx` to use MP3/44.1kHz defaults
-  - Prevents UI from forcing LINEAR16 encoding when MP3 files are being generated
-  - Ensures consistent encoding configuration across service and UI layers
+  - Ensures consistent encoding configuration across all components
+- **Google Live Transcript**: Fixed race condition and state management issues
+  - Added proper state validation to prevent accessing null state during chunk processing
+  - Fixed callback invocation from `this.onResult` to `this.resultCallback`
+  - Properly store recording options in service state for chunk processing
+  - Prevents "Cannot read properties of null" errors when service stops while chunks are processing
 
 ### Improved
 - **Google Live Transcript**: Increased chunk duration from 1 second to 3 seconds
