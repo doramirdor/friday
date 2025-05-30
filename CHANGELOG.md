@@ -27,8 +27,30 @@ All notable changes to this project will be documented in this file.
 - Added new Electron IPC handlers for semi-live recording: `start-semi-live-recording`, `request-semi-live-chunk`, `stop-semi-live-recording`
 - Added semi-live chunk event system with `semi-live-chunk-ready` notifications
 - Integrated semi-live recording with existing Swift Recorder and recording utilities
+- **Google Live Transcript Integration with Speaker Detection**: Integrated Google Live Transcript service into the meeting page transcript area
+  - Added Google Live Transcript as a third live transcription option alongside Gemini Live and Google Speech
+  - Implemented automatic speaker detection and diarization using Google Cloud Speech-to-Text API
+  - Added real-time transcript processing with automatic speaker identification and color-coded display
+  - Integrated speaker management system that automatically creates and updates speakers based on Google's diarization results
+  - Added live transcript interface with start/stop controls, transcript display, and speaker badges
+  - Implemented automatic transcript line creation with proper speaker attribution in the meeting transcript area
+  - Added Google Live mode toggle in the live transcript controls with availability checking
+  - Enhanced transcript display to show speaker-attributed lines with colored indicators
+  - Added test component for Google Live Transcript functionality
+  - Maintained consistency with existing transcript line format and editing capabilities
 
 ### Fixed
+- **CRITICAL: Google Live Transcript Crash Prevention**: Fixed system crashes by replacing deprecated ScriptProcessorNode with stable file-based approach
+  - **Root Cause**: Google Live Transcript was using deprecated ScriptProcessorNode and real-time audio streaming which caused crashes in Electron environments
+  - **Solution**: Completely refactored to use the same stable file-based approach as Gemini Semi-Live service
+  - **Architecture Change**: Now uses Electron recording infrastructure to save 1-second audio chunks and send them to Google Speech API
+  - **Eliminated Crashes**: Removed all deprecated Web Audio API components (ScriptProcessorNode, AudioContext manipulation)
+  - **Improved Reliability**: Uses proven recording infrastructure that's already stable in Gemini Semi-Live implementation
+  - **Performance**: Maintains 1-second chunking for near real-time transcription while preventing crashes
+  - **Speaker Diarization**: Preserves full speaker detection capabilities using Google Cloud Speech-to-Text API
+  - **Backward Compatibility**: Maintains same interface as original service for seamless component integration
+  - **Error Handling**: Enhanced error handling and cleanup with automatic temporary file management
+  - **Resource Management**: Proper cleanup of audio chunks and recording resources to prevent memory leaks
 - **Unified Gemini Live MIME Type Detection**: Fixed 400 Bad Request errors by implementing proper audio format detection for Gemini API
   - Added `detectAudioMimeType` method to automatically detect correct MIME type from file extensions
   - Fixed hardcoded `audio/mp3` MIME type that was causing "Request contains an invalid argument" errors  
