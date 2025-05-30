@@ -347,6 +347,16 @@ class GeminiLiveUnifiedService {
       console.log(`🔍 GEMINI DEBUG: Duration: ${chunk.duration} seconds`);
       console.log(`🔍 GEMINI DEBUG: Max speakers: ${this.options.maxSpeakers}`);
       
+      // Check if chunk has enough audio content for transcription
+      const minSizeBytes = 5000; // Minimum 5KB for meaningful audio
+      const minDurationSeconds = 0.5; // Minimum 0.5 seconds
+      
+      if (chunk.size < minSizeBytes || chunk.duration < minDurationSeconds) {
+        console.log(`⚠️ GEMINI DEBUG: Skipping chunk - too small (${chunk.size} bytes, ${chunk.duration}s)`);
+        console.log(`  Minimum requirements: ${minSizeBytes} bytes, ${minDurationSeconds} seconds`);
+        return;
+      }
+      
       const startTime = Date.now();
 
       console.log('🔍 GEMINI DEBUG: 🚀 Calling real Gemini API with saved audio file...');

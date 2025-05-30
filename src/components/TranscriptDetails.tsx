@@ -2107,9 +2107,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                 <TabsTrigger value="details" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
                   Details
                 </TabsTrigger>
-                <TabsTrigger value="live-transcript" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
-                  Live Transcript
-                </TabsTrigger>
                 <TabsTrigger value="speakers" className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none">
                   Speakers
                 </TabsTrigger>
@@ -2158,29 +2155,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                     />
                   </div>
                 </TabsContent>
-                
-                <TabsContent value="live-transcript" className="p-6 space-y-6 h-full">
-                  <div className="space-y-6 h-full">
-                    <div className="text-center">
-                      <h2 className="text-2xl font-bold">Live Transcript Services</h2>
-                      <p className="text-muted-foreground mt-2">
-                        Choose between Gemini Live (2 second chunks) or Google Cloud Speech (1 second chunks) for real-time transcription
-                      </p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
-                      {/* Gemini Live Transcript */}
-                      <div className="space-y-4">
-                        <GeminiLiveTranscriptNew />
-                      </div>
-                      
-                      {/* Google Live Transcript */}
-                      <div className="space-y-4">
-                        <GoogleLiveTranscriptNew />
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
+              
                 
                 <TabsContent value="speakers" className="p-6 space-y-6 h-full">
                   <div className="space-y-6">
