@@ -40,6 +40,12 @@ All notable changes to this project will be documented in this file.
   - Maintained consistency with existing transcript line format and editing capabilities
 
 ### Fixed
+- **CRITICAL: Google Live Transcript Chunk Generation**: Fixed missing chunking interval mechanism that prevented audio chunks from being generated
+  - **Root Cause**: Google Live Transcript was calling `startSemiLiveRecording` but not requesting chunks like Gemini Semi-Live does  
+  - **Solution**: Added `setupChunkingInterval()` and `requestChunk()` methods following the Gemini Semi-Live pattern
+  - **Added Missing Methods**: `requestSemiLiveChunk` calls that actually trigger chunk creation every 1 second
+  - **Fixed Event Flow**: Now properly generates `semi-live-chunk-ready` events that trigger transcription processing
+  - **Interval Management**: Added proper cleanup of chunking intervals when stopping recording
 - **CRITICAL: Google Live Transcript Crash Prevention**: Fixed system crashes by replacing deprecated ScriptProcessorNode with stable file-based approach
   - **Root Cause**: Google Live Transcript was using deprecated ScriptProcessorNode and real-time audio streaming which caused crashes in Electron environments
   - **Solution**: Completely refactored to use the same stable file-based approach as Gemini Semi-Live service

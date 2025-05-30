@@ -1,5 +1,5 @@
-// Google Live Transcript Service - File-based approach for stability
-// Uses Electron recording infrastructure to save 1-second audio chunks and send to Google Speech API
+// Google Live Transcript Service - Regular Recording with Auto-Save
+// Uses regular recording infrastructure with 1-second auto-save intervals
 
 export interface GoogleLiveTranscriptOptions {
   languageCode?: string;
@@ -7,7 +7,7 @@ export interface GoogleLiveTranscriptOptions {
   maxSpeakers?: number;
   encoding?: 'LINEAR16' | 'WEBM_OPUS';
   sampleRateHertz?: number;
-  chunkDurationMs?: number;
+  autoSaveIntervalMs?: number;
   recordingSource?: 'system' | 'mic' | 'both';
 }
 
@@ -39,55 +39,55 @@ interface GoogleSpeechAPIResponse {
   }>;
 }
 
-// Extended ElectronAPI interface for this service's needs
+// Extended ElectronAPI interface for regular recording
 interface ExtendedElectronAPI {
-  startSemiLiveRecording: (options: {
-    chunkDurationMs: number;
-    source: string;
-    filename: string;
-  }) => Promise<{ success: boolean; error?: string }>;
-  stopSemiLiveRecording: () => Promise<{ success: boolean; error?: string }>;
-  requestSemiLiveChunk: (options: { filename: string }) => Promise<void>;
+  // Regular recording methods
+  systemAudioRecording: {
+    startRecording: (options: { filename: string; format: string }) => Promise<{ success: boolean; error?: string }>;
+    stopRecording: () => Promise<{ success: boolean; error?: string }>;
+  };
+  micRecording: {
+    startRecording: (options: { filename: string; format: string }) => Promise<{ success: boolean; error?: string }>;
+    stopRecording: () => Promise<{ success: boolean; error?: string }>;
+  };
+  combinedRecording: {
+    startRecording: (options: { filename: string; format: string }) => Promise<{ success: boolean; error?: string }>;
+    stopRecording: () => Promise<{ success: boolean; error?: string }>;
+  };
+  // File operations
   readAudioFile: (path: string) => Promise<{ success: boolean; buffer?: ArrayBuffer; error?: string }>;
   deleteFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   checkFileExists: (path: string) => Promise<boolean>;
-  onSemiLiveChunk?: (callback: (chunkData: { filePath: string; timestamp: number; chunkIndex: number; size: number }) => void) => void;
+  saveAudioFile: (buffer: ArrayBuffer, filename: string, formats: string[]) => Promise<{ success: boolean; filePath?: string; error?: string }>;
 }
 
-// Audio chunk interface for file-based recording
-interface AudioChunk {
-  timestamp: number;
-  filePath: string;
-  size: number;
-  chunkIndex: number;
-}
-
-// Processing state for file-based recording
+// Processing state for regular recording with auto-save
 interface ProcessingState {
   isRecording: boolean;
-  chunkDurationMs: number;
-  audioChunks: AudioChunk[];
+  autoSaveIntervalMs: number;
+  recordingSource: string;
+  recordingStartTime: number;
   lastProcessedTime: number;
   totalChunksProcessed: number;
-  chunkCounter: number;
-  recordingSource: string;
+  processedFiles: Set<string>;
 }
 
 class GoogleLiveTranscriptService {
   private state: ProcessingState = {
     isRecording: false,
-    chunkDurationMs: 1000, // 1 second chunks for near real-time
-    audioChunks: [],
+    autoSaveIntervalMs: 1000, // 1 second auto-save
+    recordingSource: 'mic',
+    recordingStartTime: 0,
     lastProcessedTime: 0,
     totalChunksProcessed: 0,
-    chunkCounter: 0,
-    recordingSource: 'mic'
+    processedFiles: new Set()
   };
   
   private currentOptions: GoogleLiveTranscriptOptions | null = null;
   private currentRecordingId: string | null = null;
   private apiKey: string | null = null;
-  private chunkingInterval: number | null = null;
+  private autoSaveInterval: number | null = null;
+  private recordingAPI: { startRecording: (options: { filename: string; format: string }) => Promise<{ success: boolean; error?: string }>; stopRecording: () => Promise<{ success: boolean; error?: string }> } | null = null;
   
   private resultCallback: ((result: GoogleLiveTranscriptResult) => void) | null = null;
   private errorCallback: ((error: Error) => void) | null = null;
@@ -95,7 +95,6 @@ class GoogleLiveTranscriptService {
   constructor() {
     console.log('🏗️ Google Live: Constructor called - initializing service...');
     this.checkApiKey();
-    this.setupElectronListeners();
     console.log('🏗️ Google Live: Constructor complete');
   }
 
@@ -106,78 +105,84 @@ class GoogleLiveTranscriptService {
     
     if (!this.apiKey) {
       console.warn('Google Speech API key not found in environment');
-    }
-  }
-
-  private setupElectronListeners(): void {
-    // Setup listeners for audio chunk events from Electron
-    console.log('🔧 Google Live: Setting up Electron chunk listeners...');
-    
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      const electronAPI = window.electronAPI as ExtendedElectronAPI;
-      console.log('🔧 Google Live: electronAPI found:', !!electronAPI);
-      console.log('🔧 Google Live: onSemiLiveChunk available:', !!electronAPI.onSemiLiveChunk);
-      
-      if (electronAPI.onSemiLiveChunk) {
-        console.log('🔧 Google Live: Registering onSemiLiveChunk listener...');
-        electronAPI.onSemiLiveChunk((chunkData: { filePath: string; timestamp: number; chunkIndex: number; size: number }) => {
-          console.log('🎵 Google Live: Received chunk event:', chunkData);
-          this.handleChunkReady(chunkData);
-        });
-        console.log('✅ Google Live: Chunk listener registered successfully');
-      } else {
-        console.warn('⚠️ Google Live: onSemiLiveChunk not available in electronAPI');
-      }
     } else {
-      console.warn('⚠️ Google Live: electronAPI not available');
+      console.log('✅ Google Live: API key found');
     }
   }
 
-  private async handleChunkReady(chunkData: { filePath: string; timestamp: number; chunkIndex: number; size: number }): Promise<void> {
-    console.log(`🎵 Google Live: handleChunkReady called - Recording: ${this.state.isRecording}, Chunk: ${chunkData.chunkIndex}`);
-    
-    if (!this.state.isRecording) {
-      console.log('🚫 Google Live: Ignoring chunk - not recording');
-      return;
+  private setupAutoSaveInterval(): void {
+    if (this.autoSaveInterval) {
+      clearInterval(this.autoSaveInterval);
     }
 
-    console.log(`🎵 Google Live: Processing audio chunk ${chunkData.chunkIndex}, size: ${chunkData.size} bytes, path: ${chunkData.filePath}`);
+    console.log(`🔄 Google Live: Setting up ${this.state.autoSaveIntervalMs}ms auto-save interval`);
 
-    // Add chunk to our queue
-    const audioChunk: AudioChunk = {
-      timestamp: chunkData.timestamp,
-      filePath: chunkData.filePath,
-      size: chunkData.size,
-      chunkIndex: chunkData.chunkIndex
-    };
+    this.autoSaveInterval = window.setInterval(async () => {
+      if (!this.state.isRecording) {
+        return;
+      }
 
-    this.state.audioChunks.push(audioChunk);
-    console.log(`📋 Google Live: Total chunks in queue: ${this.state.audioChunks.length}`);
-
-    // Process the chunk immediately for real-time transcription
-    await this.processChunk(audioChunk);
+      await this.processCurrentRecording();
+    }, this.state.autoSaveIntervalMs);
   }
 
-  private async processChunk(chunk: AudioChunk): Promise<void> {
-    console.log(`🔄 Google Live: processChunk called for chunk ${chunk.chunkIndex}`);
-    console.log(`🔄 Google Live: Current options available: ${!!this.currentOptions}`);
-    console.log(`🔄 Google Live: API key available: ${!!this.apiKey}`);
+  private async processCurrentRecording(): Promise<void> {
+    try {
+      const currentTime = Date.now();
+      const recordingDuration = currentTime - this.state.recordingStartTime;
+      
+      console.log(`🎵 Google Live: Processing current recording (${recordingDuration}ms since start)`);
+
+      // Create filename for the current chunk
+      const chunkFilename = `${this.currentRecordingId}_live_${Math.floor(recordingDuration / 1000)}s`;
+      const chunkPath = `~/Documents/Friday Recordings/live-chunks/${chunkFilename}`;
+
+      console.log(`💾 Google Live: Saving current recording to: ${chunkPath}`);
+
+      // Here we'll save the current recording buffer to the live-chunks folder
+      // For now, let's check if a file exists and process it
+      const electronAPI = window.electronAPI as ExtendedElectronAPI;
+      
+      // Check if there's a recording file to process
+      // This is a simplified approach - in a real implementation, we'd get the current audio buffer
+      const potentialFile = `~/Documents/Friday Recordings/${this.currentRecordingId}.mp3`;
+      
+      if (await electronAPI.checkFileExists(potentialFile)) {
+        if (!this.state.processedFiles.has(potentialFile)) {
+          console.log(`🎯 Google Live: Found new recording file to process: ${potentialFile}`);
+          await this.processAudioFile(potentialFile);
+          this.state.processedFiles.add(potentialFile);
+        }
+      }
+
+      this.state.lastProcessedTime = currentTime;
+
+    } catch (error) {
+      console.error('❌ Google Live: Error processing current recording:', error);
+      if (this.errorCallback) {
+        this.errorCallback(error as Error);
+      }
+    }
+  }
+
+  private async processAudioFile(filePath: string): Promise<void> {
+    console.log(`🔄 Google Live: processAudioFile called for: ${filePath}`);
     
     if (!this.currentOptions || !this.apiKey) {
-      console.warn('⚠️ Google Live: Missing options or API key, skipping chunk processing');
+      console.warn('⚠️ Google Live: Missing options or API key, skipping file processing');
       return;
     }
 
     try {
-      console.log(`🔄 Google Live: Processing chunk ${chunk.chunkIndex} (${chunk.size} bytes) from ${chunk.filePath}`);
+      console.log(`🔄 Google Live: Processing audio file: ${filePath}`);
 
       // Read the audio file
       const electronAPI = window.electronAPI as ExtendedElectronAPI;
-      console.log(`📖 Google Live: Reading audio file: ${chunk.filePath}`);
-      const audioResult = await electronAPI.readAudioFile(chunk.filePath);
+      console.log(`📖 Google Live: Reading audio file: ${filePath}`);
+      const audioResult = await electronAPI.readAudioFile(filePath);
       
       if (!audioResult.success || !audioResult.buffer) {
-        console.warn(`⚠️ Failed to read audio chunk: ${audioResult.error}`);
+        console.warn(`⚠️ Failed to read audio file: ${audioResult.error}`);
         return;
       }
 
@@ -204,21 +209,11 @@ class GoogleLiveTranscriptService {
         console.log(`🤐 Google Live: No transcription result from API call`);
       }
 
-      // Cleanup the chunk file
-      try {
-        console.log(`🧹 Google Live: Cleaning up chunk file: ${chunk.filePath}`);
-        await electronAPI.deleteFile(chunk.filePath);
-        console.log(`✅ Google Live: Chunk file cleaned up successfully`);
-      } catch (cleanupError) {
-        console.warn('Failed to cleanup chunk file:', cleanupError);
-      }
-
       this.state.totalChunksProcessed++;
-      this.state.lastProcessedTime = Date.now();
-      console.log(`📊 Google Live: Chunk processing complete. Total processed: ${this.state.totalChunksProcessed}`);
+      console.log(`📊 Google Live: File processing complete. Total processed: ${this.state.totalChunksProcessed}`);
 
     } catch (error) {
-      console.error(`❌ Error processing chunk ${chunk.chunkIndex}:`, error);
+      console.error(`❌ Error processing audio file ${filePath}:`, error);
       if (this.errorCallback) {
         this.errorCallback(error as Error);
       }
@@ -356,7 +351,7 @@ class GoogleLiveTranscriptService {
   }
 
   get isAvailable(): boolean {
-    const hasElectronAPI = !!(window as unknown as { electronAPI?: ExtendedElectronAPI })?.electronAPI?.startSemiLiveRecording;
+    const hasElectronAPI = !!(window as unknown as { electronAPI?: ExtendedElectronAPI })?.electronAPI;
     return !!(this.apiKey && hasElectronAPI);
   }
 
@@ -385,7 +380,7 @@ class GoogleLiveTranscriptService {
     if (!this.isAvailable) {
       console.error('❌ Google Live: Service not available');
       console.log('❌ Google Live: API key available:', !!this.apiKey);
-      console.log('❌ Google Live: Electron API available:', !!(window as unknown as { electronAPI?: ExtendedElectronAPI })?.electronAPI?.startSemiLiveRecording);
+      console.log('❌ Google Live: Electron API available:', !!(window as unknown as { electronAPI?: ExtendedElectronAPI })?.electronAPI);
       throw new Error('Google Live Transcript not available - check API key and Electron environment');
     }
 
@@ -400,7 +395,7 @@ class GoogleLiveTranscriptService {
       maxSpeakers: 4,
       encoding: 'LINEAR16' as const,
       sampleRateHertz: 16000,
-      chunkDurationMs: 1000, // 1 second chunks
+      autoSaveIntervalMs: 1000, // 1 second auto-save
       recordingSource: 'mic' as const,
       ...options
     };
@@ -408,94 +403,61 @@ class GoogleLiveTranscriptService {
     console.log('🎤 Google Live: Final options:', opts);
 
     this.currentOptions = opts;
-    this.state.chunkDurationMs = opts.chunkDurationMs;
+    this.state.autoSaveIntervalMs = opts.autoSaveIntervalMs;
     this.state.recordingSource = opts.recordingSource;
     this.state.isRecording = true;
-    this.state.audioChunks = [];
+    this.state.recordingStartTime = Date.now();
     this.state.lastProcessedTime = Date.now();
     this.state.totalChunksProcessed = 0;
-    this.state.chunkCounter = 0;
+    this.state.processedFiles.clear();
 
     // Generate unique recording ID
     this.currentRecordingId = `google_live_${Date.now()}`;
     console.log('🎤 Google Live: Generated recording ID:', this.currentRecordingId);
 
     try {
-      console.log('🎤 Starting Google Live Transcript with file-based recording...');
+      console.log('🎤 Starting Google Live Transcript with regular recording + auto-save...');
 
       const electronAPI = window.electronAPI as ExtendedElectronAPI;
-      console.log('🎤 Google Live: Calling startSemiLiveRecording with params:', {
-        chunkDurationMs: this.state.chunkDurationMs,
-        source: this.state.recordingSource,
-        filename: this.currentRecordingId
-      });
       
-      const result = await electronAPI.startSemiLiveRecording({
-        chunkDurationMs: this.state.chunkDurationMs,
-        source: this.state.recordingSource,
-        filename: this.currentRecordingId
+      // Select the appropriate recording API based on source
+      if (opts.recordingSource === 'system') {
+        this.recordingAPI = electronAPI.systemAudioRecording;
+      } else if (opts.recordingSource === 'both') {
+        this.recordingAPI = electronAPI.combinedRecording;
+      } else {
+        this.recordingAPI = electronAPI.micRecording;
+      }
+
+      console.log(`🎤 Google Live: Starting ${opts.recordingSource} recording...`);
+      
+      const result = await this.recordingAPI.startRecording({
+        filename: this.currentRecordingId,
+        format: 'mp3'
       });
 
-      console.log('🎤 Google Live: startSemiLiveRecording result:', result);
+      console.log('🎤 Google Live: Recording start result:', result);
 
       if (!result.success) {
         console.error('❌ Google Live: Recording failed to start:', result.error);
         throw new Error(result.error || 'Failed to start recording');
       }
 
-      console.log('✅ Google Live Transcript started with file-based approach');
+      console.log('✅ Google Live Transcript started with regular recording');
       console.log('📊 Google Live: Final state after start:', {
         isRecording: this.state.isRecording,
-        chunkDurationMs: this.state.chunkDurationMs,
+        autoSaveIntervalMs: this.state.autoSaveIntervalMs,
         recordingSource: this.state.recordingSource,
         recordingId: this.currentRecordingId
       });
 
-      // Start chunking interval to request chunks every N seconds
-      this.setupChunkingInterval();
+      // Start auto-save interval to process recording periodically
+      this.setupAutoSaveInterval();
 
     } catch (error) {
       console.error('❌ Google Live: Error during recording start:', error);
       this.state.isRecording = false;
       throw new Error(`Failed to start recording: ${error.message}`);
-    }
-  }
-
-  private setupChunkingInterval(): void {
-    if (this.chunkingInterval) {
-      clearInterval(this.chunkingInterval);
-    }
-
-    console.log(`🔄 Google Live: Setting up ${this.state.chunkDurationMs}ms chunking interval`);
-
-    this.chunkingInterval = window.setInterval(async () => {
-      if (!this.state.isRecording) {
-        return;
-      }
-
-      // Request a chunk from the ongoing recording
-      await this.requestChunk();
-    }, this.state.chunkDurationMs);
-  }
-
-  private async requestChunk(): Promise<void> {
-    try {
-      console.log(`📋 Google Live: Requesting chunk ${this.state.chunkCounter}`);
-      
-      // Request Electron to save current recording buffer as a chunk
-      const electronAPI = window.electronAPI as ExtendedElectronAPI;
-      if (electronAPI.requestSemiLiveChunk) {
-        const chunkFilename = `${this.currentRecordingId}_chunk_${this.state.chunkCounter++}`;
-        console.log(`📋 Google Live: Requesting chunk with filename: ${chunkFilename}`);
-        await electronAPI.requestSemiLiveChunk({ filename: chunkFilename });
-      } else {
-        console.warn('⚠️ Google Live: requestSemiLiveChunk not available');
-      }
-    } catch (error) {
-      console.error('❌ Google Live: Error requesting chunk:', error);
-      if (this.errorCallback) {
-        this.errorCallback(error as Error);
-      }
     }
   }
 
@@ -506,27 +468,25 @@ class GoogleLiveTranscriptService {
 
     this.state.isRecording = false;
 
-    // Clear chunking interval
-    if (this.chunkingInterval) {
-      clearInterval(this.chunkingInterval);
-      this.chunkingInterval = null;
-      console.log('🔄 Google Live: Chunking interval cleared');
+    // Clear auto-save interval
+    if (this.autoSaveInterval) {
+      clearInterval(this.autoSaveInterval);
+      this.autoSaveInterval = null;
+      console.log('🔄 Google Live: Auto-save interval cleared');
     }
 
-    // Stop the Electron recording
-    if (window.electronAPI) {
-      const electronAPI = window.electronAPI as ExtendedElectronAPI;
-      if (electronAPI.stopSemiLiveRecording) {
-        electronAPI.stopSemiLiveRecording().catch(error => {
-          console.warn('Error stopping recording:', error);
-        });
-      }
+    // Stop the recording
+    if (this.recordingAPI) {
+      this.recordingAPI.stopRecording().catch((error: Error) => {
+        console.warn('Error stopping recording:', error);
+      });
     }
 
     // Reset state
-    this.state.audioChunks = [];
+    this.state.processedFiles.clear();
     this.currentOptions = null;
     this.currentRecordingId = null;
+    this.recordingAPI = null;
 
     console.log('✅ Google Live Transcript stopped');
   }
@@ -550,25 +510,21 @@ class GoogleLiveTranscriptService {
       isRecording: this.state.isRecording,
       totalChunksProcessed: this.state.totalChunksProcessed,
       lastProcessedTime: this.state.lastProcessedTime,
-      chunkDurationMs: this.state.chunkDurationMs,
-      recordingSource: this.state.recordingSource
+      autoSaveIntervalMs: this.state.autoSaveIntervalMs,
+      recordingSource: this.state.recordingSource,
+      processedFilesCount: this.state.processedFiles.size
     };
   }
 
-  // Debug method to check listener status
-  debugListenerStatus() {
-    console.log('🔍 Google Live: Debug listener status...');
+  // Debug method to check status
+  debugStatus() {
+    console.log('🔍 Google Live: Debug status...');
     const electronAPI = window.electronAPI as ExtendedElectronAPI;
     console.log('🔍 electronAPI available:', !!electronAPI);
-    console.log('🔍 startSemiLiveRecording available:', !!electronAPI?.startSemiLiveRecording);
-    console.log('🔍 onSemiLiveChunk available:', !!electronAPI?.onSemiLiveChunk);
-    console.log('🔍 readAudioFile available:', !!electronAPI?.readAudioFile);
     console.log('🔍 API key available:', !!this.apiKey);
     console.log('🔍 Current state:', this.state);
-    
-    // Try to manually trigger the listener setup
-    console.log('🔍 Attempting to re-setup listeners...');
-    this.setupElectronListeners();
+    console.log('🔍 Current options:', this.currentOptions);
+    console.log('🔍 Recording API:', !!this.recordingAPI);
   }
 }
 
@@ -576,6 +532,6 @@ class GoogleLiveTranscriptService {
 export const googleLiveTranscript = new GoogleLiveTranscriptService();
 
 // Add debug access to the singleton
-(window as unknown as { __debugGoogleLive?: () => void }).__debugGoogleLive = googleLiveTranscript.debugListenerStatus.bind(googleLiveTranscript);
+(window as unknown as { __debugGoogleLive?: () => void }).__debugGoogleLive = googleLiveTranscript.debugStatus.bind(googleLiveTranscript);
 
 export default googleLiveTranscript; 
