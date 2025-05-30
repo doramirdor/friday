@@ -91,8 +91,6 @@ class GoogleLiveTranscriptService {
     chunkCounter: 0
   };
   
-  private currentOptions: GoogleLiveTranscriptOptions | null = null;
-  private currentRecordingId: string | null = null;
   private apiKey: string | null = null;
   private chunkingInterval: number | null = null;
   
@@ -186,8 +184,9 @@ class GoogleLiveTranscriptService {
   private async processAudioChunk(chunk: AudioChunk): Promise<void> {
     console.log(`🔄 Google Live: processAudioChunk called for: ${chunk.filePath}`);
     
-    if (!this.currentOptions || !this.apiKey) {
-      console.warn('⚠️ Google Live: Missing options or API key, skipping chunk processing');
+    // Check if we have the necessary configuration and API key
+    if (!this.state.isRecording || !this.apiKey || !this.state.languageCode) {
+      console.warn('⚠️ Google Live: Missing recording state, API key, or language config, skipping chunk processing');
       return;
     }
 
@@ -227,14 +226,6 @@ class GoogleLiveTranscriptService {
       this.state.audioChunks = this.state.audioChunks.filter(c => c.filePath !== chunk.filePath);
       this.state.totalChunksProcessed++;
       console.log(`📊 Google Live: Chunk processing complete. Total processed: ${this.state.totalChunksProcessed}`);
-
-      // Cleanup the temporary file
-      // try {
-      //   await electronAPI.deleteFile(chunk.filePath);
-      //   console.log(`🧹 Google Live: Cleaned up chunk file: ${chunk.filePath}`);
-      // } catch (cleanupError) {
-      //   console.warn(`⚠️ Google Live: Failed to cleanup chunk file: ${cleanupError}`);
-      // }
 
     } catch (error) {
       console.error(`❌ Error processing audio chunk ${chunk.filePath}:`, error);
@@ -510,18 +501,14 @@ class GoogleLiveTranscriptService {
       console.log('🔄 Google Live: Chunking interval cleared');
     }
 
-    // Stop the recording
-    if (this.currentRecordingId) {
-      const electronAPI = window.electronAPI as ExtendedElectronAPI;
-      electronAPI.stopSemiLiveRecording().catch((error: Error) => {
-        console.warn('Error stopping recording:', error);
-      });
-    }
+    // Stop the semi-live recording
+    const electronAPI = window.electronAPI as ExtendedElectronAPI;
+    electronAPI.stopSemiLiveRecording().catch((error: Error) => {
+      console.warn('Error stopping recording:', error);
+    });
 
     // Reset state
     this.state.audioChunks = [];
-    this.currentOptions = null;
-    this.currentRecordingId = null;
 
     console.log('✅ Google Live Transcript stopped');
   }
@@ -558,7 +545,6 @@ class GoogleLiveTranscriptService {
     console.log('🔍 electronAPI available:', !!electronAPI);
     console.log('🔍 API key available:', !!this.apiKey);
     console.log('🔍 Current state:', this.state);
-    console.log('🔍 Current options:', this.currentOptions);
   }
 }
 
