@@ -526,10 +526,10 @@ Please provide the transcription:`;
     if (extension === 'bin') {
       // Check if the file path suggests it was originally WebM
       if (filePath.includes('.mp3_') && filePath.includes('.bin')) {
-        console.log('🔍 Detected .bin file from failed MP3 conversion, trying MP3 MIME type for Gemini compatibility');
-        // Instead of WebM (which causes 400 errors), try MP3 MIME type
-        // The .bin file contains audio data that should be compatible with MP3 processing
-        return 'audio/mp3';
+        console.log('🔍 Detected .bin file from failed MP3 conversion, but contains WebM data - using WebM MIME type');
+        // .bin files from failed MP3 conversion actually contain WebM data
+        // Send with WebM MIME type for proper processing
+        return 'audio/webm';
       }
       // Default to MP3 for other .bin files
       return 'audio/mp3';

@@ -277,6 +277,12 @@ class GeminiLiveUnifiedService {
           console.log(`  Original format: ${actualMimeType}`);
           console.log(`  Saved file: ${savedFile.path}`);
           console.log(`  Saved format: ${savedFile.format}`);
+          console.log(`  Save result details:`, {
+            success: saveResult.success,
+            filesCount: saveResult.files?.length || 0,
+            formats: saveResult.files?.map(f => f.format) || [],
+            error: saveResult.error || 'none'
+          });
           
           // Determine the actual file format from the saved file path
           let actualFileExtension = savedFile.path.split('.').pop()?.toLowerCase() || 'mp3';
@@ -285,10 +291,22 @@ class GeminiLiveUnifiedService {
           if (savedFile.path.includes('.mp3_') && actualFileExtension === 'bin') {
             // This means MP3 conversion failed and it saved as binary
             console.warn('⚠️ MP3 conversion failed, file saved as binary data');
+            console.log('📊 File format analysis:', {
+              requestedFormat: saveFormat,
+              actualExtension: actualFileExtension,
+              filePath: savedFile.path,
+              expectedBehavior: 'Should fallback to WebM but saved as .bin instead'
+            });
             actualFileExtension = 'bin';
           } else if (savedFile.path.includes('.mp3_') && actualFileExtension === 'webm') {
             // This means MP3 conversion failed and it fell back to WebM
             console.log('ℹ️ MP3 conversion failed, fell back to WebM format');
+            console.log('📊 File format analysis:', {
+              requestedFormat: saveFormat,
+              actualExtension: actualFileExtension,
+              filePath: savedFile.path,
+              expectedBehavior: 'MP3 conversion failed, WebM fallback working correctly'
+            });
             actualFileExtension = 'webm';
           }
           
@@ -304,6 +322,13 @@ class GeminiLiveUnifiedService {
           };
         } else {
           console.error('❌ Failed to save audio chunk:', saveResult.error || 'No files saved');
+          console.log('📊 Save failure analysis:', {
+            success: saveResult.success,
+            error: saveResult.error,
+            filesReturned: saveResult.files?.length || 0,
+            requestedFormat: saveFormat,
+            originalMimeType: actualMimeType
+          });
           console.log('🔄 Falling back to mock transcription due to file saving failure');
           
           // Return a mock chunk that will generate a mock transcription result
@@ -472,6 +497,23 @@ class GeminiLiveUnifiedService {
       if (error.message?.includes('400') && chunk.filePath.includes('.bin')) {
         console.log('🔍 GEMINI DEBUG: 💡 Detected 400 error on .bin file - this is expected for some format conversion failures');
         console.log('🔍 GEMINI DEBUG: 📝 The system will continue processing other chunks normally');
+        
+        // Gracefully skip this chunk by not emitting error - just log it
+        console.log('🔄 Skipping problematic .bin file and continuing with next audio chunk');
+        
+        // Update stats to show we attempted processing
+        this.stats.chunksProcessed++;
+        this.updateStats();
+        
+        // Still cleanup the file
+        try {
+          await this.cleanupFile(chunk.filePath);
+        } catch (cleanupError) {
+          console.warn('⚠️ Error cleaning up skipped chunk (non-critical):', cleanupError.message || cleanupError);
+        }
+        
+        // Don't emit error for known .bin file issues - just continue silently
+        return;
       }
       
       // Try to cleanup the file even on error
