@@ -1602,7 +1602,7 @@ ipcMain.handle("start-semi-live-recording", async (_, options = {}) => {
   try {
     console.log('🎤 Starting continuous semi-live recording for live transcription:', options);
     
-    const { chunkDurationMs = 1000, source = 'mic', filename = 'live_transcript' } = options;
+    const { chunkDurationMs = 3000, source = 'mic', filename = 'live_transcript' } = options;
     
     // Generate simple recording ID
     semiLiveRecordingId = `${filename}_${Date.now()}`;
@@ -1671,7 +1671,7 @@ ipcMain.handle("request-semi-live-chunk", async (_, options = {}) => {
       // Use execSync for more reliable file creation
       const { execSync } = await import('child_process');
       
-      const ffmpegCommand = `ffmpeg -f lavfi -i "anullsrc=r=44100:cl=mono" -t 1 -c:a libmp3lame -b:a 64k -y "${chunkFilePath}"`;
+      const ffmpegCommand = `ffmpeg -f lavfi -i "anullsrc=r=44100:cl=mono" -t 3 -c:a libmp3lame -b:a 64k -y "${chunkFilePath}"`;
       console.log(`🔧 FFmpeg command: ${ffmpegCommand}`);
       
       // Execute ffmpeg synchronously to ensure file is created

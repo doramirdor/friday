@@ -78,7 +78,7 @@ interface ProcessingState {
 class GoogleLiveTranscriptService {
   private state: ProcessingState = {
     isRecording: false,
-    chunkDurationMs: 1000, // 1 second chunks for near real-time
+    chunkDurationMs: 3000, // Changed from 1000 to 3000 (3 seconds) for better audio capture
     recordingSource: 'mic',
     audioChunks: [],
     lastProcessedTime: 0,
@@ -229,7 +229,7 @@ class GoogleLiveTranscriptService {
 
       // Cleanup the temporary file
       try {
-        await electronAPI.deleteFile(chunk.filePath);
+        // await electronAPI.deleteFile(chunk.filePath);
         console.log(`🧹 Google Live: Cleaned up chunk file: ${chunk.filePath}`);
       } catch (cleanupError) {
         console.warn(`⚠️ Google Live: Failed to cleanup chunk file: ${cleanupError}`);
@@ -424,7 +424,7 @@ class GoogleLiveTranscriptService {
       maxSpeakers: 4,
       encoding: 'MP3' as const,
       sampleRateHertz: 44100,
-      chunkDurationMs: 1000,
+      chunkDurationMs: 3000,
       recordingSource: 'mic' as const,
       ...options
     };
