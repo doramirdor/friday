@@ -29,6 +29,13 @@ All notable changes to this project will be documented in this file.
 - Integrated semi-live recording with existing Swift Recorder and recording utilities
 
 ### Fixed
+- **Unified Gemini Live MIME Type Detection**: Fixed 400 Bad Request errors by implementing proper audio format detection for Gemini API
+  - Added `detectAudioMimeType` method to automatically detect correct MIME type from file extensions
+  - Fixed hardcoded `audio/mp3` MIME type that was causing "Request contains an invalid argument" errors  
+  - Added support for WebM, MP3, WAV, OGG, AAC, FLAC, AIFF, M4A, MP4, Opus, and PCM audio formats
+  - Updated ElectronAPI interface to include `readAudioFile` method for TypeScript compatibility
+  - Now correctly sends WebM files as `audio/webm` MIME type to Gemini instead of incorrect `audio/mp3`
+  - Resolves API rejection of WebM audio chunks captured by MediaRecorder
 - **Unified Gemini Live Audio Format Compatibility**: Fixed "Failed to save in any format" errors in unified transcription service
   - Changed audio file saving from MP3 to WebM format to match MediaRecorder output format
   - Added fallback to mock transcription when file saving fails to prevent system crashes
