@@ -11,6 +11,10 @@
   - Replaced silent audio generation (`anullsrc`) with real microphone capture (`avfoundation`)
   - Chunks now contain actual audio content for transcription instead of silence
   - Uses `-f avfoundation -i ":0"` to capture from default microphone on macOS
+- **Google Live Transcript**: Fixed UI components overriding service defaults with wrong encoding
+  - Updated `GoogleLiveTranscriptNew.tsx` and `TranscriptDetails.tsx` to use MP3/44.1kHz defaults
+  - Prevents UI from forcing LINEAR16 encoding when MP3 files are being generated
+  - Ensures consistent encoding configuration across service and UI layers
 
 ### Improved
 - **Google Live Transcript**: Increased chunk duration from 1 second to 3 seconds
