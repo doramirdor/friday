@@ -253,9 +253,16 @@ Please provide the transcription:`;
 
       // Clean up the uploaded file
       try {
-        await this.genAI.files.delete(uploadedFile.name);
+        if (uploadedFile && uploadedFile.name) {
+          console.log('🗑️ Cleaning up uploaded file:', uploadedFile.name);
+          await this.genAI.files.delete(uploadedFile.name);
+          console.log('✅ File cleanup successful');
+        } else {
+          console.log('⚠️ No file to cleanup or file name missing');
+        }
       } catch (cleanupError) {
         console.warn('Failed to cleanup uploaded file:', cleanupError);
+        // Don't throw error for cleanup failures - transcription was successful
       }
 
       return {
@@ -514,6 +521,17 @@ Please provide the transcription:`;
   private detectAudioMimeType(filePath: string): string {
     // Get file extension from path
     const extension = filePath.split('.').pop()?.toLowerCase();
+    
+    // Special handling for .bin files which might contain converted audio data
+    if (extension === 'bin') {
+      // Check if the file path suggests it was originally WebM
+      if (filePath.includes('.mp3_') && filePath.includes('.bin')) {
+        console.log('🔍 Detected .bin file from failed MP3 conversion, treating as WebM data');
+        return 'audio/webm';
+      }
+      // Default to MP3 for other .bin files
+      return 'audio/mp3';
+    }
     
     switch (extension) {
       case 'webm':

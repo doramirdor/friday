@@ -250,61 +250,20 @@ class GeminiLiveUnifiedService {
       const actualMimeType = this.mediaRecorder?.mimeType || 'audio/webm';
       console.log('🔍 MediaRecorder actual MIME type:', actualMimeType);
       
-      // Gemini supported formats: WAV, MP3, AIFF, AAC, OGG Vorbis, FLAC (NOT WebM)
-      const isGeminiCompatible = 
-        actualMimeType.includes('mp3') || 
-        actualMimeType.includes('mpeg') ||
-        actualMimeType.includes('wav') ||
-        actualMimeType.includes('aac') ||
-        actualMimeType.includes('ogg') ||
-        actualMimeType.includes('flac') ||
-        actualMimeType.includes('aiff');
-      
-      let fileExtension: string;
-      let saveFormat: string;
-      
-      if (isGeminiCompatible) {
-        console.log('✅ MediaRecorder format is directly Gemini-compatible:', actualMimeType);
-        // Map to appropriate file extension and keep the same format
-        if (actualMimeType.includes('mp3') || actualMimeType.includes('mpeg')) {
-          fileExtension = 'mp3';
-          saveFormat = 'mp3';
-        } else if (actualMimeType.includes('wav')) {
-          fileExtension = 'wav';
-          saveFormat = 'wav';
-        } else if (actualMimeType.includes('ogg')) {
-          fileExtension = 'ogg';
-          saveFormat = 'ogg';
-        } else if (actualMimeType.includes('aac')) {
-          fileExtension = 'aac';
-          saveFormat = 'aac';
-        } else if (actualMimeType.includes('flac')) {
-          fileExtension = 'flac';
-          saveFormat = 'flac';
-        } else if (actualMimeType.includes('aiff')) {
-          fileExtension = 'aiff';
-          saveFormat = 'aiff';
-        } else {
-          // Fallback to MP3 conversion
-          fileExtension = 'mp3';
-          saveFormat = 'mp3';
-        }
-      } else {
-        console.warn('⚠️ MediaRecorder format is NOT Gemini-compatible:', actualMimeType);
-        console.log('🔄 Will convert to MP3 for Gemini compatibility');
-        // Force conversion to MP3 for Gemini compatibility
-        fileExtension = 'mp3';
-        saveFormat = 'mp3';
-      }
-      
-      // Create a temporary filename with correct extension
+      // Since MediaRecorder produces WebM and Gemini doesn't support it,
+      // we'll always request MP3 conversion but save as the original format
+      // if the conversion fails
       const timestamp = Date.now();
+      const fileExtension = 'mp3';
+      const saveFormat = 'mp3';
+      
+      // Always try MP3 conversion first for Gemini compatibility
+      console.log('🔄 Requesting MP3 conversion for Gemini compatibility');
       const filename = `live-chunk-${this.tempFileCounter++}-${timestamp}.${fileExtension}`;
       
       console.log('🔍 Audio file processing plan:');
       console.log(`  MediaRecorder format: ${actualMimeType}`);
-      console.log(`  Gemini compatible: ${isGeminiCompatible}`);
-      console.log(`  Filename: ${filename}`);
+      console.log(`  Requested filename: ${filename}`);
       console.log(`  Conversion target: ${saveFormat}`);
 
       // Save audio buffer as temporary file using existing IPC
@@ -318,7 +277,23 @@ class GeminiLiveUnifiedService {
           console.log(`  Original format: ${actualMimeType}`);
           console.log(`  Saved file: ${savedFile.path}`);
           console.log(`  Saved format: ${savedFile.format}`);
-          console.log(`  Ready for Gemini: ${saveFormat}`);
+          
+          // Determine the actual file format from the saved file path
+          let actualFileExtension = savedFile.path.split('.').pop()?.toLowerCase() || 'mp3';
+          
+          // Handle special case where file might have timestamp suffix like .bin or .webm
+          if (savedFile.path.includes('.mp3_') && actualFileExtension === 'bin') {
+            // This means MP3 conversion failed and it saved as binary
+            console.warn('⚠️ MP3 conversion failed, file saved as binary data');
+            actualFileExtension = 'bin';
+          } else if (savedFile.path.includes('.mp3_') && actualFileExtension === 'webm') {
+            // This means MP3 conversion failed and it fell back to WebM
+            console.log('ℹ️ MP3 conversion failed, fell back to WebM format');
+            actualFileExtension = 'webm';
+          }
+          
+          console.log(`  Detected actual file format: ${actualFileExtension}`);
+          console.log(`  File ready for Gemini: ${actualFileExtension === 'mp3' ? 'Yes (native)' : 'Yes (will detect format)'}`);
           
           return {
             timestamp: timestamp,
