@@ -25,7 +25,7 @@ export default function GoogleLiveTranscriptNew() {
   const [languageCode, setLanguageCode] = useState('en-US');
   const [enableSpeakerDiarization, setEnableSpeakerDiarization] = useState(true);
   const [maxSpeakers, setMaxSpeakers] = useState('4');
-  const [encoding, setEncoding] = useState<'LINEAR16' | 'WEBM_OPUS'>('LINEAR16');
+  const [encoding, setEncoding] = useState<'LINEAR16' | 'WEBM_OPUS' | 'MP3'>('MP3');
 
   const handleStartStop = async () => {
     if (isRecording) {
@@ -36,7 +36,7 @@ export default function GoogleLiveTranscriptNew() {
         enableSpeakerDiarization,
         maxSpeakers: parseInt(maxSpeakers),
         encoding,
-        sampleRateHertz: 16000,
+        sampleRateHertz: 44100,
       });
     }
   };
@@ -92,13 +92,14 @@ export default function GoogleLiveTranscriptNew() {
             
             <div className="space-y-2">
               <Label htmlFor="encoding">Audio Encoding</Label>
-              <Select value={encoding} onValueChange={(value) => setEncoding(value as 'LINEAR16' | 'WEBM_OPUS')} disabled={isRecording}>
+              <Select value={encoding} onValueChange={(value) => setEncoding(value as 'LINEAR16' | 'WEBM_OPUS' | 'MP3')} disabled={isRecording}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="LINEAR16">LINEAR16 (recommended)</SelectItem>
                   <SelectItem value="WEBM_OPUS">WEBM_OPUS</SelectItem>
+                  <SelectItem value="MP3">MP3</SelectItem>
                 </SelectContent>
               </Select>
             </div>

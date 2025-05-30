@@ -1997,8 +1997,8 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                                       languageCode: 'en-US',
                                       enableSpeakerDiarization: true,
                                       maxSpeakers: maxSpeakers,
-                                      encoding: 'LINEAR16',
-                                      sampleRateHertz: 16000,
+                                      encoding: 'MP3', // Changed from LINEAR16 to MP3
+                                      sampleRateHertz: 44100, // Changed from 16000 to 44100
                                     });
                                   }
                                 }}
