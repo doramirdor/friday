@@ -134,37 +134,11 @@ class GeminiLiveUnifiedService {
       // Use MediaRecorder instead of ScriptProcessor to avoid crashes
       console.log('🔄 Using MediaRecorder instead of ScriptProcessor...');
       
-      // Find supported audio format
-      const supportedTypes = [
-        'audio/mp3',
-        'audio/mpeg',
-        'audio/wav', 
-        'audio/ogg; codecs=opus',
-        'audio/aac'
-      ];
-      
-      let mimeType = '';
-      for (const type of supportedTypes) {
-        if (MediaRecorder.isTypeSupported(type)) {
-          mimeType = type;
-          break;
-        }
-      }
-      
-      // Create MediaRecorder
-      this.mediaRecorder = new MediaRecorder(this.mediaStream, {
-        mimeType: mimeType || undefined,
-        bitsPerSecond: 128000
-      });
-      
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && this.isRecording) {
-          this.audioBlobs.push(event.data);
-        }
-      };
-      
+      // Initialize MediaRecorder with proper format detection
+      await this.initializeMediaRecorder(this.mediaStream);
+
       // Start recording with chunk intervals
-      this.mediaRecorder.start(this.options.chunkDurationMs);
+      this.mediaRecorder!.start(this.options.chunkDurationMs);
 
       // Start processing interval based on mode
       if (this.options.processingMode === 'continuous') {
@@ -272,38 +246,55 @@ class GeminiLiveUnifiedService {
       console.log('🔍 Saving audio chunk as temporary file for Gemini transcription...');
       console.log('🔍 Audio buffer size:', audioBuffer.byteLength, 'bytes');
       
-      // Determine the correct file extension based on MediaRecorder MIME type
-      const mimeType = this.mediaRecorder?.mimeType || 'audio/mp3';
-      console.log('🔍 MediaRecorder MIME type:', mimeType);
+      // Get the actual MIME type that MediaRecorder is using (not what we requested)
+      const actualMimeType = this.mediaRecorder?.mimeType || 'audio/mp3';
+      console.log('🔍 MediaRecorder actual MIME type:', actualMimeType);
       
-      let fileExtension = 'mp3'; // Default fallback
-      let saveFormat = 'mp3';
+      let fileExtension = 'mp3'; // Default fallback for Gemini compatibility
+      let saveFormat = 'mp3'; // What to tell saveAudioFile to convert to
       
-      // Map MIME types to file extensions and save formats
-      if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+      // Check if MediaRecorder is actually producing a Gemini-compatible format
+      const isGeminiCompatible = 
+        actualMimeType.includes('mp3') || 
+        actualMimeType.includes('mpeg') ||
+        actualMimeType.includes('wav') ||
+        actualMimeType.includes('aac') ||
+        actualMimeType.includes('ogg') ||
+        actualMimeType.includes('flac');
+      
+      if (isGeminiCompatible) {
+        console.log('✅ MediaRecorder format is Gemini-compatible:', actualMimeType);
+        // Map to appropriate file extension
+        if (actualMimeType.includes('mp3') || actualMimeType.includes('mpeg')) {
+          fileExtension = 'mp3';
+          saveFormat = 'mp3';
+        } else if (actualMimeType.includes('wav')) {
+          fileExtension = 'wav';
+          saveFormat = 'wav';
+        } else if (actualMimeType.includes('ogg')) {
+          fileExtension = 'ogg';
+          saveFormat = 'ogg';
+        } else if (actualMimeType.includes('aac')) {
+          fileExtension = 'aac';
+          saveFormat = 'aac';
+        }
+      } else {
+        console.warn('⚠️ MediaRecorder format is NOT Gemini-compatible:', actualMimeType);
+        console.log('🔄 Will request conversion to MP3 for Gemini compatibility');
+        // Force conversion to MP3 regardless of input format
         fileExtension = 'mp3';
         saveFormat = 'mp3';
-      } else if (mimeType.includes('wav')) {
-        fileExtension = 'wav';
-        saveFormat = 'wav';
-      } else if (mimeType.includes('ogg')) {
-        fileExtension = 'ogg';
-        saveFormat = 'ogg';
-      } else if (mimeType.includes('aac')) {
-        fileExtension = 'aac';
-        saveFormat = 'aac';
-      } else if (mimeType.includes('mp4')) {
-        fileExtension = 'm4a';
-        saveFormat = 'mp4';
-      } else {
-        console.warn('⚠️ Unknown MIME type, defaulting to MP3:', mimeType);
       }
       
       // Create a temporary filename with correct extension
       const timestamp = Date.now();
       const filename = `live-chunk-${this.tempFileCounter++}-${timestamp}.${fileExtension}`;
       
-      console.log('🔍 Saving chunk as:', filename, 'format:', saveFormat);
+      console.log('🔍 Saving audio chunk:');
+      console.log(`  Original format: ${actualMimeType}`);
+      console.log(`  Filename: ${filename}`);
+      console.log(`  Requested save format: ${saveFormat}`);
+      console.log(`  Gemini compatible: ${isGeminiCompatible}`);
 
       // Save audio buffer as temporary file using existing IPC
       const electronAPI = window.electronAPI;
@@ -312,7 +303,10 @@ class GeminiLiveUnifiedService {
         
         if (saveResult.success && saveResult.files && saveResult.files.length > 0) {
           const savedFile = saveResult.files[0]; // Get the first saved file
-          console.log('✅ Audio chunk saved successfully:', savedFile.path);
+          console.log('✅ Audio chunk saved successfully:');
+          console.log(`  File path: ${savedFile.path}`);
+          console.log(`  File format: ${savedFile.format}`);
+          console.log(`  Expected for Gemini: ${saveFormat}`);
           
           return {
             timestamp: timestamp,
@@ -626,6 +620,83 @@ class GeminiLiveUnifiedService {
     this.errorCallback = null;
     this.speakerContext = [];
     console.log('🗑️ Unified Gemini Live service destroyed');
+  }
+
+  private async initializeMediaRecorder(stream: MediaStream): Promise<void> {
+    console.log('🔍 Initializing MediaRecorder for unified transcription...');
+    
+    // Check MediaRecorder support for different MIME types
+    // Gemini supports: WAV, MP3, AIFF, AAC, OGG, FLAC - NOT WebM!
+    const supportedTypes = [
+      'audio/mp3',
+      'audio/mpeg',
+      'audio/wav', 
+      'audio/ogg; codecs=opus',
+      'audio/aac'
+    ];
+    
+    console.log('🔍 Checking MediaRecorder MIME type support:');
+    for (const type of supportedTypes) {
+      const isSupported = MediaRecorder.isTypeSupported(type);
+      console.log(`  ${type}: ${isSupported ? '✅' : '❌'}`);
+    }
+    
+    let selectedMimeType = 'audio/mp3'; // Default fallback
+    
+    for (const mimeType of supportedTypes) {
+      if (MediaRecorder.isTypeSupported(mimeType)) {
+        selectedMimeType = mimeType;
+        console.log(`✅ Selected MIME type: ${mimeType}`);
+        break;
+      }
+    }
+    
+    if (!supportedTypes.some(type => MediaRecorder.isTypeSupported(type))) {
+      console.warn('⚠️ No preferred audio formats supported by MediaRecorder');
+      // Check what MediaRecorder actually supports
+      const commonTypes = [
+        'audio/webm',
+        'audio/webm;codecs=opus',
+        'audio/mp4',
+        'audio/wav',
+        'audio/ogg'
+      ];
+      console.log('🔍 MediaRecorder fallback format support:');
+      for (const type of commonTypes) {
+        console.log(`  ${type}: ${MediaRecorder.isTypeSupported(type) ? '✅' : '❌'}`);
+      }
+    }
+
+    try {
+      this.mediaRecorder = new MediaRecorder(stream, {
+        mimeType: selectedMimeType,
+        bitsPerSecond: 128000 // 128kbps for good quality
+      });
+
+      // Log what MediaRecorder actually decided to use
+      console.log(`✅ MediaRecorder initialized successfully`);
+      console.log(`🔍 Requested MIME type: ${selectedMimeType}`);
+      console.log(`🔍 Actual MediaRecorder mimeType: ${this.mediaRecorder.mimeType}`);
+      console.log(`🔍 MediaRecorder state: ${this.mediaRecorder.state}`);
+      
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          console.log(`📊 Audio chunk received: ${event.data.size} bytes`);
+          console.log(`🔍 Blob type: ${event.data.type}`);
+          console.log(`🔍 MediaRecorder mimeType: ${this.mediaRecorder?.mimeType}`);
+          this.audioBlobs.push(event.data);
+        }
+      };
+
+      this.mediaRecorder.onerror = (event) => {
+        console.error('❌ MediaRecorder error:', event);
+        this.emitError(new Error('MediaRecorder error occurred'));
+      };
+
+    } catch (error) {
+      console.error('❌ Failed to initialize MediaRecorder:', error);
+      throw new Error(`Failed to initialize MediaRecorder: ${error.message}`);
+    }
   }
 }
 
