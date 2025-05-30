@@ -421,13 +421,50 @@ class GeminiLiveUnifiedService {
         return;
       }
 
+      // Early detection of .bin files - skip them before API call
+      const fileExtension = chunk.filePath.split('.').pop()?.toLowerCase();
+      if (fileExtension === 'bin' && chunk.filePath.includes('.mp3_')) {
+        console.log('🔍 GEMINI DEBUG: ⚠️ Detected .bin file from failed MP3 conversion - skipping to prevent 400 error');
+        console.log('🔍 GEMINI DEBUG: 📝 .bin files contain WebM data that causes API incompatibility issues');
+        
+        // Skip this chunk entirely and continue processing
+        console.log('🔄 Skipping .bin file and continuing with next audio chunk');
+        
+        // Update stats to show we attempted processing
+        this.stats.chunksProcessed++;
+        this.updateStats();
+        
+        // Clean up the file
+        await this.cleanupFile(chunk.filePath);
+        
+        // Generate a mock result to keep the transcription flow going
+        const mockResult: GeminiTranscriptionResult = {
+          transcript: `[${new Date().toLocaleTimeString()}] Audio chunk skipped due to format conversion issue`,
+          speakers: [
+            { 
+              id: "1", 
+              name: "Speaker 1", 
+              color: "#28C76F",
+              meetingId: "live-unified-session",
+              type: "speaker"
+            }
+          ]
+        };
+
+        const processingTime = Date.now() - startTime;
+        this.stats.totalProcessingTime += processingTime;
+        this.stats.lastProcessedTime = Date.now();
+
+        console.log(`✅ Skipped .bin file gracefully (${processingTime}ms)`);
+        return;
+      }
+
       // Check if Gemini service is available
       if (!geminiService.isAvailable()) {
         throw new Error('Gemini AI is not initialized. Please check your API key.');
       }
 
       // Additional validation for problematic file types
-      const fileExtension = chunk.filePath.split('.').pop()?.toLowerCase();
       if (fileExtension === 'bin' && chunk.filePath.includes('.mp3_')) {
         console.log('🔍 GEMINI DEBUG: ⚠️ Processing .bin file from failed MP3 conversion');
         console.log('🔍 GEMINI DEBUG: File will be sent with MP3 MIME type for better compatibility');
@@ -492,29 +529,6 @@ class GeminiLiveUnifiedService {
         chunkSize: chunk.size,
         fileExtension: chunk.filePath.split('.').pop()?.toLowerCase()
       });
-      
-      // Special handling for 400 errors on .bin files
-      if (error.message?.includes('400') && chunk.filePath.includes('.bin')) {
-        console.log('🔍 GEMINI DEBUG: 💡 Detected 400 error on .bin file - this is expected for some format conversion failures');
-        console.log('🔍 GEMINI DEBUG: 📝 The system will continue processing other chunks normally');
-        
-        // Gracefully skip this chunk by not emitting error - just log it
-        console.log('🔄 Skipping problematic .bin file and continuing with next audio chunk');
-        
-        // Update stats to show we attempted processing
-        this.stats.chunksProcessed++;
-        this.updateStats();
-        
-        // Still cleanup the file
-        try {
-          await this.cleanupFile(chunk.filePath);
-        } catch (cleanupError) {
-          console.warn('⚠️ Error cleaning up skipped chunk (non-critical):', cleanupError.message || cleanupError);
-        }
-        
-        // Don't emit error for known .bin file issues - just continue silently
-        return;
-      }
       
       // Try to cleanup the file even on error
       try {
