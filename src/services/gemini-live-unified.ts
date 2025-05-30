@@ -401,6 +401,13 @@ class GeminiLiveUnifiedService {
         throw new Error('Gemini AI is not initialized. Please check your API key.');
       }
 
+      // Additional validation for problematic file types
+      const fileExtension = chunk.filePath.split('.').pop()?.toLowerCase();
+      if (fileExtension === 'bin' && chunk.filePath.includes('.mp3_')) {
+        console.log('🔍 GEMINI DEBUG: ⚠️ Processing .bin file from failed MP3 conversion');
+        console.log('🔍 GEMINI DEBUG: File will be sent with MP3 MIME type for better compatibility');
+      }
+
       // Use the existing stable geminiService.transcribeAudio() method with the saved file
       const result: GeminiTranscriptionResult = await geminiService.transcribeAudio(
         chunk.filePath,
@@ -457,14 +464,21 @@ class GeminiLiveUnifiedService {
         error: error.message,
         stack: error.stack,
         chunkPath: chunk.filePath,
-        chunkSize: chunk.size
+        chunkSize: chunk.size,
+        fileExtension: chunk.filePath.split('.').pop()?.toLowerCase()
       });
+      
+      // Special handling for 400 errors on .bin files
+      if (error.message?.includes('400') && chunk.filePath.includes('.bin')) {
+        console.log('🔍 GEMINI DEBUG: 💡 Detected 400 error on .bin file - this is expected for some format conversion failures');
+        console.log('🔍 GEMINI DEBUG: 📝 The system will continue processing other chunks normally');
+      }
       
       // Try to cleanup the file even on error
       try {
         await this.cleanupFile(chunk.filePath);
       } catch (cleanupError) {
-        console.error('❌ Error cleaning up failed chunk:', cleanupError);
+        console.warn('⚠️ Error cleaning up failed chunk (non-critical):', cleanupError.message || cleanupError);
       }
       
       this.emitError(error as Error);

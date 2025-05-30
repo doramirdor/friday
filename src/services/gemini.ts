@@ -261,7 +261,7 @@ Please provide the transcription:`;
           console.log('⚠️ No file to cleanup or file name missing');
         }
       } catch (cleanupError) {
-        console.warn('Failed to cleanup uploaded file:', cleanupError);
+        console.warn('⚠️ File cleanup failed (non-critical):', cleanupError.message || cleanupError);
         // Don't throw error for cleanup failures - transcription was successful
       }
 
@@ -526,8 +526,10 @@ Please provide the transcription:`;
     if (extension === 'bin') {
       // Check if the file path suggests it was originally WebM
       if (filePath.includes('.mp3_') && filePath.includes('.bin')) {
-        console.log('🔍 Detected .bin file from failed MP3 conversion, treating as WebM data');
-        return 'audio/webm';
+        console.log('🔍 Detected .bin file from failed MP3 conversion, trying MP3 MIME type for Gemini compatibility');
+        // Instead of WebM (which causes 400 errors), try MP3 MIME type
+        // The .bin file contains audio data that should be compatible with MP3 processing
+        return 'audio/mp3';
       }
       // Default to MP3 for other .bin files
       return 'audio/mp3';

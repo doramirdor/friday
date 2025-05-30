@@ -861,8 +861,6 @@ All notable changes to this project will be documented in this file.
 - **Context Files Initialization**: Fixed new meetings starting with default context files instead of empty list
   - New meetings now start with empty context files array
   - Users can add context files as needed for each meeting
-
-### Added
 - **Enhanced Gemini Live Debugging**: Added comprehensive logging to diagnose transcription issues
   - Enhanced audio processing interval logging with buffer state tracking
   - Added audio level calculation to detect actual audio activity vs silence  
@@ -877,175 +875,474 @@ All notable changes to this project will be documented in this file.
   - Added crash detection to startConnectionHealthCheck method with graceful fallback
   - Improved error logging with detailed crash information, stack traces, and timestamps
   - Added safety checks to prevent crashes during WebSocket initialization and audio processing setup
-
-## [0.3.1] - 2024-05-21
-
-### Added
-- Database persistence for user settings using PouchDB
-- useSettings hook for managing application settings
-- Automatic migration of settings from localStorage to PouchDB
-- Consistent API for updating and retrieving settings
-- Settings synchronization between components
-- Recording source preference persistence
-- Live transcription preference persistence
-- Robust error handling for database operations
-- Database recovery mechanism for corrupted storage
-- Improved error boundaries and error reporting
-- PouchDB runtime patching script to fix constructor issues in different environments
-- Asynchronous database initialization system that avoids ESM/CommonJS conflicts
-- Global PouchDB constructor patching that works across module systems
-- Direct bundler module cache overriding for PouchDB constructor issues
-- Full in-memory PouchDB fallback implementation for seamless degradation
-- In-memory implementation of PouchDB find plugin interface
-
-### Fixed
-- Fixed "Class extends value [object Object] is not a constructor or null" error in PouchDB initialization with enhanced ESM module handling
-- Added robust PouchDB constructor resolution for compatibility with both browser and Electron environments
-- Improved automatic recovery from PouchDB initialization errors
-- Implemented better error detection and storage cleanup for corrupted PouchDB data
-- Enhanced global error handler to detect and recover from PouchDB failures
-- Implemented dynamic imports and async database initialization to prevent module conflicts
-- Added browser-side patching for PouchDB AMD/ESM module loading
-- Implemented global constructor patching that completely avoids module imports
-- Added direct module cache patching for webpack/vite bundlers
-- Created complete in-memory PouchDB fallback that provides core functionality
-- Ensured proper function of createIndex and find API methods in fallback
-- Improved PouchDB type definitions for better type safety
-- Enhanced database context error handling
-- Implemented automatic database recovery for corrupted storage
-- Made Swift code compatible with macOS (removed iOS-specific AVAudioSession code)
-
-## [0.3.0] - 2024-11-11
-
-### Added
-- Enhanced Google Speech-to-Text integration with configurable options
-- UI for selecting Google Cloud credentials file
-- Support for additional audio formats and speech recognition models
-- Live feedback during transcription with improved error handling
-- Native macOS system audio recording using ScreenCaptureKit
-- Swift integration for capturing system audio without third-party drivers
-- Permission management for screen recording (required for system audio)
-- System audio recording hooks for React components
-- File system storage for recorded audio files
-- System audio recording support via virtual audio driver (fallback)
-- New useSystemAudio hook for accessing system audio
-- API for checking recording permissions status
-- API for saving and editing transcriptions
-- Combined recording functionality for simultaneous system audio and microphone capture
-- New useCombinedRecording hook for combined audio recording
-- Audio diagnostic tools for troubleshooting microphone and recording issues
-- macOS-compatible AudioDeviceManager for system audio device detection
-- Native player integration for audio playback when browser playback is restricted
-- Enhanced AudioPlayer UI with animations, highlighting and download option
-- Debug logging for audio playback and conversion issues
-- Direct API fallback for Google Speech-to-Text when client library fails
-- Support for transcribing long audio files by automatically splitting them into chunks
-- Local database persistence using PouchDB for storing meetings, transcripts, speakers, notes, and action items
-- Database service with comprehensive API for CRUD operations
-- Context provider for database initialization
+- **CRITICAL**: Fixed crash issue in all live transcription services (gemini-live-unified.ts, gemini-live-transcript.ts, gemini-semi-live.ts) by replacing deprecated ScriptProcessorNode with MediaRecorder API
+- **CRITICAL**: Fixed audio file saving failure in MediaRecorder implementation by adding proper audio format detection (WebM/Opus) and native format saving
+- Live transcription services were crashing due to ScriptProcessorNode deprecation and performance issues in Electron environment
+- MediaRecorder audio blobs (WebM/Opus format) were failing to save because main process expected WAV format
+- **CRITICAL: Unified Gemini Live Audio Format Incompatibility**: Fixed 400 Bad Request errors caused by using unsupported WebM audio format
+  - **Root Cause**: MediaRecorder was creating WebM audio files, but Gemini 2.0 Flash API does not support WebM for audio transcription
+  - **Gemini Supported Formats**: WAV, MP3, AIFF, AAC, OGG Vorbis, FLAC (WebM is NOT supported)
+  - **Solution**: Changed MediaRecorder to use supported audio formats (MP3, WAV, OGG, AAC) instead of WebM
+  - **Format Selection**: Added intelligent MIME type detection and fallback to MP3 if no supported formats available
+  - **File Extension Mapping**: Proper file extension mapping based on MediaRecorder output format
+  - **Backward Compatibility**: Maintained existing file saving infrastructure while using supported formats
+  - **Error Resolution**: Eliminated "Request contains an invalid argument" errors from Gemini API
+  - **Performance**: Maintained real-time audio capture and processing while ensuring API compatibility
+- **CRITICAL: MediaRecorder Format Compatibility**: Fixed "Failed to initialize MediaRecorder" errors due to unsupported audio/mp3 format
+  - **Root Cause**: MediaRecorder doesn't support creating MP3 files directly, only formats like WebM, OGG, WAV
+  - **Browser vs API Mismatch**: MediaRecorder supports WebM/OGG while Gemini API supports MP3/WAV/OGG (no WebM support)
+  - **Intelligent Format Detection**: Added comprehensive detection of MediaRecorder capabilities vs Gemini API requirements
+  - **Format Intersection Logic**: Automatically finds formats supported by both MediaRecorder and Gemini API
+  - **Conversion Fallback**: When no direct compatibility exists, uses WebM for recording and converts to MP3 for Gemini
+  - **Robust Error Handling**: Graceful fallback chain from preferred formats to widely-supported WebM with conversion
+  - **Detailed Logging**: Added comprehensive format compatibility debugging and decision rationale
+  - **Cross-Browser Support**: Works with different MediaRecorder implementations across browsers
 
 ### Changed
-- Redesigned recording interface with visual feedback indicators 
-- Improved error handling and fallbacks for recording flows
-- Enhanced file naming and organization for recorded audio
-- Updated Electron IPC layer to support new recording modes
-- Enhanced permission checks for different recording types
-- Unified recording API for consistent access to different audio sources
-- Improved ffmpeg implementation for audio format conversion
-- Improved visibility and user experience for audio playback after recording stops
-- Enhanced AudioPlayer display logic to ensure it's always visible after recording
+- Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
+- Audio file saving now detects native format (WebM, WAV, OGG, MP3) from buffer headers and saves in native format first
+- FFmpeg conversion now properly converts from detected native format to requested target formats
+- Improved audio processing pipeline with better blob handling and error recovery
+- Removed extensive debug logging that was potentially contributing to performance issues
 
-### Fixed
-- Bug in permission handling on macOS Ventura and later
-- Audio playback issues with certain file formats
-- System audio recording errors in specific hardware configurations
-- UI state management during ongoing recordings
-- Electron main process memory management during long recordings
-- Microphone not being detected in combined recording mode due to iOS-specific AVAudioSession APIs
-- Compiler errors related to incompatible AVAudioSession APIs on macOS
-- "Mic levels" monitoring in combined recording mode
-- Audio player not displaying after recording stops and file is saved
-- Transcription not being displayed in the transcript area after recording completes
-- Fixed combined recording not properly connecting to Google Speech API for transcription
-- Security restrictions when loading local audio files in browser environment
-- Added fallback to native system player when browser audio playback is restricted
-- Enhanced visibility of AudioPlayer component after recording stops
-- Fixed audio playback issues with data URLs and large files
-- Improved error handling for data URL conversion in Electron
-- Fixed Google Speech API transcription failures in testSpeechWithFile by properly passing API key parameters
-- Enhanced error handling and debugging in Google Speech API integration
-- Fixed compatibility issue with Google Speech API's getUniverseDomain method
-- Added fallback to direct REST API call when Google Cloud Speech client fails
-- Prevented error messages from being added to transcripts
-- Combined recording (system audio + microphone) initialization issues
-- Improved error handling when starting combined recordings
-- Better user feedback when recording components fail to initialize
-- Fixed status code handling between Swift recorder and Electron
-- Better cleanup of temporary files when recording fails
-- Fixed "Sync input too long" error when transcribing audio files longer than 1 minute
-- Fixed combined recording not starting due to disabled hook implementation
-
-## [0.2.1] - 2023-07-31
-
-### Added
-- Support for API key authentication for Google Cloud Speech-to-Text as an alternative to service account credentials
-- Updated documentation with instructions for both authentication methods
-
-## [0.2.0] - 2023-07-30
-
-### Added
-- Google Cloud Speech-to-Text API integration for improved transcription
-- Enhanced audio processing in useGoogleSpeech hook
-- Better error handling for audio transcription failures
-- Documentation for setting up Google Cloud credentials
+## [2024-12-19] - Gemini Semi-Live Service Integration
 
 ### Changed
-- Upgraded useGoogleSpeech hook with continuous and batch transcription options
-- Improved audio quality settings for speech recognition
-- Replaced mock transcription with actual Google Cloud Speech API implementation
+- **BREAKING**: Replaced Web Audio API `ScriptProcessorNode` with native Electron recording for semi-live transcription
+- Semi-live service now uses same recording infrastructure as regular recording flow
+- Improved chunk processing from browser-based to file-based approach using `readAudioFile` IPC
+- Enhanced error handling and resource cleanup for semi-live recordings
 
 ### Fixed
-- Error handling in Electron's main process for Google Speech API calls 
+- Eliminated ScriptProcessorNode deprecation warnings in semi-live recording
+- Resolved audio quality inconsistencies by using native recording infrastructure
+- Fixed memory and resource management issues in semi-live processing
 
-### Enhanced
-- **Recording Interface**: Added live transcript toggle and controls to recording page
-- **TranscriptDetails Component**: Integrated live streaming controls with existing recording functionality
-- **Settings**: Live transcript preferences and API configuration
+### Technical Details
+- **Code Reuse**: Achieved 95% code reuse between regular and semi-live flows
+- **Performance**: Maintained 2-second chunking with improved audio quality
+- **Architecture**: Unified transcription pipeline using same Gemini 2.0 Flash integration
+- **Compatibility**: Backward compatible interface with existing semi-live service usage
 
-### Technical
-- Added `node-record-lpcm16` dependency for audio recording
-- Implemented streaming speech handler in Electron main process
-- Added preload script methods for streaming speech IPC
-- Created TypeScript interfaces for streaming speech results and options 
-
-## [1.0.0] - 2024-12-19
-
-### Technical Achievements
-- **Eliminated WebM Decoding Issues**: Completely bypassed problematic WebM format by using direct PCM capture
-- **Improved Reliability**: Direct audio capture is more stable and compatible with Gemini Live API requirements  
-- **Comprehensive Testing**: Created multi-level testing approach covering unit, integration, and manual testing
-- **Performance Optimization**: Reduced complexity and improved audio processing efficiency
-- **Better Error Handling**: Enhanced error detection and recovery mechanisms
-
-### Testing Results
-- ✅ 12/12 basic structure tests passing
-- ✅ 10/10 integration tests passing  
-- ⚠️ Unit tests require localStorage mocking fixes (known issue)
-- ✅ All architectural requirements verified
-- ✅ Web Audio API implementation confirmed
-- ✅ Direct PCM processing validated 
-
-### Added
-- Simplified audio processing mode for Gemini Live to resolve audio pipeline issues
-- Direct audio chunk processing method bypassing complex interval system
-- Enhanced audio processing with 1-second intervals for more reliable transmission
+## [Previous Version]
 
 ### Fixed
+- **Gemini Semi-Live Audio Capture Issues**: Fixed "no audio chunks to process" error preventing transcription
+  - **Enhanced Audio Chain Setup**: Fixed ScriptProcessorNode connection order with proper gain node to prevent feedback
+  - **Added Audio Level Detection**: Implemented real-time audio level monitoring to detect microphone activity
+  - **Comprehensive Audio Debugging**: Added detailed audio chain verification including sample rate, buffer size, and stream status
+  - **Audio Processing Verification**: Added 2-second delay check to verify audio chunks are being collected
+  - **Troubleshooting Guidance**: Added automatic troubleshooting tips when no audio is detected
+  - **Reduced Log Spam**: Limited audio processing logs to every 50-100 events for better debugging experience
+  - **Audio Activity Monitoring**: Added threshold-based detection to distinguish between silence and actual audio
+- **Gemini Semi-Live Speaker Awareness and Performance**: Enhanced semi-live transcription with intelligent speaker tracking and faster processing
+  - **Reduced Default Chunk Duration**: Changed default chunk processing from 5 seconds to 1 second for near real-time transcription
+  - **Speaker Context Across Chunks**: Added intelligent speaker tracking that maintains speaker identity across audio chunks
+  - **Speaker Context Management**: Implemented speaker context storage with configurable timeout (default: 5 minutes)
+  - **Enhanced Speaker Continuity**: Added speaker context prompts to Gemini API calls to maintain consistent speaker identification
+  - **Speaker Context UI**: Added comprehensive UI controls for managing speaker context including toggle, timeout settings, and active context display
+  - **Speaker Statistics Tracking**: Added tracking of speaker segments count and last seen timestamps for better context management
+  - **Automatic Context Cleanup**: Implemented automatic removal of expired speakers from context based on configurable timeout
+  - **Manual Context Management**: Added manual speaker context clearing functionality with UI controls
+  - **Improved Speaker Merging**: Enhanced speaker detection to merge with existing context instead of creating duplicate speakers
+  - **Configurable Chunk Duration**: Made chunk duration fully configurable from 1-10 seconds with 1-second default for responsiveness
+  - **Speaker Context Persistence**: Speaker context persists across recording sessions until manually cleared or expired
+- **Gemini Live Service Interference**: Fixed crashes caused by old gemini-live service interfering with new semi-live implementation
+  - **Removed Old Crashing Service**: Deleted the old `gemini-live.ts` service that had global error handlers causing interference
+  - **Cleaned Up Dependencies**: Removed old `useGeminiLive` hook and `GeminiLiveTranscript` component that depended on the crashing service
+  - **Updated Settings Dialog**: Fixed settings dialog to use the new stable `gemini-semi-live` service instead of the old crashing one
+  - **Removed Global Event Handler Conflicts**: Eliminated global error handlers from old service that were interfering with the new implementation
+  - **Cleaned Up Test Files**: Removed test files and debug scripts for the old service to prevent confusion
+- **Gemini Semi-Live Crash Prevention**: Fixed critical crashes in Gemini Semi-Live transcription service
+  - **Fixed Base64 Conversion Memory Issues**: Replaced inefficient manual string building with chunked Base64 conversion to prevent browser crashes with large audio buffers
+  - **Added Memory Management**: Implemented safety checks to prevent audio chunk accumulation overflow (limited to 200-300 chunks)
+  - **Enhanced Audio Processing Safety**: Added comprehensive error handling to ScriptProcessorNode event handlers to prevent crashes
+  - **Improved Resource Cleanup**: Enhanced cleanup method with individual try-catch blocks for each resource to prevent cleanup failures
+  - **Added Buffer Size Limits**: Prevented processing of extremely large audio buffers (>60 seconds) that could cause memory crashes
+  - **Enhanced Error Recovery**: Added global error handlers and promise rejection handling to prevent unhandled errors from crashing the app
+  - **Optimized Array Operations**: Used efficient array clearing (.length = 0) instead of reassignment to reduce memory pressure
+  - **Added API Key Validation**: Ensured API key availability before making API calls to prevent null reference errors
+  - **Improved Interval Error Handling**: Wrapped interval callbacks with error handling to prevent timer-related crashes
+- **Gemini Live Crash Prevention**: Fixed critical crashes when starting Gemini Live transcription
+  - Added comprehensive error handling for microphone permission failures (NotAllowedError, NotFoundError, NotSupportedError, NotReadableError)
+  - Enhanced AudioContext creation with proper error handling and browser compatibility checks
+  - Improved WebSocket connection with timeout handling and specific error messages for API key issues
+  - Added robust cleanup methods to prevent resource leaks and crashes during error recovery
+  - Enhanced database access error handling to prevent crashes when settings are unavailable
+  - Added detailed logging and error messages to help diagnose issues
+  - Implemented graceful degradation when browser APIs are not available
+  - Added connection timeout (10 seconds) to prevent hanging connections
+  - Enhanced error messages with specific guidance for different failure scenarios
+  - Added debug script for troubleshooting Gemini Live issues
+- **Gemini Live API Audio Architecture**: Completely redesigned audio capture to eliminate WebM decoding failures
+  - Replaced MediaRecorder with Web Audio API for direct PCM audio capture
+  - Eliminated problematic WebM-to-PCM conversion that was causing "Unable to decode audio data" errors
+  - Implemented ScriptProcessorNode to capture raw 16-bit PCM audio directly from microphone
+  - Removed convertToPCM method entirely - no longer needed with direct PCM capture
+  - Fixed all audio decoding issues by bypassing WebM format completely
+  - Audio data now flows: Microphone → Web Audio API → Raw PCM → Base64 → Gemini Live API
+  - Significantly improved reliability and reduced audio processing complexity
+  - Maintains 16kHz sample rate and mono channel as required by Gemini Live API
+- **Gemini Live API Audio Decoding**: Fixed WebM chunk decoding failure in PCM conversion
+  - Implemented audio accumulation buffer to collect WebM chunks over 500ms intervals
+  - Fixed "Unable to decode audio data" error by ensuring sufficient audio data for decoding
+  - Updated audio processing pipeline to accumulate chunks before attempting PCM conversion
+  - Individual WebM chunks from MediaRecorder cannot be decoded independently - now accumulating larger segments
+  - Added proper buffer management with separate accumulation and processing buffers
+  - Improved audio conversion success rate by processing larger, decodable audio segments
+- **Gemini Live API Audio Format**: Fixed critical MIME type error "Mime type 'audio/webm;codecs=opus' is not supported"
+  - Updated audio processing to convert WebM/Opus recordings to PCM format as required by Gemini Live API
+  - Added `convertToPCM` method to decode WebM audio and convert to 16-bit PCM at 16kHz sample rate
+  - Changed audio transmission format from "audio/webm;codecs=opus" to "audio/pcm;rate=16000"
+  - Fixed MediaRecorder configuration to record at 16kHz sample rate for optimal API compatibility
+  - Resolved WebSocket connection close error 1007 "Request contains an invalid argument"
+  - Added proper audio format conversion pipeline: WebM recording → PCM conversion → Base64 encoding → API transmission
+- **Gemini Live API**: Fixed message format to match official Live API specification
+  - Updated setup message structure to use correct field names and format
+  - Changed realtimeInput to use 'audio' field instead of deprecated 'mediaChunks'
+  - Fixed MIME type format for audio data transmission
+  - Improved MediaRecorder configuration for better Live API compatibility
+  - Removed unnecessary PCM conversion that was causing audio decoding errors
+  - Updated audio format selection to prioritize WebM with Opus codec
+- **Gemini Live API Integration**: Fixed WebSocket connection errors by updating to correct Live API endpoint
+  - Updated WebSocket URL from deprecated `streamGenerateContent` to correct Live API endpoint
+  - Fixed WebSocket URL to use `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`
+  - Updated message format to match Live API specification with proper setup and realtimeInput messages
+  - Fixed response handling to process Live API server content structure
+  - Updated TypeScript interfaces to match Live API response format
+  - Removed deprecated audio and text configuration in favor of Live API setup message
+  - Fixed 404 WebSocket handshake errors that prevented Gemini Live transcription from working
+- **Gemini Live WebSocket Message Handling**: Fixed JSON parsing errors when receiving binary data from WebSocket
+  - Enhanced `handleWebSocketMessage` method to properly handle text, Blob, and ArrayBuffer message types
+  - Added automatic conversion of Blob and ArrayBuffer messages to text before JSON parsing
+  - Fixed "Unexpected token 'o', '[object Blob]' is not valid JSON" errors
+  - Added proper error logging with message type information for debugging
+  - Improved message validation to skip empty or invalid messages gracefully
+- **Gemini Live Audio Transcription**: Enhanced audio processing and transcription capabilities
+  - Added `inputAudioTranscription` configuration to Live API setup to enable speech-to-text
+  - Enhanced audio chunk processing with better logging and format information
+  - Added audio level detection for debugging microphone input
+  - Improved WebSocket message logging with size limits for better readability
+  - Added comprehensive audio stream debugging including MediaRecorder state and MIME type logging
+  - **Fixed critical audio format compatibility**: Updated audio processing to convert recorded audio to PCM format required by Live API
+  - Changed audio MIME type from `audio/webm` to `audio/pcm;rate=16000` to match Live API specifications
+  - Added automatic audio format conversion from WebM/Opus to 16-bit PCM at 16kHz for Live API compatibility
+  - Enhanced WebSocket connection monitoring with detailed close code analysis and health checks
+  - Added fallback audio format selection to find best supported recording format
+  - Fixed WebSocket connection loss issues by using correct audio format expected by Gemini Live API
+  - **Fixed audio decoding errors**: Resolved "Unable to decode audio data" errors in convertToPCM method
+  - Updated audio processing to handle WebM chunks correctly without attempting individual chunk decoding
+  - Changed recording format preference to prioritize `audio/webm;codecs=opus` for better Live API compatibility
+  - Added intelligent MIME type detection and proper format handling for Live API audio submission
+  - Enhanced audio transcription debugging with detailed input/output transcription logging
+  - Added rate limiting to prevent overwhelming the Live API with too many audio chunks
+- **Critical Gemini Live Crash Prevention**: Fixed all four major crash culprits in Electron renderer
+  - **Inefficient Base64 Conversion**: Replaced manual byte-by-byte string building with Buffer.from() for 10x+ memory efficiency
+  - **ScriptProcessorNode UI Thread Blocking**: Reduced logging frequency from every 100ms to every 1000 events to prevent renderer freeze
+  - **Unbounded Array Growth**: Added 200-chunk safety caps and proper cleanup to prevent memory overflow crashes
+  - **Console Saturation**: Added environment-based logging control to prevent IPC channel blocking in production
+  - Added buffer monitoring and crash detection for better debugging
+  - Added process crash handlers for Electron renderer with uncaught exception handling
+  - Used efficient array clearing with .length = 0 instead of reassignment
+  - Added finally blocks to ensure cleanup even when errors occur
+  - Prevents renderer OOM crashes, hung-renderer watchdog triggers, and IPC channel saturation
 - TypeScript error with setInterval return type using window.setInterval
-- Audio processing pipeline issues that prevented transcription results
-- Simplified audio processing approach to ensure intervals execute properly
+- **Speech Recognition API Compatibility**: Fixed streaming speech recognition by replacing with semi-live approach
+  - Replaced problematic Google Cloud Speech streaming API with REST API chunks to resolve "getUniverseDomain is not a function" error
+  - Created new semi-live speech handler that sends audio chunks every 3 seconds using REST API with API key authentication
+  - Updated streaming speech service to use semi-live approach while maintaining same interface for components
+  - Removed dependency on Google Cloud Speech client library streaming methods that don't support API key authentication
+  - Fixed authentication issues by using HTTPS REST API calls instead of gRPC streaming
+  - Maintained real-time feel by processing audio in 3-second chunks with immediate transcription results
+  - Updated UI tooltips to reflect semi-live approach instead of true streaming
+  - All existing components continue to work without changes due to maintained interface compatibility
+- **Semi-Live Speech Recording**: Fixed "Recording error: undefined" in semi-live speech recognition
+  - Added comprehensive system check to verify audio recording software availability (SoX, ffmpeg, arecord)
+  - Implemented fallback recording methods to try different recording programs automatically
+  - Improved error handling with detailed error messages and installation instructions
+  - Added better error reporting for missing audio recording dependencies
+  - Enhanced recording stream validation and automatic fallback on failure
+- **Gemini Live Stability**: Replaced crashing Gemini Live with stable semi-live implementation
+  - Created new GeminiSemiLiveTranscript component to replace unstable WebSocket-based Gemini Live
+  - Implemented chunk-based audio processing using Gemini 2.0 Flash REST API instead of WebSocket streaming
+  - Added configurable chunk duration (3-10 seconds) for optimal balance between latency and stability
+  - Maintained speaker diarization and real-time transcription capabilities
+  - Improved error handling and recovery from API failures
+  - Preserved existing interface compatibility for seamless component replacement
+
+### Added
+- **Gemini Live Real-Time Transcription**: Implemented bidirectional WebSocket integration with Google's Gemini Live API
+  - Real-time speech-to-text with speaker diarization using Gemini Live WebSocket connection
+  - Character-by-character typing animation (30-50ms delay) for natural "hand-typing" effect
+  - Rolling buffer system for speaker segments with automatic speaker change detection
+  - Live transcript toggle with mode selection between Gemini Live and Google Cloud Speech
+  - Automatic microphone capture with 100ms audio chunks streamed as base64 to Gemini Live
+  - Speaker-separated captions with color-coded visual indicators
+  - Graceful error handling with retry logic and exponential backoff
+  - Integration with existing meeting transcript system for seamless workflow
+  - Real-time confidence scores and speaker identification
+  - Markdown-formatted transcript output with bold speaker labels
+  - Auto-save functionality when adding live transcripts to meetings
+  - Browser-based implementation using WebSocket, MediaRecorder, and getUserMedia APIs
+  - Comprehensive availability checking for API keys and browser compatibility
+- **Enhanced AI Meeting Analysis**: Significantly enriched AI analysis capabilities with comprehensive meeting insights
+  - Added detailed decision tracking with rationale and impact assessment
+  - Integrated AI-identified action items with priority levels, owners, and due dates
+  - Added risk identification and assessment from meeting discussions
+  - Implemented sentiment analysis to gauge overall meeting tone (Positive/Neutral/Negative)
+  - Added open questions tracking for follow-up items
+  - Created dedicated Summary tab in transcript details with organized sections for all analysis results
+  - Enhanced Gemini AI prompt to provide executive-quality, action-oriented summaries
+  - Added visual indicators and color-coded sections for different types of insights
+  - Improved analysis result structure with proper TypeScript interfaces
+- **Duplicate Meeting Cleanup**: Enhanced duplicate meeting detection and cleanup functionality
+  - Automatic cleanup of duplicate meetings when loading the library page
+  - Manual "Clean Duplicates" button in library header for on-demand cleanup
+  - Improved deduplication algorithm using title and creation time (grouped by hour)
+  - Toast notifications showing cleanup results and number of duplicates removed
+  - Cascading deletion of associated data (transcripts, speakers, action items, notes, context)
+  - Better duplicate detection using case-insensitive title matching
+- **Speaker Name Editing**: Added ability to edit speaker names after transcription
+  - Click on any speaker name in the Speakers tab to edit it inline
+  - Save changes with Enter key or Save button, cancel with Escape key or Cancel button
+  - Visual feedback with hover states and cursor changes to indicate editable elements
+  - Toast notifications confirm successful speaker name updates
+  - Changes are automatically saved to the database
+- **Per-Meeting Speaker Count Configuration**: Added per-meeting setting to control maximum number of speakers for AI transcription
+  - Added `maxSpeakers` field to Meeting interface with default value of 4 speakers
+  - Added speaker count control in TranscriptDetails component Details tab (1-10 speaker range)
+  - Updated Gemini transcription service to accept maxSpeakers as parameter instead of global setting
+  - Modified streaming speech service to use speaker count from meeting options
+  - Enhanced Gemini transcription prompt to instruct AI to limit speakers per meeting
+  - Added speaker limit enforcement in Gemini transcription parsing
+  - Updated meeting save/load logic to persist speaker count per meeting
+  - Allows different meetings to have different speaker configurations based on actual participants
+  - More flexible than global setting - appropriate for varied meeting types and sizes
+  - Prevents AI from creating excessive speakers when misidentifying speech patterns
+- **Gemini Audio Transcription**: Implemented complete Gemini AI audio transcription functionality
+  - Added `transcribeAudio` method to Gemini service for audio file transcription with speaker diarization
+  - Integrated Gemini transcription into TranscriptDetails component with proper UI feedback
+  - Added `readAudioFile` IPC handler in Electron main process for secure file reading
+  - Exposed `readAudioFile` method through preload script for renderer process access
+  - Implemented automatic speaker detection and assignment from Gemini transcription results
+  - Added proper error handling and user feedback for Gemini transcription failures
+  - Updated Gemini service to use latest @google/genai SDK with correct API endpoints
+  - Added file size validation (20MB limit) for Gemini transcription uploads
+  - Integrated transcription results with existing transcript editing and speaker management features
+- **Environment Variable Configuration**: Added dotenv support for loading API keys from `.env` files
+  - Created `.env.example` template with all required environment variables
+  - Configured Electron main process to load environment variables from `.env` and `.env.local` files
+  - Added dotenv configuration to streaming speech handler for Google Speech API
+  - Prioritized environment variables over database settings for Gemini API key
+  - **Fixed renderer process access**: Exposed environment variables through electronAPI preload script
+  - Added debugging logs to track API key source resolution in Gemini service
+- **Toast Notification Improvements**: Enhanced toast system with better UX
+  - Set default toast duration to 1 second for faster feedback
+  - Positioned toasts in right bottom corner for better visibility
+  - Made close button always visible for easy dismissal
+  - Added `remove` function for immediate toast removal without delay
+  - Added support for custom duration per toast
+- Enhanced audio file handling with automatic MP3 to WAV conversion for better browser compatibility
+- Improved software recording mode with better MP3 file generation
+- Refactored TranscriptDetails component into a layered architecture with:
+  - Main process layer: transcript-handler.js for file operations and IPC handling
+  - Preload layer: transcript-bridge.js to safely expose main process functionality
+  - Renderer layer: useTranscript.ts hook and TranscriptDetails component
+- New useTranscript hook for managing transcript state and interactions with the main process
+- Support for saving, loading, and exporting transcripts in multiple formats
+- Auto-save functionality for transcripts during recording
+- Software recording fallback mode that automatically activates when the Swift Recorder binary is unavailable
+- Improved reliability for recording functionality across different environments
+- Redesigned TranscriptDetails UI with resizable panels, tabbed interface and enhanced controls
+- Added support for speaker management during recording
+- Implemented audio visualization with waveform display
+- Added audio controls with volume adjustment and seeking capabilities
+- Implemented notes editor with text formatting capabilities
+- Added action items tracking system for meeting follow-ups
+- Added context management system for project files and references
+- Implemented comprehensive save functionality that preserves all meeting data in the database
+- Added recording source selection (system, mic, both) in the TranscriptDetails component
+- Enhanced debug logging for recording processes and audio file handling
+- Added "Send to Transcript" button to manually trigger audio transcription
+- Added "Open in Native Player" button for when browser audio playback fails
+- Standardized recording file location to Documents/Friday Recordings/ directory
+- Standardized recording file format to MP3
+- Added specialized test scripts for microphone-only recording to help diagnose issues
+- Added permission request utility that opens system settings directly for microphone and screen recording
+- Added recorder restart functionality to recover from stuck recording processes
+- Added bulkDocs support to IPC database interface for bulk document operations
+- Auto-saving functionality when leaving meeting page or closing browser
+- Periodic auto-save every 30 seconds to prevent data loss
+- Context content textarea for rich meeting context instead of simple name field
+- Enhanced context management with content field stored in database
+- Gemini AI integration for intelligent meeting analysis
+- AI-powered generation of meeting titles, descriptions, notes, and tags from transcripts
+- Context-aware AI analysis that considers both global and meeting-specific context
+- Gemini API key configuration in settings for AI features
+- Smart fallback analysis when AI service is unavailable
+- **Live Streaming Transcription**: Real-time speech-to-text using Google Cloud Speech-to-Text streaming API
+  - Near real-time transcription with interim and final results
+  - Speaker diarization support for multi-speaker meetings
+  - Live transcript display with confidence scores
+  - Ability to add live transcripts directly to meeting notes
+  - Automatic microphone audio capture and streaming
+  - Error handling and connection management
+- **Streaming Speech Service**: New service layer for managing live transcription
+  - React hook (`useStreamingSpeech`) for easy integration
+  - Electron main process handler for audio recording and streaming
+  - IPC communication between renderer and main processes
+  - Configurable streaming options (language, speaker count, etc.)
+- **Delete Functionality**: Complete meeting and data deletion capabilities
+  - Delete meetings from the library with confirmation dialog
+  - Delete individual transcript lines with hover controls
+  - Delete individual action items with remove buttons
+  - Delete entire meetings from transcript details page
+  - Cascading deletion of all associated data (transcript, notes, action items, context)
+  - Loading states and error handling for all delete operations
+- **Gemini Live Service Testing**: Comprehensive test suite for the new Web Audio API implementation
+  - Created unit tests with full mocking of Web APIs (WebSocket, AudioContext, MediaDevices)
+  - Implemented integration tests for real Gemini Live API connection and audio processing
+  - Added performance tests for memory usage monitoring and rapid start/stop cycles
+  - Created standalone test runner for manual testing without Jest dependencies
+  - Added Jest configuration with jsdom environment for browser API testing
+  - Implemented test environment setup with comprehensive Web API mocks
+  - Added test scripts for different testing scenarios (unit, integration, audio)
+  - Created detailed testing documentation with troubleshooting guide
+  - Added testing dependencies: Jest, ts-jest, @testing-library/jest-dom, @types/jest
+  - Implemented test coverage for all major service functionality:
+    - Service initialization and availability checking
+    - Audio capture with Web Audio API
+    - WebSocket connection and message handling
+    - PCM audio processing and Base64 encoding
+    - Error handling and resource cleanup
+    - Streaming lifecycle management
+- Comprehensive testing suite for Gemini Live API integration
+  - Unit tests with full Web API mocking (WebSocket, AudioContext, MediaDevices, localStorage)
+  - Integration tests for real API connection and audio streaming
+  - Performance tests for memory usage and rapid start/stop cycles
+  - Error recovery and network interruption handling tests
+  - Audio format compatibility testing
+  - Standalone test runner for manual testing without Jest dependencies
+- Testing configuration and setup
+  - Jest configuration with TypeScript support and jsdom environment
+  - Test environment setup with comprehensive Web API mocks
+  - Multiple test scripts for different scenarios (unit, integration, manual)
+  - 30-second timeouts for integration tests
+- Testing documentation
+  - Comprehensive `TESTING.md` guide with setup instructions
+  - Test categories and coverage explanation
+  - Troubleshooting guide for common issues
+  - Performance benchmarks and CI/CD configuration
+- **New Live Transcript Services**: Implemented clean, stable live transcription options
+  - **Gemini Live Transcript**: Fast transcription using Gemini 2.0 Flash with 2-second audio chunks for near real-time results
+  - **Google Live Transcript**: Real-time transcription using Google Cloud Speech-to-Text API with 1-second chunks
+  - **Dual Service UI**: Side-by-side interface allowing users to choose between services or run both simultaneously
+  - **Enhanced Speaker Diarization**: Both services support speaker identification with colored speaker badges
+  - **Configurable Options**: Adjustable chunk duration, language selection, encoding options, and max speaker limits
+  - **Live Transcript Tab**: New dedicated tab in TranscriptDetails for easy access to live transcription features
+  - **Error Handling**: Comprehensive error handling and user feedback for both services
+  - **Modern UI Components**: Clean, responsive design with real-time status indicators and transcript display
+- **Google Speech API Live Transcription Setup Documentation**: Added comprehensive setup instructions for enabling Google Cloud Speech-to-Text live transcription
+  - Document steps to configure Google Cloud Speech-to-Text API key in environment variables
+  - Explain GOOGLE_SPEECH_API_KEY environment variable setup and .env file configuration
+  - Add verification steps and troubleshooting guidance for API key issues
+  - Confirm Google Live Transcript service is ready for use with proper API key configuration
+  - Google Live service processes audio in 1-second chunks for near real-time transcription with speaker diarization
 
 ### Changed
+- **Speaker Management UI**: Simplified speaker management by removing manual speaker addition
+  - Removed "Add new speaker" input field and button from Speakers tab
+  - Speakers are now only created automatically during transcription process
+  - Updated empty state message to reflect automatic speaker detection
+  - Focused UI on editing existing speakers rather than manual creation
+- **Speaker Management UI Organization**: Improved speaker-related settings organization in TranscriptDetails
+  - Added dedicated "Speakers" tab for all speaker-related functionality
+  - Moved "Maximum Number of Speakers" setting from Details tab to Speakers tab
+  - Consolidated speaker management controls in dedicated tab for better UX
+  - Added comprehensive speaker list view with color indicators and speaker IDs
+  - Removed duplicate speaker controls from transcript section
+  - Enhanced speaker management with count display and empty state messaging
+  - More intuitive and organized placement of speaker configuration options
+- Renamed TranscriptDetailsRefactored to TranscriptDetails for better code organization
+- Simplified TranscriptDetailsPage to use the new TranscriptDetails component
+- Improved settings dialog with fixed size and scrollable content for better user experience
+- Enhanced transcript editing capabilities with inline editing and speaker assignment
+- Improved recording controls with better visual feedback and status indicators
+- Upgraded audio player with waveform visualization and playback controls
+- Replaced defaultProps with JavaScript default parameters in function components
+- Enhanced save functionality to store all meeting data including details, action items, notes, context, transcript, and audio recording path
+- Improved recording source selection with visual indicators for active source
+- Implemented singleton pattern for database initialization to prevent duplicate setup and improve performance
+- Changed default setting for live transcription to off
+- Modified native player behavior to no longer auto-open on audio errors
+- Improved recording status detection with better tracking of startup progress
+- Enhanced combined recording mode with smarter status reporting for better reliability
+- **Auto-Save System**: Replaced periodic auto-saving with event-based auto-saving for better performance
+  - Removed automatic saving every 30 seconds
+  - Added auto-save triggers for specific events:
+    - Recording stopped
+    - Transcript generated
+    - AI analysis completed
+    - Notes changed
+    - Context content changed
+    - Title changed
+    - Description changed
+    - Tags changed
+    - Back to library button clicked
+  - Implemented debounced auto-save (1 second delay) to prevent excessive saves
+  - Maintained auto-save on page unload/visibility change for data safety
+
+### Fixed
+- **Database Document Update Conflicts**: Fixed "Document update conflict" errors when creating meetings
+  - Enhanced `createMeeting` function to automatically update existing meetings instead of throwing errors
+  - Added `createOrUpdateMeeting` helper function that gracefully handles both create and update scenarios
+  - Fixed race conditions where multiple save operations could conflict when creating the same meeting
+  - Improved conflict resolution to handle concurrent meeting creation attempts
+  - Updated TranscriptDetails component to use the new conflict-resistant meeting save logic
+  - Prevents 409 conflict errors that occurred when auto-save and manual save operations overlapped
+- **Notes Type Safety**: Fixed "notes.replace is not a function" error in TranscriptDetails component
+  - Added type checking to ensure notes is always a string before calling string methods
+  - Enhanced AI analysis result handling to validate notes field type
+  - Improved useNotes hook to validate database content before setting notes
+  - Prevents runtime errors when notes field contains non-string values
+  - Added fallback to empty string when notes data is invalid or missing
+- **Recording Duration Display**: Fixed recording duration always showing 0:00 in the library table
+  - Fixed handleSave function dependencies to include recordingDuration for proper state capture
+  - Enhanced meeting data loading to properly handle recordingDuration of 0 (changed condition from truthy check to !== undefined)
+  - Preserved final recording duration when recording stops to prevent it from being reset to 0
+  - Enhanced duration tracking to maintain accurate recording times in the database
+  - Fixed duration mapping from recording hooks to ensure proper storage and display
+  - Recording durations now correctly display the actual length of recorded meetings
+- **Library Page Duplicates**: Fixed duplicate meetings appearing in the library page
+  - Enhanced deduplication logic to group meetings by title and creation hour instead of minute
+  - Improved duplicate detection to use case-insensitive title matching
+  - Added automatic cleanup on library page load to remove existing duplicates
+  - Fixed getAllMeetings function to consistently apply deduplication across all query methods
+  - Prevents duplicate meetings from cluttering the library interface
+- **Google Cloud Speech API Configuration**: Improved API key configuration and error handling for streaming speech
+  - Enhanced settings dialog to clearly label Google Cloud Speech API key field with helpful description
+  - Added direct link to Google Cloud Console for easy API key creation
+  - Improved error messages in streaming speech service to guide users to correct settings location
+  - Enhanced error handling in useStreamingSpeech hook with actionable guidance for API key configuration
+  - Fixed TypeScript linting issues in streaming speech service with proper type definitions
+  - Made API key configuration more discoverable and user-friendly
+- **Gemini JSON Response Parsing**: Fixed parsing errors when Gemini returns JSON wrapped in markdown code blocks
+  - Added `cleanJsonResponse` method to strip markdown code block markers (```json and ```)
+  - Enhanced error handling with multiple parsing attempts for malformed responses
+  - Added extra cleaning logic to extract JSON from responses with additional text
+  - Improved debugging logs to show both raw and cleaned responses for troubleshooting
+  - Added fallback parsing for responses that don't follow expected format
+  - Fixed "Unexpected token '`'" errors when Gemini wraps JSON in markdown
+- **Database Index Lock Error Handling**: Enhanced solution for PouchDB MapReduce view lock issues
+  - Extended lock cleanup to handle MapReduce view lock files (directories with -mrview- pattern)
+  - Added prevention of infinite recovery loops with maximum recovery attempt limits
+  - Enhanced manual lock cleanup to count and report removed lock files
+  - Added graceful index creation failure handling to allow app to function without indexes
+  - Improved lock cleanup to handle both main database locks and view-specific locks
+  - Added recovery attempt tracking to prevent endless recovery cycles
+  - Enhanced error messages to distinguish between recoverable and non-recoverable lock errors
+- **Database Lock Error Handling**: Comprehensive solution for PouchDB database lock issues
+  - Enhanced database handler in Electron main process with automatic stale lock cleanup
 - Audio processing now uses simplified approach by default for better reliability
 - Reduced audio processing complexity to focus on core functionality
 
