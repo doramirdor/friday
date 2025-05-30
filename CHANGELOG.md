@@ -300,6 +300,15 @@ All notable changes to this project will be documented in this file.
   - **Improved file cleanup error handling** to prevent non-critical cleanup failures from appearing as critical errors
   - **Added detailed file format analysis logging** to help diagnose audio conversion inconsistencies
   - **Enhanced error handling** to distinguish between recoverable format issues and critical failures for robust operation
+- **Gemini Live API Call Hanging**: Fixed hanging API calls that prevented continuous transcription after first chunk
+  - **Added 30-second timeout wrapper** for Gemini API calls to prevent infinite hangs when API doesn't respond
+  - **Implemented 1-second minimum rate limiting** between consecutive API calls to prevent overwhelming Gemini API
+  - **Enhanced error handling** with timeout detection and proper cleanup of hanging requests
+  - **Fixed API call hanging issue** that occurred on second audio chunk and stopped transcription entirely
+  - **System now gracefully handles API timeouts** and continues processing subsequent chunks normally
+  - **Improved reliability** for continuous transcription with rate limiting protection against API quota limits
+  - **Added comprehensive timeout logging** to help identify and diagnose API response delays
+  - **Maintains transcription flow continuity** even when individual API calls fail or timeout
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
@@ -917,6 +926,15 @@ All notable changes to this project will be documented in this file.
   - **Improved file cleanup error handling** to prevent non-critical cleanup failures from appearing as critical errors
   - **Added detailed file format analysis logging** to help diagnose audio conversion inconsistencies
   - **Enhanced error handling** to distinguish between recoverable format issues and critical failures for robust operation
+- **Gemini Live API Call Hanging**: Fixed hanging API calls that prevented continuous transcription after first chunk
+  - **Added 30-second timeout wrapper** for Gemini API calls to prevent infinite hangs when API doesn't respond
+  - **Implemented 1-second minimum rate limiting** between consecutive API calls to prevent overwhelming Gemini API
+  - **Enhanced error handling** with timeout detection and proper cleanup of hanging requests
+  - **Fixed API call hanging issue** that occurred on second audio chunk and stopped transcription entirely
+  - **System now gracefully handles API timeouts** and continues processing subsequent chunks normally
+  - **Improved reliability** for continuous transcription with rate limiting protection against API quota limits
+  - **Added comprehensive timeout logging** to help identify and diagnose API response delays
+  - **Maintains transcription flow continuity** even when individual API calls fail or timeout
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
