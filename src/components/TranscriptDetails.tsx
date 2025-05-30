@@ -181,12 +181,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     language: 'en-US',
   });
   
-  // Add Gemini Live hook
-  const geminiLive = useGeminiSemiLive();
-  
-  // Add Google Live Transcript hook
-  const googleLiveTranscript = useGoogleLiveTranscript();
-  
   // Determine which speech recognition method to use
   const speech = isElectron ? googleSpeech : webSpeech;
   
@@ -201,15 +195,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   // Track the current speaker for new transcripts
   const [currentSpeakerId, setCurrentSpeakerId] = useState("s1");
 
-  // Add state for live transcript toggle - default to false
-  const [isLiveTranscript, setIsLiveTranscript] = useState(false);
-  
-  // Add state for Gemini Live mode
-  const [isGeminiLiveMode, setIsGeminiLiveMode] = useState(true);
-  
-  // Add state for Google Live Transcript mode
-  const [isGoogleLiveMode, setIsGoogleLiveMode] = useState(false);
-  
   // Audio recording and playback references and states
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1317,6 +1302,29 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     }
   }, [isGoogleLiveMode, googleLiveTranscript.latestResult, currentSpeakerId]);
 
+  // Watch for changes in transcript from speech recognition and add to lines
+  useEffect(() => {
+    if (speech.transcript && isRecording && !speech.transcript.startsWith('Error:')) {
+      // Only add transcript if it's different from the last line (to avoid duplicates)
+      setTranscriptLines(prev => {
+        const lastLine = prev[prev.length - 1];
+        if (lastLine && lastLine.text === speech.transcript) {
+          return prev; // Don't add duplicate
+        }
+        
+        return [...prev, {
+          id: Date.now().toString(),
+          text: speech.transcript,
+          speakerId: currentSpeakerId,
+          isEditing: false
+        }];
+      });
+      
+      // Auto-save after adding transcript
+      setAutoSave(true);
+    }
+  }, [speech.transcript, isRecording, currentSpeakerId]);
+
   // Determine if we should show empty transcript area for new meeting
   useEffect(() => {
     if (meetingState?.isNew) {
@@ -2018,7 +2026,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                       </div>
                     </div>
                     
-                    <div className="flex items-center justify-center mb-4 space-x-2">
+                    <div className="flex flex-col items-center gap-4 mb-4">
                       <Button
                         variant={isRecording ? "destructive" : "default"}
                         size="lg"

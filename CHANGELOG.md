@@ -13,6 +13,7 @@
   - Removed all Electron handlers for live transcript functionality
   - Removed all live transcript types and documentation
   - Cleaned up TranscriptDetails component (in progress)
+  - Fixed Electron main process import errors
   - Total: 22 files deleted, 5489 lines of code removed
 
 ### Fixed
