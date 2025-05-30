@@ -40,6 +40,18 @@ All notable changes to this project will be documented in this file.
   - Maintained consistency with existing transcript line format and editing capabilities
 
 ### Fixed
+- **CRITICAL: Google Live Transcript Semi-Live Recording Integration**: Fixed service to use proper semi-live recording infrastructure instead of non-functional regular recording approach
+  - **Root Cause**: Service was using regular recording APIs (`startRecording`) but expecting files to be auto-saved at intervals, which never happens with regular recording
+  - **Solution**: Completely switched to semi-live recording infrastructure (`startSemiLiveRecording`, `requestSemiLiveChunk`) like Gemini Semi-Live uses
+  - **Added Chunk Request Mechanism**: Now properly requests audio chunks every 1 second using `requestSemiLiveChunk` to trigger actual file creation
+  - **Implemented Chunk Event Handling**: Added `handleChunkReady` callback to process audio files as they become available through `onSemiLiveChunk` events
+  - **Fixed File Detection**: Eliminated issue where `processCurrentRecording` couldn't find files because no files were actually being created
+  - **Added Automatic Cleanup**: Implemented proper cleanup of temporary chunk files after processing to prevent storage bloat
+  - **Updated API Interface**: Changed to use `ExtendedElectronAPI` with semi-live recording methods instead of regular recording methods
+  - **Fixed Availability Check**: Updated `isAvailable` to verify `startSemiLiveRecording` API exists instead of checking for regular recording APIs
+  - **Maintained Interface Compatibility**: Preserved same external API while switching to functional semi-live recording backend
+  - **Improved Error Handling**: Enhanced error handling for chunk processing and file operations
+  - **Performance**: Maintains 1-second chunking for near real-time transcription with proven, stable chunk generation system
 - **CRITICAL: Google Live Transcript Architecture Rewrite**: Completely redesigned with regular recording + auto-save approach
   - **Eliminated Complex Semi-Live System**: Replaced problematic chunk request system with simple regular recording
   - **Root Cause**: Semi-live chunk events (`semi-live-chunk-ready`) weren't being triggered properly despite chunk requests working

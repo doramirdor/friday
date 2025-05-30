@@ -147,7 +147,8 @@ class GoogleLiveTranscriptService {
       // Request Electron to save current recording buffer as a chunk
       const electronAPI = window.electronAPI as ExtendedElectronAPI;
       if (electronAPI.requestSemiLiveChunk) {
-        const chunkFilename = `${this.currentRecordingId}_chunk_${this.state.chunkCounter++}`;
+        // Use simple chunk filename - let the recording system handle the full naming
+        const chunkFilename = `chunk_${this.state.chunkCounter++}`;
         console.log(`🔄 Google Live: Requesting chunk: ${chunkFilename}`);
         await electronAPI.requestSemiLiveChunk({ filename: chunkFilename });
       }
@@ -446,7 +447,7 @@ class GoogleLiveTranscriptService {
       const result = await electronAPI.startSemiLiveRecording({
         chunkDurationMs: opts.chunkDurationMs,
         source: opts.recordingSource,
-        filename: this.currentRecordingId
+        filename: 'google_live'  // Use simple base filename
       });
 
       console.log('🎤 Google Live: Recording start result:', result);

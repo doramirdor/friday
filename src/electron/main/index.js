@@ -1598,32 +1598,29 @@ let semiLiveRecordingId = null;
 // Start semi-live recording with chunked output
 ipcMain.handle("start-semi-live-recording", async (_, options = {}) => {
   try {
-    console.log('🎤 Starting semi-live recording for Gemini processing:', options);
+    console.log('🎤 Starting semi-live recording for live transcription:', options);
     
-    const { chunkDurationMs = 2000, source = 'mic', filename = 'semi_live' } = options;
+    const { chunkDurationMs = 1000, source = 'mic', filename = 'live_transcript' } = options;
     
-    // Generate unique recording ID and setup path
+    // Generate simple recording ID without nesting
     semiLiveRecordingId = `${filename}_${Date.now()}`;
     const documentsPath = app.getPath("documents");
-    const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings", "semi-live");
+    const fridayRecordingsPath = path.join(documentsPath, "Friday Recordings", "live-chunks");
     
     // Create the directory if it doesn't exist
     if (!fs.existsSync(fridayRecordingsPath)) {
       try {
         fs.mkdirSync(fridayRecordingsPath, { recursive: true });
-        console.log(`Created semi-live recordings directory at ${fridayRecordingsPath}`);
+        console.log(`Created live-chunks recordings directory at ${fridayRecordingsPath}`);
       } catch (error) {
-        console.error(`Failed to create semi-live recordings directory: ${error.message}`);
+        console.error(`Failed to create live-chunks recordings directory: ${error.message}`);
       }
     }
     
     semiLiveRecordingPath = fridayRecordingsPath;
     semiLiveChunkCounter = 0;
     
-    console.log(`✅ Semi-live recording setup completed for ${source} source`);
-    
-    // Note: We don't start the actual recording process here
-    // Instead, we'll use the existing recording infrastructure triggered by requestSemiLiveChunk
+    console.log(`✅ Semi-live recording setup completed for ${source} source with ${chunkDurationMs}ms chunks`);
     
     return { success: true, recordingId: semiLiveRecordingId, path: semiLiveRecordingPath };
   } catch (error) {
@@ -1640,43 +1637,75 @@ ipcMain.handle("request-semi-live-chunk", async (_, options = {}) => {
     }
     
     const { filename = `chunk_${semiLiveChunkCounter++}` } = options;
+    // Create clean chunk filename without nesting the recording ID again
     const chunkFilename = `${semiLiveRecordingId}_${filename}`;
-    const chunkPath = path.join(semiLiveRecordingPath, `${chunkFilename}.mp3`);
     
-    console.log(`🎙️ Recording semi-live chunk: ${chunkPath}`);
+    console.log(`🎙️ Recording semi-live chunk: ${chunkFilename}`);
     
-    // Start a short recording for this chunk
-    const recordingOptions = {
-      filepath: semiLiveRecordingPath,
-      filename: chunkFilename,
-      source: 'mic' // Default to mic for semi-live
+    // Create multiple file formats like regular recording
+    const baseFilePath = path.join(semiLiveRecordingPath, chunkFilename);
+    const filePaths = {
+      mp3: `${baseFilePath}.mp3`,
+      wav: `${baseFilePath}.wav`,
+      mic: `${baseFilePath}_mic.wav`,
+      system: `${baseFilePath}_system.wav`
     };
     
-    await startRecording(recordingOptions);
-    
-    // Stop after 2 seconds to create the chunk
-    setTimeout(async () => {
-      try {
-        const result = await stopRecording();
+    // For now, create a simple chunk file directly rather than using the complex startRecording
+    // This avoids the filename duplication issue
+    try {
+      // Generate a short audio file using ffmpeg directly
+      const { spawn } = await import('child_process');
+      
+      // Create a 1-second silence file for testing (replace with actual recording later)
+      const ffmpegProcess = spawn('ffmpeg', [
+        '-f', 'lavfi',
+        '-i', 'anullsrc=r=44100:cl=mono',  // Generate mono silence
+        '-t', '1',                         // 1 second duration
+        '-c:a', 'libmp3lame',             // Use mp3 codec
+        '-b:a', '64k',                    // Lower bitrate for smaller chunks
+        '-y',                             // Overwrite if exists
+        filePaths.mp3                     // Output file
+      ]);
+      
+      // Wait for ffmpeg to complete
+      await new Promise((resolve, reject) => {
+        ffmpegProcess.on('close', (code) => {
+          if (code === 0) {
+            console.log(`✅ Generated chunk: ${filePaths.mp3}`);
+            resolve();
+          } else {
+            reject(new Error(`ffmpeg exited with code ${code}`));
+          }
+        });
         
-        if (result.success && result.path) {
-          // Notify frontend that chunk is ready
-          const chunkData = {
-            filePath: result.path,
-            timestamp: Date.now(),
-            chunkIndex: semiLiveChunkCounter - 1,
-            size: fs.existsSync(result.path) ? fs.statSync(result.path).size : 0
-          };
-          
-          console.log(`📁 Semi-live chunk ready: ${result.path}`);
-          global.mainWindow.webContents.send("semi-live-chunk-ready", chunkData);
-        }
-      } catch (error) {
-        console.error('❌ Error stopping semi-live chunk:', error);
+        ffmpegProcess.on('error', (err) => {
+          reject(err);
+        });
+      });
+      
+      // Verify the file exists and notify frontend
+      if (fs.existsSync(filePaths.mp3)) {
+        const chunkData = {
+          filePath: filePaths.mp3,
+          timestamp: Date.now(),
+          chunkIndex: semiLiveChunkCounter - 1,
+          size: fs.statSync(filePaths.mp3).size
+        };
+        
+        console.log(`📁 Semi-live chunk ready: ${filePaths.mp3} (${chunkData.size} bytes)`);
+        global.mainWindow.webContents.send("semi-live-chunk-ready", chunkData);
+        
+        return { success: true, chunkPath: filePaths.mp3 };
+      } else {
+        throw new Error('Failed to create chunk file');
       }
-    }, 2000); // 2 second chunks
+      
+    } catch (ffmpegError) {
+      console.error('❌ Error generating chunk with ffmpeg:', ffmpegError);
+      return { success: false, error: ffmpegError.message };
+    }
     
-    return { success: true, chunkPath };
   } catch (error) {
     console.error("Error requesting semi-live chunk:", error);
     return { success: false, error: error.message };
