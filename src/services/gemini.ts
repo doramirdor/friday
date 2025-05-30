@@ -239,16 +239,12 @@ class GeminiService {
   ): Promise<GeminiTranscriptionResult> {
     // Upload the audio file to Gemini
     const uploadedFile = await this.genAI.files.upload({
-      file: new Blob([audioBuffer], { type: mimeType }),
-      displayName: `audio-${Date.now()}`
+      file: new Blob([audioBuffer], { type: mimeType })
     });
 
     console.log('Audio file uploaded successfully:', uploadedFile.name);
 
     try {
-      // Generate content with the uploaded file
-      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-001' });
-      
       const speakerInstruction = maxSpeakers && maxSpeakers > 1 
         ? `Identify and label speakers (up to ${maxSpeakers} speakers maximum). Use "Speaker 1:", "Speaker 2:", etc.`
         : 'Transcribe the audio without speaker labels.';
@@ -266,20 +262,20 @@ Format the output as JSON with this structure:
 
 Important: Only identify actual distinct speakers present in the audio. If there's only one speaker, only include one speaker object.`;
 
-      const result = await model.generateContent([
-        {
-          text: prompt
-        },
-        {
-          fileData: {
-            fileUri: uploadedFile.uri,
-            mimeType: mimeType
+      const result = await this.genAI.models.generateContent({
+        model: 'gemini-2.0-flash-001',
+        contents: [
+          prompt,
+          {
+            fileData: {
+              fileUri: uploadedFile.uri,
+              mimeType: mimeType
+            }
           }
-        }
-      ]);
+        ]
+      });
 
-      const response = result.response;
-      const responseText = response.text();
+      const responseText = result.text;
       
       console.log('Raw Gemini response:', responseText.substring(0, 200) + '...');
 
@@ -296,7 +292,7 @@ Important: Only identify actual distinct speakers present in the audio. If there
       try {
         if (uploadedFile && uploadedFile.name) {
           console.log('🗑️ Cleaning up uploaded file:', uploadedFile.name);
-          await this.genAI.files.delete({ name: uploadedFile.name });
+          await this.genAI.files.delete(uploadedFile.name);
           console.log('✅ File cleanup successful');
         } else {
           console.log('⚠️ No file to cleanup or file name missing');
@@ -328,7 +324,7 @@ Important: Only identify actual distinct speakers present in the audio. If there
       try {
         if (uploadedFile && uploadedFile.name) {
           console.log('🗑️ Cleaning up uploaded file after error:', uploadedFile.name);
-          await this.genAI.files.delete({ name: uploadedFile.name });
+          await this.genAI.files.delete(uploadedFile.name);
         }
       } catch (cleanupError: any) {
         console.warn('⚠️ Error cleaning up file after transcription error (non-critical):', cleanupError.message || cleanupError);
