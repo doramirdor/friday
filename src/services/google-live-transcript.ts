@@ -390,6 +390,10 @@ class GoogleLiveTranscriptService {
     return this.state.isRecording;
   }
 
+  get isRecording(): boolean {
+    return this.state.isRecording;
+  }
+
   get transcript(): string {
     // For compatibility with existing hook
     return '';

@@ -29,6 +29,11 @@
 - **Google Live Transcript**: Increased chunk duration from 1 second to 3 seconds
   - Ensures better audio capture and reduces empty chunk generation
   - Improves transcription accuracy by providing more audio content per API call
+- **Google Live Transcript**: Enhanced live transcript display and processing
+  - Improved transcript accumulation in hook for real-time display
+  - Added duplicate detection to prevent repeated transcript lines
+  - Fixed transcript processing to automatically add results to meeting transcript
+  - Better formatting and cleanup of live transcript results
 
 All notable changes to this project will be documented in this file.
 

@@ -1183,6 +1183,151 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     }
   }, [googleLiveTranscript.transcript, googleLiveTranscript.speakers, googleLiveTranscript.isRecording, isGoogleLiveMode, currentSpeakerId]);
 
+  // Process Google Live Transcript updates - now using hook's accumulated transcript
+  useEffect(() => {
+    if (isGoogleLiveMode && googleLiveTranscript.isRecording) {
+      // Check if we have new transcript content from the hook
+      const hookTranscript = googleLiveTranscript.transcript?.trim();
+      
+      if (hookTranscript) {
+        console.log('🎯 Processing Google Live transcript update:', hookTranscript);
+        
+        // Update speakers from Google Live Transcript hook
+        if (googleLiveTranscript.speakers && googleLiveTranscript.speakers.length > 0) {
+          setSpeakers(prevSpeakers => {
+            const existingSpeakers = new Map(prevSpeakers.map(s => [s.id, s]));
+            const newSpeakers = [...prevSpeakers];
+            
+            googleLiveTranscript.speakers!.forEach(googleSpeaker => {
+              if (!existingSpeakers.has(googleSpeaker.id)) {
+                newSpeakers.push({
+                  id: googleSpeaker.id,
+                  name: googleSpeaker.name,
+                  color: googleSpeaker.color
+                });
+              }
+            });
+            
+            return newSpeakers;
+          });
+        }
+
+        // Parse the accumulated transcript to extract all speaker lines
+        const lines = hookTranscript.split('\n').filter(line => line.trim());
+        
+        // Replace existing transcript lines with the new parsed content
+        const newTranscriptLines: TranscriptLine[] = [];
+        
+        lines.forEach((line, index) => {
+          const trimmedLine = line.trim();
+          if (trimmedLine) {
+            // Check if line starts with "Speaker X:" pattern
+            const speakerMatch = trimmedLine.match(/^Speaker (\d+):\s*(.+)$/);
+            
+            if (speakerMatch) {
+              const speakerId = speakerMatch[1];
+              const text = speakerMatch[2];
+              
+              newTranscriptLines.push({
+                id: `gl${Date.now()}_${index}_${Math.random().toString(36).substring(2, 9)}`,
+                text: text,
+                speakerId: speakerId,
+              });
+            } else {
+              // If no speaker pattern, assign to current speaker
+              newTranscriptLines.push({
+                id: `gl${Date.now()}_${index}_${Math.random().toString(36).substring(2, 9)}`,
+                text: trimmedLine,
+                speakerId: currentSpeakerId,
+              });
+            }
+          }
+        });
+        
+        // Update transcript lines with new content
+        if (newTranscriptLines.length > 0) {
+          setTranscriptLines(prev => {
+            // Filter out previous Google Live lines and add new ones
+            const nonGoogleLines = prev.filter(line => !line.id.startsWith('gl'));
+            return [...nonGoogleLines, ...newTranscriptLines];
+          });
+        }
+      }
+    }
+  }, [isGoogleLiveMode, googleLiveTranscript.isRecording, googleLiveTranscript.transcript, googleLiveTranscript.speakers, currentSpeakerId]);
+
+  // Process Google Live Transcript individual results in real-time
+  useEffect(() => {
+    if (isGoogleLiveMode && googleLiveTranscript.latestResult) {
+      const result = googleLiveTranscript.latestResult;
+      console.log('🎯 Processing Google Live individual result:', result);
+      
+      // Update speakers from the result
+      if (result.speakers && result.speakers.length > 0) {
+        setSpeakers(prevSpeakers => {
+          const existingSpeakers = new Map(prevSpeakers.map(s => [s.id, s]));
+          const newSpeakers = [...prevSpeakers];
+          
+          result.speakers!.forEach(googleSpeaker => {
+            if (!existingSpeakers.has(googleSpeaker.id)) {
+              newSpeakers.push({
+                id: googleSpeaker.id,
+                name: googleSpeaker.name,
+                color: googleSpeaker.color
+              });
+            }
+          });
+          
+          return newSpeakers;
+        });
+      }
+
+      // Process the transcript text
+      if (result.transcript && result.transcript.trim()) {
+        const transcriptText = result.transcript.trim();
+        
+        // Parse the transcript to extract speaker lines
+        const lines = transcriptText.split('\n').filter(line => line.trim());
+        
+        const newTranscriptLines: TranscriptLine[] = [];
+        
+        lines.forEach((line, index) => {
+          const trimmedLine = line.trim();
+          if (trimmedLine) {
+            // Check if line starts with "Speaker X:" pattern
+            const speakerMatch = trimmedLine.match(/^Speaker (\d+):\s*(.+)$/);
+            
+            if (speakerMatch) {
+              const speakerId = speakerMatch[1];
+              const text = speakerMatch[2];
+              
+              newTranscriptLines.push({
+                id: `gl${result.timestamp}_${index}_${Math.random().toString(36).substring(2, 9)}`,
+                text: text,
+                speakerId: speakerId,
+              });
+            } else {
+              // If no speaker pattern, use the speakerId from the result or fallback to current speaker
+              const speakerId = result.speakerId || currentSpeakerId;
+              
+              newTranscriptLines.push({
+                id: `gl${result.timestamp}_${index}_${Math.random().toString(36).substring(2, 9)}`,
+                text: trimmedLine,
+                speakerId: speakerId,
+              });
+            }
+          }
+        });
+        
+        // Add new transcript lines
+        if (newTranscriptLines.length > 0) {
+          console.log('🎯 Adding new transcript lines:', newTranscriptLines);
+          setTranscriptLines(prev => [...prev, ...newTranscriptLines]);
+        }
+      }
+    }
+  }, [isGoogleLiveMode, googleLiveTranscript.latestResult, currentSpeakerId]);
+
   // Determine if we should show empty transcript area for new meeting
   useEffect(() => {
     if (meetingState?.isNew) {

@@ -7,6 +7,7 @@ export interface UseGoogleLiveTranscriptReturn {
   transcript: string;
   speakers: Array<{ id: string; name: string; color: string }>;
   error: string | null;
+  latestResult: GoogleLiveTranscriptResult | null;
   startRecording: (options?: GoogleLiveTranscriptOptions) => Promise<void>;
   stopRecording: () => void;
   clearTranscript: () => void;
@@ -17,11 +18,15 @@ export const useGoogleLiveTranscript = (): UseGoogleLiveTranscriptReturn => {
   const [transcript, setTranscript] = useState('');
   const [speakers, setSpeakers] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [latestResult, setLatestResult] = useState<GoogleLiveTranscriptResult | null>(null);
   
   const transcriptRef = useRef('');
 
   const handleResult = useCallback((result: GoogleLiveTranscriptResult) => {
     console.log('🎯 Google Live result:', result);
+    
+    // Store the latest result for component to process
+    setLatestResult(result);
     
     // Append new transcript with proper formatting
     if (result.transcript) {
@@ -56,6 +61,7 @@ export const useGoogleLiveTranscript = (): UseGoogleLiveTranscriptReturn => {
   const startRecording = useCallback(async (options?: GoogleLiveTranscriptOptions) => {
     try {
       setError(null);
+      setLatestResult(null);
       await googleLiveTranscript.startRecording(options);
       setIsRecording(true);
     } catch (err) {
@@ -68,11 +74,13 @@ export const useGoogleLiveTranscript = (): UseGoogleLiveTranscriptReturn => {
   const stopRecording = useCallback(() => {
     googleLiveTranscript.stopRecording();
     setIsRecording(false);
+    setLatestResult(null);
   }, []);
 
   const clearTranscript = useCallback(() => {
     setTranscript('');
     setSpeakers([]);
+    setLatestResult(null);
     transcriptRef.current = '';
     setError(null);
   }, []);
@@ -93,6 +101,7 @@ export const useGoogleLiveTranscript = (): UseGoogleLiveTranscriptReturn => {
     transcript,
     speakers,
     error,
+    latestResult,
     startRecording,
     stopRecording,
     clearTranscript,
