@@ -1,5 +1,13 @@
 # Changelog
 
+## [Latest] - 2025-01-30
+
+### Fixed
+- **Google Live Transcript**: Fixed encoding mismatch causing 400 Bad Request errors
+  - Changed default encoding from LINEAR16 to MP3 to match actual chunk file format
+  - Updated sample rate from 16kHz to 44.1kHz for proper MP3 compatibility
+  - Resolves "Specify MP3 encoding to match audio file" API errors
+
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
