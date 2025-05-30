@@ -254,21 +254,20 @@ class GeminiLiveUnifiedService {
       const actualMimeType = this.mediaRecorder?.mimeType || 'audio/webm';
       console.log('🔍 MediaRecorder actual MIME type:', actualMimeType);
       
-      // Since MediaRecorder produces WebM and Gemini doesn't support it,
-      // we'll always request MP3 conversion but save as the original format
-      // if the conversion fails
+      // Since MediaRecorder produces WebM and Gemini supports WebM,
+      // save directly as WebM instead of trying to convert to MP3
       const timestamp = Date.now();
-      const fileExtension = 'mp3';
-      const saveFormat = 'mp3';
+      const fileExtension = 'webm';
+      const saveFormat = 'webm';
       
-      // Always try MP3 conversion first for Gemini compatibility
-      console.log('🔄 Requesting MP3 conversion for Gemini compatibility');
+      // Save as native WebM format for direct Gemini compatibility
+      console.log('🔄 Saving as native WebM format for Gemini compatibility');
       const filename = `live-chunk-${this.tempFileCounter++}-${timestamp}.${fileExtension}`;
       
       console.log('🔍 Audio file processing plan:');
       console.log(`  MediaRecorder format: ${actualMimeType}`);
       console.log(`  Requested filename: ${filename}`);
-      console.log(`  Conversion target: ${saveFormat}`);
+      console.log(`  Save format: ${saveFormat} (native format)`);
 
       // Save audio buffer as temporary file using existing IPC
       const electronAPI = window.electronAPI;
@@ -289,33 +288,33 @@ class GeminiLiveUnifiedService {
           });
           
           // Determine the actual file format from the saved file path
-          let actualFileExtension = savedFile.path.split('.').pop()?.toLowerCase() || 'mp3';
+          let actualFileExtension = savedFile.path.split('.').pop()?.toLowerCase() || 'webm';
           
           // Handle special case where file might have timestamp suffix like .bin or .webm
-          if (savedFile.path.includes('.mp3_') && actualFileExtension === 'bin') {
-            // This means MP3 conversion failed and it saved as binary
-            console.warn('⚠️ MP3 conversion failed, file saved as binary data');
+          if (savedFile.path.includes('.webm_') && actualFileExtension === 'bin') {
+            // This means WebM save failed and it saved as binary
+            console.warn('⚠️ WebM save failed, file saved as binary data');
             console.log('📊 File format analysis:', {
               requestedFormat: saveFormat,
               actualExtension: actualFileExtension,
               filePath: savedFile.path,
-              expectedBehavior: 'Should fallback to WebM but saved as .bin instead'
+              expectedBehavior: 'WebM save failed, saved as .bin instead'
             });
             actualFileExtension = 'bin';
-          } else if (savedFile.path.includes('.mp3_') && actualFileExtension === 'webm') {
-            // This means MP3 conversion failed and it fell back to WebM
-            console.log('ℹ️ MP3 conversion failed, fell back to WebM format');
+          } else if (savedFile.path.includes('.webm_') && actualFileExtension === 'webm') {
+            // This is the expected successful case
+            console.log('ℹ️ WebM file saved successfully');
             console.log('📊 File format analysis:', {
               requestedFormat: saveFormat,
               actualExtension: actualFileExtension,
               filePath: savedFile.path,
-              expectedBehavior: 'MP3 conversion failed, WebM fallback working correctly'
+              expectedBehavior: 'WebM save working correctly'
             });
             actualFileExtension = 'webm';
           }
           
           console.log(`  Detected actual file format: ${actualFileExtension}`);
-          console.log(`  File ready for Gemini: ${actualFileExtension === 'mp3' ? 'Yes (native)' : 'Yes (will detect format)'}`);
+          console.log(`  File ready for Gemini: ${actualFileExtension === 'webm' ? 'Yes (native)' : 'Yes (will detect format)'}`);
           
           return {
             timestamp: timestamp,
@@ -427,9 +426,9 @@ class GeminiLiveUnifiedService {
 
       // Early detection of .bin files - skip them before API call
       const fileExtension = chunk.filePath.split('.').pop()?.toLowerCase();
-      if (fileExtension === 'bin' && chunk.filePath.includes('.mp3_')) {
-        console.log('🔍 GEMINI DEBUG: ⚠️ Detected .bin file from failed MP3 conversion - skipping to prevent 400 error');
-        console.log('🔍 GEMINI DEBUG: 📝 .bin files contain WebM data that causes API incompatibility issues');
+      if (fileExtension === 'bin' && chunk.filePath.includes('.webm_')) {
+        console.log('🔍 GEMINI DEBUG: ⚠️ Detected .bin file from failed WebM save - skipping to prevent 400 error');
+        console.log('🔍 GEMINI DEBUG: 📝 .bin files indicate file save failure, content may be corrupted');
         
         // Skip this chunk entirely and continue processing
         console.log('🔄 Skipping .bin file and continuing with next audio chunk');
@@ -443,7 +442,7 @@ class GeminiLiveUnifiedService {
         
         // Generate a mock result to keep the transcription flow going
         const mockResult: GeminiTranscriptionResult = {
-          transcript: `[${new Date().toLocaleTimeString()}] Audio chunk skipped due to format conversion issue`,
+          transcript: `[${new Date().toLocaleTimeString()}] Audio chunk skipped due to file save failure`,
           speakers: [
             { 
               id: "1", 
@@ -801,4 +800,4 @@ class GeminiLiveUnifiedService {
 
 // Export singleton instance
 export const geminiLiveUnified = new GeminiLiveUnifiedService();
-export default geminiLiveUnified; 
+export default geminiLiveUnified;
