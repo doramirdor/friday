@@ -317,6 +317,15 @@ All notable changes to this project will be documented in this file.
   - **Resolved method not found errors** that prevented audio transcription from working
   - **Maintains compatibility** with the @google/genai SDK version used in the project
   - **Ensures consistent API usage** across all Gemini service methods
+- **Gemini Live Audio File Format Processing**: Fixed all chunks being skipped by eliminating failed MP3 conversion
+  - **Changed audio saving approach** from MP3 conversion to native WebM format since Gemini supports WebM audio
+  - **Eliminates all .bin file creation** by avoiding failed MP3 conversion that was causing all files to become .bin
+  - **Files now save as .webm directly** eliminating the conversion failure bottleneck that prevented transcription
+  - **Updated file format analysis and detection logic** for WebM-first approach with proper error handling
+  - **Resolved issue where all chunks became .bin files** and were automatically skipped by protection logic
+  - **System now processes WebM files directly** for real transcription instead of skipping everything due to format issues
+  - **Maintains Gemini API compatibility** while using the native MediaRecorder output format
+  - **Significantly improves transcription success rate** by eliminating the conversion step that was consistently failing
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
@@ -951,6 +960,15 @@ All notable changes to this project will be documented in this file.
   - **Resolved method not found errors** that prevented audio transcription from working
   - **Maintains compatibility** with the @google/genai SDK version used in the project
   - **Ensures consistent API usage** across all Gemini service methods
+- **Gemini Live Audio File Format Processing**: Fixed all chunks being skipped by eliminating failed MP3 conversion
+  - **Changed audio saving approach** from MP3 conversion to native WebM format since Gemini supports WebM audio
+  - **Eliminates all .bin file creation** by avoiding failed MP3 conversion that was causing all files to become .bin
+  - **Files now save as .webm directly** eliminating the conversion failure bottleneck that prevented transcription
+  - **Updated file format analysis and detection logic** for WebM-first approach with proper error handling
+  - **Resolved issue where all chunks became .bin files** and were automatically skipped by protection logic
+  - **System now processes WebM files directly** for real transcription instead of skipping everything due to format issues
+  - **Maintains Gemini API compatibility** while using the native MediaRecorder output format
+  - **Significantly improves transcription success rate** by eliminating the conversion step that was consistently failing
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
