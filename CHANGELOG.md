@@ -281,6 +281,15 @@ All notable changes to this project will be documented in this file.
   - **Backward Compatibility**: Maintained existing file saving infrastructure while using supported formats
   - **Error Resolution**: Eliminated "Request contains an invalid argument" errors from Gemini API
   - **Performance**: Maintained real-time audio capture and processing while ensuring API compatibility
+- **CRITICAL: MediaRecorder Format Compatibility**: Fixed "Failed to initialize MediaRecorder" errors due to unsupported audio/mp3 format
+  - **Root Cause**: MediaRecorder doesn't support creating MP3 files directly, only formats like WebM, OGG, WAV
+  - **Browser vs API Mismatch**: MediaRecorder supports WebM/OGG while Gemini API supports MP3/WAV/OGG (no WebM support)
+  - **Intelligent Format Detection**: Added comprehensive detection of MediaRecorder capabilities vs Gemini API requirements
+  - **Format Intersection Logic**: Automatically finds formats supported by both MediaRecorder and Gemini API
+  - **Conversion Fallback**: When no direct compatibility exists, uses WebM for recording and converts to MP3 for Gemini
+  - **Robust Error Handling**: Graceful fallback chain from preferred formats to widely-supported WebM with conversion
+  - **Detailed Logging**: Added comprehensive format compatibility debugging and decision rationale
+  - **Cross-Browser Support**: Works with different MediaRecorder implementations across browsers
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
