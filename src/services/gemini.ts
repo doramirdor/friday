@@ -149,126 +149,82 @@ class GeminiService {
     return contextPrompt;
   }
 
-  async transcribeAudio(audioFile: File | string, maxSpeakers: number = 4): Promise<GeminiTranscriptionResult> {
-    if (!this.genAI) {
+  async transcribeAudio(audioFile: string, maxSpeakers?: number): Promise<GeminiTranscriptionResult> {
+    console.log('Starting Gemini audio transcription...', { audioFile, maxSpeakers });
+
+    if (!this.isAvailable()) {
       throw new Error('Gemini AI is not initialized. Please check your API key.');
     }
 
+    console.log('Processing audio file path:', audioFile);
+
+    // Validate file path
+    if (!audioFile || audioFile.trim() === '') {
+      throw new Error('Audio file path is required');
+    }
+
+    let audioBuffer: ArrayBuffer;
+    let mimeType: string;
+
     try {
-      console.log('Starting Gemini audio transcription...', { audioFile: typeof audioFile === 'string' ? audioFile : 'File object', maxSpeakers });
-      
-      let uploadedFile;
-      
-      // Handle both File objects and file paths
-      if (typeof audioFile === 'string') {
-        console.log('Processing audio file path:', audioFile);
-        
-        // Check if it's a data URL or blob URL
-        if (audioFile.startsWith('data:') || audioFile.startsWith('blob:')) {
-          console.log('Converting data/blob URL to File object');
-          try {
-            const response = await fetch(audioFile);
-            const blob = await response.blob();
-            const file = new File([blob], 'audio.mp3', { type: 'audio/mp3' });
-            
-            uploadedFile = await this.genAI.files.upload({
-              file: file,
-              config: { mimeType: 'audio/mp3' }
-            });
-          } catch (fetchError) {
-            console.error('Error converting data/blob URL:', fetchError);
-            throw new Error(`Failed to process audio URL: ${fetchError.message}`);
-          }
-        } else {
-          // Handle file paths - read the file using electron API
-          if (window.electronAPI?.readAudioFile) {
-            console.log('Reading audio file via Electron API:', audioFile);
-            const audioData = await window.electronAPI.readAudioFile(audioFile);
-            
-            if (!audioData || !audioData.buffer) {
-              throw new Error('Failed to read audio file - no data returned');
-            }
-            
-            console.log('Audio file read successfully, size:', audioData.buffer?.byteLength || 'unknown');
-            
-            // Detect the correct MIME type from the file path
-            const mimeType = this.detectAudioMimeType(audioFile as string);
-            console.log('Detected MIME type:', mimeType);
-            
-            // Convert the audio data to a Blob with correct MIME type
-            const audioBlob = new Blob([audioData.buffer], { type: mimeType });
-            uploadedFile = await this.genAI.files.upload({
-              file: audioBlob,
-              config: { mimeType: mimeType }
-            });
-          } else {
-            throw new Error('File reading not available in this environment');
-          }
-        }
+      // Handle different URL formats
+      if (audioFile.startsWith('data:')) {
+        // Data URL
+        console.log('Processing data URL...');
+        const response = await fetch(audioFile);
+        audioBuffer = await response.arrayBuffer();
+        mimeType = response.headers.get('content-type') || 'audio/wav';
+      } else if (audioFile.startsWith('blob:')) {
+        // Blob URL
+        console.log('Processing blob URL...');
+        const response = await fetch(audioFile);
+        audioBuffer = await response.arrayBuffer();
+        mimeType = response.headers.get('content-type') || 'audio/wav';
       } else {
-        // Handle File objects directly
-        console.log('Processing File object:', audioFile.name, audioFile.type, audioFile.size);
-        uploadedFile = await this.genAI.files.upload({
-          file: audioFile,
-          config: { mimeType: audioFile.type || 'audio/mp3' }
-        });
+        // File path - use Electron API
+        console.log('Reading audio file via Electron API:', audioFile);
+        const readResult = await window.electronAPI.readAudioFile(audioFile);
+        
+        if (!readResult.success || !readResult.buffer) {
+          throw new Error(`Failed to read audio file: ${readResult.error || 'Unknown error'}`);
+        }
+
+        audioBuffer = readResult.buffer;
+        console.log('Audio file read successfully, size:', audioBuffer.byteLength);
+        
+        // Detect MIME type from file extension
+        mimeType = this.detectAudioMimeType(audioFile);
+        console.log('Detected MIME type:', mimeType);
+      }
+
+      if (!audioBuffer || audioBuffer.byteLength === 0) {
+        throw new Error('Audio file is empty or could not be read');
+      }
+
+      // Check file size (Gemini has a 20MB limit)
+      const fileSizeMB = audioBuffer.byteLength / (1024 * 1024);
+      if (fileSizeMB > 20) {
+        throw new Error(`Audio file is too large (${fileSizeMB.toFixed(1)}MB). Maximum size is 20MB.`);
       }
 
       console.log('Audio file uploaded to Gemini, generating transcription...');
 
-      // Request transcription with speaker diarization
-      const prompt = `Please provide a detailed transcription of this audio with speaker diarization. 
-
-Requirements:
-1. Identify different speakers and label them as "Speaker 1", "Speaker 2", etc.
-2. Limit the number of speakers to a maximum of ${maxSpeakers} speakers
-3. If you detect more than ${maxSpeakers} different voices, group similar voices together rather than creating new speakers
-4. Format the output with each speaker's dialogue on separate lines
-5. Use the format: "Speaker X: [dialogue]"
-6. If you can detect speaker changes within a single turn, break them into separate lines
-7. Maintain chronological order of the conversation
-8. Include all speech content, even brief interjections
-
-Please provide the transcription:`;
-
-      const result = await this.genAI.models.generateContent({
-        model: 'gemini-2.0-flash-001',
-        contents: [
-          prompt,
-          {
-            fileData: {
-              mimeType: uploadedFile.mimeType,
-              fileUri: uploadedFile.uri
-            }
-          }
-        ]
+      // Create timeout wrapper for Gemini API call
+      const timeoutMs = 30000; // 30 seconds timeout
+      const transcriptionPromise = this.performGeminiTranscription(audioBuffer, mimeType, maxSpeakers);
+      
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Gemini API call timed out after ${timeoutMs/1000} seconds`));
+        }, timeoutMs);
       });
 
-      const transcriptionText = result.text;
+      // Race between transcription and timeout
+      const result = await Promise.race([transcriptionPromise, timeoutPromise]);
+      
+      console.log('Gemini transcription received:', result.transcript);
 
-      console.log('Gemini transcription received:', transcriptionText);
-
-      // Parse the transcription to extract speakers and create transcript lines
-      const { transcript, speakers } = await this.parseTranscriptionWithSpeakers(transcriptionText, maxSpeakers);
-
-      // Clean up the uploaded file
-      try {
-        if (uploadedFile && uploadedFile.name) {
-          console.log('🗑️ Cleaning up uploaded file:', uploadedFile.name);
-          await this.genAI.files.delete(uploadedFile.name);
-          console.log('✅ File cleanup successful');
-        } else {
-          console.log('⚠️ No file to cleanup or file name missing');
-        }
-      } catch (cleanupError) {
-        console.warn('⚠️ File cleanup failed (non-critical):', cleanupError.message || cleanupError);
-        // Don't throw error for cleanup failures - transcription was successful
-      }
-
-      return {
-        transcript,
-        speakers
-      };
+      return result;
 
     } catch (error) {
       console.error('Error transcribing audio with Gemini:', error);
@@ -276,78 +232,110 @@ Please provide the transcription:`;
     }
   }
 
-  private async parseTranscriptionWithSpeakers(transcriptionText: string, maxSpeakers: number): Promise<{ transcript: string, speakers: Speaker[] }> {
-    const lines = transcriptionText.split('\n').filter(line => line.trim());
-    const speakerMap = new Map<string, Speaker>();
-    const transcriptLines: string[] = [];
-    
-    // Default speaker colors
-    const speakerColors = ['#28C76F', '#7367F0', '#FF9F43', '#EA5455', '#00CFE8', '#9F44D3'];
-    let colorIndex = 0;
+  private async performGeminiTranscription(
+    audioBuffer: ArrayBuffer,
+    mimeType: string,
+    maxSpeakers?: number
+  ): Promise<GeminiTranscriptionResult> {
+    // Upload the audio file to Gemini
+    const uploadedFile = await this.genAI.files.upload({
+      file: new Blob([audioBuffer], { type: mimeType }),
+      displayName: `audio-${Date.now()}`
+    });
 
-    for (const line of lines) {
-      // Match patterns like "Speaker 1:", "Speaker 2:", etc.
-      const speakerMatch = line.match(/^(Speaker\s+(\d+)):\s*(.+)$/i);
+    console.log('Audio file uploaded successfully:', uploadedFile.name);
+
+    try {
+      // Generate content with the uploaded file
+      const model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash-001' });
       
-      if (speakerMatch) {
-        const speakerLabel = speakerMatch[1];
-        const speakerNumber = speakerMatch[2];
-        const dialogue = speakerMatch[3].trim();
-        
-        // Create speaker if not exists and within limit
-        if (!speakerMap.has(speakerNumber)) {
-          if (speakerMap.size < maxSpeakers) {
-            speakerMap.set(speakerNumber, {
-              id: speakerNumber,
-              meetingId: '', // Will be set when used
-              name: speakerLabel,
-              color: speakerColors[colorIndex % speakerColors.length],
-              type: 'speaker'
-            });
-            colorIndex++;
-          } else {
-            // If we've reached the speaker limit, assign to the last speaker
-            const lastSpeakerId = Array.from(speakerMap.keys())[speakerMap.size - 1];
-            const lastSpeaker = speakerMap.get(lastSpeakerId);
-            if (lastSpeaker) {
-              transcriptLines.push(`${lastSpeaker.name}: ${dialogue}`);
-              continue;
-            }
+      const speakerInstruction = maxSpeakers && maxSpeakers > 1 
+        ? `Identify and label speakers (up to ${maxSpeakers} speakers maximum). Use "Speaker 1:", "Speaker 2:", etc.`
+        : 'Transcribe the audio without speaker labels.';
+
+      const prompt = `Please transcribe this audio file with speaker diarization. ${speakerInstruction}
+
+Format the output as JSON with this structure:
+{
+  "transcript": "Speaker 1: Hello there. Speaker 2: Hi, how are you?",
+  "speakers": [
+    {"id": "1", "name": "Speaker 1", "color": "#28C76F"},
+    {"id": "2", "name": "Speaker 2", "color": "#FF6B6B"}
+  ]
+}
+
+Important: Only identify actual distinct speakers present in the audio. If there's only one speaker, only include one speaker object.`;
+
+      const result = await model.generateContent([
+        {
+          text: prompt
+        },
+        {
+          fileData: {
+            fileUri: uploadedFile.uri,
+            mimeType: mimeType
           }
         }
-        
-        transcriptLines.push(`${speakerLabel}: ${dialogue}`);
-      } else if (line.trim()) {
-        // If no speaker pattern found, add to transcript as-is
-        transcriptLines.push(line.trim());
+      ]);
+
+      const response = result.response;
+      const responseText = response.text();
+      
+      console.log('Raw Gemini response:', responseText.substring(0, 200) + '...');
+
+      // Clean and parse the JSON response
+      const cleanedResponse = this.cleanJsonResponse(responseText);
+      const transcriptionData = JSON.parse(cleanedResponse);
+
+      // Validate the response structure
+      if (!transcriptionData.transcript) {
+        throw new Error('Invalid response: missing transcript');
       }
-    }
 
-    // If no speakers were detected, create a default speaker
-    if (speakerMap.size === 0) {
-      speakerMap.set('1', {
-        id: '1',
-        meetingId: '', // Will be set when used
-        name: 'Speaker 1',
-        color: speakerColors[0],
-        type: 'speaker'
-      });
-      
-      // Format the entire transcription under Speaker 1
-      const formattedTranscript = transcriptLines.length > 0 
-        ? `Speaker 1: ${transcriptLines.join(' ')}`
-        : `Speaker 1: ${transcriptionText}`;
-      
+      // Clean up the uploaded file
+      try {
+        if (uploadedFile && uploadedFile.name) {
+          console.log('🗑️ Cleaning up uploaded file:', uploadedFile.name);
+          await this.genAI.files.delete({ name: uploadedFile.name });
+          console.log('✅ File cleanup successful');
+        } else {
+          console.log('⚠️ No file to cleanup or file name missing');
+        }
+      } catch (cleanupError: any) {
+        console.warn('⚠️ File cleanup failed (non-critical):', cleanupError.message || cleanupError);
+        // Don't throw error for cleanup failures - transcription was successful
+      }
+
+      // Default speaker colors
+      const speakerColors = ['#28C76F', '#7367F0', '#FF9F43', '#EA5455', '#00CFE8', '#9F44D3'];
+
+      // Ensure speakers have required properties
+      const speakers = (transcriptionData.speakers || []).map((speaker: any, index: number) => ({
+        id: speaker.id || (index + 1).toString(),
+        name: speaker.name || `Speaker ${index + 1}`,
+        color: speaker.color || speakerColors[index % speakerColors.length],
+        meetingId: 'live-unified-session',
+        type: 'speaker' as const
+      }));
+
       return {
-        transcript: formattedTranscript,
-        speakers: Array.from(speakerMap.values())
+        transcript: transcriptionData.transcript,
+        speakers: speakers
       };
-    }
 
-    return {
-      transcript: transcriptLines.join('\n'),
-      speakers: Array.from(speakerMap.values())
-    };
+    } catch (error) {
+      // Clean up the uploaded file even on error
+      try {
+        if (uploadedFile && uploadedFile.name) {
+          console.log('🗑️ Cleaning up uploaded file after error:', uploadedFile.name);
+          await this.genAI.files.delete({ name: uploadedFile.name });
+        }
+      } catch (cleanupError: any) {
+        console.warn('⚠️ Error cleaning up file after transcription error (non-critical):', cleanupError.message || cleanupError);
+      }
+      
+      throw error;
+    }
   }
 
   async analyzeMeeting(input: AnalysisInput): Promise<MeetingAnalysis> {

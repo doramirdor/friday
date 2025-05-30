@@ -58,6 +58,10 @@ class GeminiLiveUnifiedService {
   private isRecording = false;
   private tempFileCounter = 0;
   
+  // Rate limiting for API calls
+  private lastApiCallTime = 0;
+  private minApiCallIntervalMs = 1000; // Minimum 1 second between API calls
+  
   private options: Required<GeminiLiveOptions> = {
     languageCode: 'en-US',
     chunkDurationMs: 2000, // 2 seconds for responsive feel
@@ -469,6 +473,16 @@ class GeminiLiveUnifiedService {
         console.log('🔍 GEMINI DEBUG: ⚠️ Processing .bin file from failed MP3 conversion');
         console.log('🔍 GEMINI DEBUG: File will be sent with MP3 MIME type for better compatibility');
       }
+
+      // Rate limiting: ensure minimum interval between API calls
+      const now = Date.now();
+      const timeSinceLastCall = now - this.lastApiCallTime;
+      if (timeSinceLastCall < this.minApiCallIntervalMs) {
+        const waitTime = this.minApiCallIntervalMs - timeSinceLastCall;
+        console.log(`🔍 GEMINI DEBUG: ⏱️ Rate limiting - waiting ${waitTime}ms before API call`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+      this.lastApiCallTime = Date.now();
 
       // Use the existing stable geminiService.transcribeAudio() method with the saved file
       const result: GeminiTranscriptionResult = await geminiService.transcribeAudio(
