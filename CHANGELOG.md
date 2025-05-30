@@ -7,6 +7,10 @@
   - Changed default encoding from LINEAR16 to MP3 to match actual chunk file format
   - Updated sample rate from 16kHz to 44.1kHz for proper MP3 compatibility
   - Resolves "Specify MP3 encoding to match audio file" API errors
+- **Google Live Transcript**: Fixed empty audio chunks - now captures real microphone input
+  - Replaced silent audio generation (`anullsrc`) with real microphone capture (`avfoundation`)
+  - Chunks now contain actual audio content for transcription instead of silence
+  - Uses `-f avfoundation -i ":0"` to capture from default microphone on macOS
 
 ### Improved
 - **Google Live Transcript**: Increased chunk duration from 1 second to 3 seconds
