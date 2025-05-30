@@ -19,6 +19,11 @@
   - Fixed callback invocation from `this.onResult` to `this.resultCallback`
   - Properly store recording options in service state for chunk processing
   - Prevents "Cannot read properties of null" errors when service stops while chunks are processing
+- **Google Live Transcript**: Fixed chunk processing validation causing transcription failures
+  - Changed validation from `this.currentOptions` to `this.state` properties
+  - Removed unused `currentOptions` and `currentRecordingId` properties
+  - Ensures chunks are properly processed instead of being skipped
+  - Resolves "Missing options or API key, skipping chunk processing" warnings
 
 ### Improved
 - **Google Live Transcript**: Increased chunk duration from 1 second to 3 seconds
