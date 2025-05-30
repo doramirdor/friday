@@ -309,6 +309,14 @@ All notable changes to this project will be documented in this file.
   - **Improved reliability** for continuous transcription with rate limiting protection against API quota limits
   - **Added comprehensive timeout logging** to help identify and diagnose API response delays
   - **Maintains transcription flow continuity** even when individual API calls fail or timeout
+- **Gemini API Interface Compatibility**: Fixed "this.genAI.getGenerativeModel is not a function" error in audio transcription
+  - **Fixed incorrect API method calls** by using `this.genAI.models.generateContent()` instead of `getGenerativeModel()`
+  - **Aligned API calls** with existing working `testConnection()` method for consistency
+  - **Updated file upload and content generation** to use correct Gemini API interface
+  - **Fixed response handling** to use `result.text` directly instead of `response.text()`
+  - **Resolved method not found errors** that prevented audio transcription from working
+  - **Maintains compatibility** with the @google/genai SDK version used in the project
+  - **Ensures consistent API usage** across all Gemini service methods
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
@@ -935,6 +943,14 @@ All notable changes to this project will be documented in this file.
   - **Improved reliability** for continuous transcription with rate limiting protection against API quota limits
   - **Added comprehensive timeout logging** to help identify and diagnose API response delays
   - **Maintains transcription flow continuity** even when individual API calls fail or timeout
+- **Gemini API Interface Compatibility**: Fixed "this.genAI.getGenerativeModel is not a function" error in audio transcription
+  - **Fixed incorrect API method calls** by using `this.genAI.models.generateContent()` instead of `getGenerativeModel()`
+  - **Aligned API calls** with existing working `testConnection()` method for consistency
+  - **Updated file upload and content generation** to use correct Gemini API interface
+  - **Fixed response handling** to use `result.text` directly instead of `response.text()`
+  - **Resolved method not found errors** that prevented audio transcription from working
+  - **Maintains compatibility** with the @google/genai SDK version used in the project
+  - **Ensures consistent API usage** across all Gemini service methods
 
 ### Changed
 - Unified Gemini Live service now uses MediaRecorder instead of ScriptProcessorNode for audio capture
