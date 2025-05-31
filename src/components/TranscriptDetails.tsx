@@ -199,7 +199,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const [isLiveTranscript, setIsLiveTranscript] = useState(false);
   const [isGoogleLiveMode, setIsGoogleLiveMode] = useState(false);
   const [isGeminiLiveMode, setIsGeminiLiveMode] = useState(false);
-  const [setAutoSave] = useState(() => () => {}); // Dummy function
+  const [setAutoSave] = useState(() => (_value: boolean) => {}); // Dummy function that accepts boolean
 
   // Dummy objects for deleted live transcript services (functionality disabled)
   const googleLiveTranscript = {
@@ -209,7 +209,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     isAvailable: false,
     latestResult: null,
     error: null,
-    startRecording: () => {},
+    startRecording: (_options?: any) => {},
     stopRecording: () => {},
     clearTranscript: () => {}
   };
@@ -222,7 +222,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     isStreaming: false,
     isAvailable: false,
     error: null,
-    startStreaming: () => {},
+    startStreaming: (_options?: any) => {},
     stopStreaming: () => {},
     clearTranscript: () => {}
   };
@@ -237,7 +237,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     chunkDurationMs: number;
   }
   
-  const GeminiSemiLiveTranscript = () => null;
+  const GeminiSemiLiveTranscript = (_props: any) => null;
   const GeminiLiveUnifiedTest = () => null;
   const GoogleLiveTranscriptNew = () => null;
   
