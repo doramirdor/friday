@@ -195,6 +195,55 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   // Track the current speaker for new transcripts
   const [currentSpeakerId, setCurrentSpeakerId] = useState("s1");
 
+  // Temporary live transcript state variables (disabled functionality)
+  const [isLiveTranscript, setIsLiveTranscript] = useState(false);
+  const [isGoogleLiveMode, setIsGoogleLiveMode] = useState(false);
+  const [isGeminiLiveMode, setIsGeminiLiveMode] = useState(false);
+  const [setAutoSave] = useState(() => () => {}); // Dummy function
+
+  // Dummy objects for deleted live transcript services (functionality disabled)
+  const googleLiveTranscript = {
+    transcript: '',
+    speakers: [],
+    isRecording: false,
+    isAvailable: false,
+    latestResult: null,
+    error: null,
+    startRecording: () => {},
+    stopRecording: () => {},
+    clearTranscript: () => {}
+  };
+  
+  const streamingSpeech = {
+    transcript: '',
+    interimTranscript: '',
+    confidence: null,
+    speakerId: null,
+    isStreaming: false,
+    isAvailable: false,
+    error: null,
+    startStreaming: () => {},
+    stopStreaming: () => {},
+    clearTranscript: () => {}
+  };
+  
+  const geminiLive = {
+    isAvailable: false
+  };
+
+  // Dummy types and components for deleted live transcript functionality
+  interface SemiLiveSpeechOptions {
+    languageCode: string;
+    chunkDurationMs: number;
+  }
+  
+  const GeminiSemiLiveTranscript = () => null;
+  const GeminiLiveUnifiedTest = () => null;
+  const GoogleLiveTranscriptNew = () => null;
+  
+  // Dummy function that doesn't take parameters
+  const handleAddGeminiTranscript = () => {};
+
   // Audio recording and playback references and states
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -297,7 +346,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
           setDescription(meetingDetails.meeting.description);
           setTags(meetingDetails.meeting.tags);
           setMaxSpeakers(meetingDetails.meeting.maxSpeakers || 4);
-          setIsLiveTranscript(meetingDetails.meeting.liveTranscript);
           
           // Update transcript lines
           if (meetingDetails.transcript && meetingDetails.transcript.length > 0) {
