@@ -32,6 +32,7 @@ import useCombinedRecording from "@/hooks/useCombinedRecording";
 import AudioPlayer from "@/components/AudioPlayer";
 import { Switch } from "@/components/ui/switch";
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
+import { GoogleLiveStable } from "@/components/GoogleLiveStable";
 
 // Simple debounce function
 const debounce = <T extends unknown[]>(func: (...args: T) => void, wait: number) => {
@@ -2165,97 +2166,42 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
                             className="mb-4"
                           />
                         ) : isGoogleLiveMode ? (
-                          <div className="flex flex-col items-center gap-4 mb-4 p-4 border rounded-lg bg-green-50">
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant={googleLiveTranscript.isRecording ? "destructive" : "default"}
-                                size="sm"
-                                onClick={() => {
-                                  if (googleLiveTranscript.isRecording) {
-                                    googleLiveTranscript.stopRecording();
-                                  } else {
-                                    googleLiveTranscript.startRecording({
-                                      languageCode: 'en-US',
-                                      enableSpeakerDiarization: true,
-                                      maxSpeakers: maxSpeakers,
-                                      encoding: 'MP3', // Changed from LINEAR16 to MP3
-                                      sampleRateHertz: 44100, // Changed from 16000 to 44100
-                                    });
-                                  }
-                                }}
-                                className="flex items-center gap-2"
-                              >
-                                {googleLiveTranscript.isRecording ? (
-                                  <>
-                                    <Square className="h-4 w-4" />
-                                    Stop Google Live
-                                  </>
-                                ) : (
-                                  <>
-                                    <Mic className="h-4 w-4" />
-                                    Start Google Live
-                                  </>
-                                )}
-                              </Button>
+                          <GoogleLiveStable
+                            maxSpeakers={maxSpeakers}
+                            onTranscriptAdd={(transcript) => {
+                              // Parse the transcript into lines and add to meeting
+                              const lines = transcript.split('\n').filter(line => line.trim());
+                              const newTranscriptLines: TranscriptLine[] = [];
                               
-                              {googleLiveTranscript.isRecording && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={googleLiveTranscript.clearTranscript}
-                                >
-                                  Clear
-                                </Button>
-                              )}
-                            </div>
-
-                            {/* Live transcript display */}
-                            {googleLiveTranscript.transcript && (
-                              <div className="w-full max-w-2xl">
-                                <div className="p-3 border rounded bg-white min-h-[100px] max-h-[200px] overflow-y-auto">
-                                  <div className="text-sm">
-                                    <pre className="whitespace-pre-wrap">{googleLiveTranscript.transcript}</pre>
-                                  </div>
-                                </div>
+                              lines.forEach((line, index) => {
+                                const speakerMatch = line.match(/^Speaker (\d+):\s*(.+)$/);
                                 
-                                {/* Speakers display */}
-                                {googleLiveTranscript.speakers && googleLiveTranscript.speakers.length > 0 && (
-                                  <div className="flex flex-wrap gap-2 mt-2">
-                                    {googleLiveTranscript.speakers.map((speaker) => (
-                                      <div
-                                        key={speaker.id}
-                                        className="flex items-center gap-1 px-2 py-1 rounded-full text-xs"
-                                        style={{ backgroundColor: speaker.color, color: 'white' }}
-                                      >
-                                        {speaker.name}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* Button to manually add transcript to meeting */}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="mt-2 w-full"
-                                  onClick={() => {
-                                    // The transcript is already being processed automatically
-                                    // This button just provides feedback that it's working
-                                    toast.success('Google Live transcript is automatically added to meeting');
-                                  }}
-                                >
-                                  Auto-Adding to Meeting Transcript
-                                </Button>
-                              </div>
-                            )}
-
-                            {/* Error display */}
-                            {googleLiveTranscript.error && (
-                              <div className="text-red-600 text-sm text-center">
-                                Error: {googleLiveTranscript.error}
-                              </div>
-                            )}
-                          </div>
+                                if (speakerMatch) {
+                                  const speakerId = speakerMatch[1];
+                                  const text = speakerMatch[2].trim();
+                                  
+                                  newTranscriptLines.push({
+                                    id: `gls-${Date.now()}-${index}`,
+                                    text: text,
+                                    speakerId: speakerId,
+                                  });
+                                } else if (line.trim()) {
+                                  // If no speaker pattern, assign to current speaker
+                                  newTranscriptLines.push({
+                                    id: `gls-${Date.now()}-${index}`,
+                                    text: line.trim(),
+                                    speakerId: currentSpeakerId,
+                                  });
+                                }
+                              });
+                              
+                              if (newTranscriptLines.length > 0) {
+                                setTranscriptLines(prev => [...prev, ...newTranscriptLines]);
+                                toast.success(`Added ${newTranscriptLines.length} transcript lines from Google Live Stable`);
+                              }
+                            }}
+                            className="mb-4"
+                          />
                         ) : (
                           streamingSpeech.isAvailable && (
                             <div className="flex flex-col items-center gap-4 mb-4 p-4 border rounded-lg bg-blue-50">
