@@ -2,6 +2,12 @@
 
 ## [Latest] - 2025-01-29
 
+### Fixed
+- **Swift Compilation Error**: Fixed TranscriptConverter not found in scope error during Swift compilation
+  - Added missing `TranscriptConverter.swift` file to the Swift compilation command in package.json
+  - Swift compiler can now properly link all necessary Swift files including TranscriptConverter class
+  - Resolves compilation error: "cannot find 'TranscriptConverter' in scope" at line 959 in Recorder.swift
+
 ### Removed
 - **Complete Live Transcript System Cleanup**: Removed all live transcript and semi-live transcript functionality to start fresh
   - Deleted Google Live Transcript service, hook, and component
@@ -59,6 +65,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Google Live Stable Service**: Implemented stable Google Live transcript functionality using file-based approach
+  - Replaced dangerous real-time streaming with 1-second audio chunks processed via Google Cloud Speech API
+  - Added GoogleLiveStable component with speaker diarization and real-time transcript processing
+  - Uses MediaRecorder with configurable chunk duration for stable audio capture
+  - Prevents system crashes that occurred with ScriptProcessorNode and WebSocket streaming
+  - Integrated into TranscriptDetails as replacement for broken Google Live functionality
+  - Maintains speaker detection and color-coded display with confidence scoring
+  - Follows same stable architecture as Gemini Semi-Live to prevent crashes
+
 ### Removed
 - Complete removal of live transcript system (Google Live, Gemini Semi-Live, Streaming Speech)
   - Deleted 22 files (5,489 lines of code) including services, hooks, components, and handlers
@@ -71,6 +87,7 @@ All notable changes to this project will be documented in this file.
 - Fixed Electron app startup crashes caused by missing live transcript modules
 - Resolved linter errors for undefined live transcript functions and components
 - Removed deprecated and unstable live transcript infrastructure
+- Fixed import error for non-existent gemini-semi-live service in settings dialog
 
 ## [2025-01-31] - System Stability and Live Transcript Cleanup
 
