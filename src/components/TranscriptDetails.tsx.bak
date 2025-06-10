@@ -201,10 +201,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
   const [isGeminiLiveMode, setIsGeminiLiveMode] = useState(false);
   const [setAutoSave] = useState(() => (_value: boolean) => {}); // Dummy function that accepts boolean
 
-  // Delete state
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-
   // Dummy objects for deleted live transcript services (functionality disabled)
   const googleLiveTranscript = {
     transcript: '',
@@ -213,7 +209,7 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     isAvailable: false,
     latestResult: null,
     error: null,
-    startRecording: (_options?: { languageCode: string; enableSpeakerDiarization: boolean; maxSpeakers: number; encoding: string; sampleRateHertz: number }) => {},
+    startRecording: (_options?: any) => {},
     stopRecording: () => {},
     clearTranscript: () => {}
   };
@@ -226,26 +222,6 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     isStreaming: false,
     isAvailable: false,
     error: null,
-    startStreaming: (_options?: SemiLiveSpeechOptions) => {},
-    stopStreaming: () => {},
-    clearTranscript: () => {}
-  };
-  
-  const geminiLive = {
-    isAvailable: false
-  };
-
-  // Dummy types and components for deleted live transcript functionality
-  interface SemiLiveSpeechOptions {
-    languageCode: string;
-    chunkDurationMs: number;
-  }
-  
-  const GeminiSemiLiveTranscript = (_props: { maxSpeakers: number; onTranscriptAdd: (transcript: string) => void; className?: string }) => null;
-  const GeminiLiveUnifiedTest = () => null;
-  const GoogleLiveTranscriptNew = () => null;
-  
-  // Dummy function that doesn't take parameters
   const handleAddGeminiTranscript = () => {};
 
   // Audio recording and playback references and states
@@ -1832,6 +1808,10 @@ const TranscriptDetails: React.FC<TranscriptDetailsProps> = ({ initialMeetingSta
     description, 
     setNotes
   ]);
+
+  // Add delete state
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   // Handle delete meeting
   const handleDeleteMeeting = useCallback(async () => {

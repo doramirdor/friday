@@ -88,9 +88,8 @@ const SettingsDialog = ({ open, onOpenChange, onSettingsChange }: SettingsDialog
       // Reinitialize Gemini service with new API key (this part can stay)
       await geminiService.reinitialize()
       
-      // Reinitialize Gemini Semi-Live service (replaced old gemini-live)
-      const geminiSemiLiveService = (await import('@/services/gemini-semi-live')).geminiSemiLiveService;
-      // Note: gemini-semi-live doesn't need reinitialize method as it checks API key on each use
+      // Note: The Gemini Semi-Live service was referenced but doesn't exist in the codebase
+      // Removing the problematic import that was causing build errors
       
       // This code is now disabled to prevent database conflicts:
       // await updateSettings({ geminiApiKey })
