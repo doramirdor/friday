@@ -2,329 +2,117 @@ import Foundation
 import CoreAudio
 import AVFoundation
 
-/**
- * A utility class for managing and identifying audio devices on macOS
- */
-class AudioDeviceManager {
-    /**
-     * Lists audio input devices detected on the system
-     */
-    static func listAudioDevices() -> [String] {
-        var deviceList = [String]()
-        
-        var propertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        var propertySize: UInt32 = 0
-        var result = AudioObjectGetPropertyDataSize(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            0,
-            nil,
-            &propertySize
-        )
-        
-        guard result == noErr else {
-            print("Error getting audio devices size: \(result)")
-            return deviceList
-        }
-        
-        let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
-        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
-        
-        result = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            0,
-            nil,
-            &propertySize,
-            &deviceIDs
-        )
-        
-        guard result == noErr else {
-            print("Error getting audio devices: \(result)")
-            return deviceList
-        }
-        
-        for deviceID in deviceIDs {
-            var deviceNameProperty = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyDeviceName,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            
-            var deviceNameSize = UInt32(256)
-            var deviceNameBuffer = [UInt8](repeating: 0, count: 256)
-            
-            result = AudioObjectGetPropertyData(
-                deviceID,
-                &deviceNameProperty,
-                0,
-                nil,
-                &deviceNameSize,
-                &deviceNameBuffer
-            )
-            
-            if result == noErr {
-                let deviceName = String(bytes: deviceNameBuffer.prefix(Int(deviceNameSize)), encoding: .utf8) ?? "Unknown Device"
-                
-                // Check if device has input capability
-                var inputChannelsAddress = AudioObjectPropertyAddress(
-                    mSelector: kAudioDevicePropertyStreamConfiguration,
-                    mScope: kAudioDevicePropertyScopeInput,
-                    mElement: kAudioObjectPropertyElementMain
-                )
-                
-                var propsize = UInt32(MemoryLayout<AudioBufferList>.size)
-                var bufferList = AudioBufferList()
-                
-                result = AudioObjectGetPropertyData(
-                    deviceID,
-                    &inputChannelsAddress,
-                    0,
-                    nil,
-                    &propsize,
-                    &bufferList
-                )
-                
-                if result == noErr && bufferList.mNumberBuffers > 0 {
-                    deviceList.append(deviceName)
-                }
-            }
-        }
-        
-        return deviceList
-    }
-    
-    /**
-     * Lists audio input devices (alias for listAudioDevices for compatibility)
-     */
+/// Utility class for managing and identifying audio devices on macOS.
+final class AudioDeviceManager {
+    // MARK: – Device enumeration
     static func listAudioInputDevices() -> [String] {
-        return listAudioDevices()
-    }
-    
-    /**
-     * Gets the default audio input device
-     */
-    static func getDefaultInputDevice() -> String? {
-        let devices = listAudioDevices()
-        return devices.first
-    }
-    
-    /**
-     * Checks if a microphone is currently available
-     */
-    static func isMicrophoneAvailable() -> Bool {
-        return !listAudioDevices().isEmpty
-    }
-    
-    /**
-     * Gets the current microphone input level (volume)
-     * Returns a value between 0-100 or nil if not available
-     */
-    static func getMicrophoneInputLevel() -> Float? {
-        var propertyAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        var deviceID: AudioDeviceID = 0
-        var propertySize = UInt32(MemoryLayout<AudioDeviceID>.size)
-        
-        var result = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            0,
-            nil,
-            &propertySize,
-            &deviceID
-        )
-        
-        guard result == noErr else { return nil }
-        
-        // Get the volume
-        propertyAddress.mSelector = kAudioDevicePropertyVolumeScalar
-        propertyAddress.mScope = kAudioDevicePropertyScopeInput
-        
-        var volume: Float32 = 0.0
-        propertySize = UInt32(MemoryLayout<Float32>.size)
-        
-        result = AudioObjectGetPropertyData(
-            deviceID,
-            &propertyAddress,
-            0,
-            nil,
-            &propertySize,
-            &volume
-        )
-        
-        if result == noErr {
-            return volume * 100.0
-        }
-        
-        return nil
-    }
-    
-    /**
-     * Logs diagnostic information about audio devices
-     */
-    static func logAudioDiagnostics() {
-        print("🎤 Audio Device Diagnostics:")
-        print("-----------------------------")
-        
-        var propertyAddress = AudioObjectPropertyAddress(
+        var deviceNames: [String] = []
+
+        var addr = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        var propertySize: UInt32 = 0
-        var result = AudioObjectGetPropertyDataSize(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            0,
-            nil,
-            &propertySize
-        )
-        
-        guard result == noErr else {
-            print("Error getting audio devices size: \(result)")
-            return
-        }
-        
-        let deviceCount = Int(propertySize) / MemoryLayout<AudioDeviceID>.size
+            mElement: kAudioObjectPropertyElementMain)
+
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &dataSize) == noErr else { return [] }
+
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
         var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
-        
-        result = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            0,
-            nil,
-            &propertySize,
-            &deviceIDs
-        )
-        
-        guard result == noErr else {
-            print("Error getting audio devices: \(result)")
-            return
-        }
-        
-        var inputDeviceCount = 0
-        
-        for deviceID in deviceIDs {
-            // Get device name
-            var deviceNameProperty = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyDeviceName,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            
-            var deviceNameSize = UInt32(256)
-            var deviceNameBuffer = [UInt8](repeating: 0, count: 256)
-            
-            result = AudioObjectGetPropertyData(
-                deviceID,
-                &deviceNameProperty,
-                0,
-                nil,
-                &deviceNameSize,
-                &deviceNameBuffer
-            )
-            
-            if result == noErr {
-                let deviceName = String(bytes: deviceNameBuffer.prefix(Int(deviceNameSize)), encoding: .utf8) ?? "Unknown Device"
-                
-                // Check if device has input capability
-                var inputChannelsAddress = AudioObjectPropertyAddress(
-                    mSelector: kAudioDevicePropertyStreamConfiguration,
-                    mScope: kAudioDevicePropertyScopeInput,
-                    mElement: kAudioObjectPropertyElementMain
-                )
-                
-                var propsize = UInt32(MemoryLayout<AudioBufferList>.size)
-                var bufferList = AudioBufferList()
-                
-                result = AudioObjectGetPropertyData(
-                    deviceID,
-                    &inputChannelsAddress,
-                    0,
-                    nil,
-                    &propsize,
-                    &bufferList
-                )
-                
-                if result == noErr && bufferList.mNumberBuffers > 0 {
-                    inputDeviceCount += 1
-                    print("Found input device: \(deviceName)")
-                }
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &dataSize, &deviceIDs) == noErr else { return [] }
+
+        for id in deviceIDs {
+            if hasInput(id) {
+                deviceNames.append(name(of: id))
             }
         }
-        
-        print("Input devices detected: \(inputDeviceCount)")
-        
-        // Get microphone volume
-        if let volume = getMicrophoneInputLevel() {
-            print("Microphone input level: \(volume)%")
-        } else {
-            print("Could not get microphone input level")
-        }
-        
-        print("-----------------------------")
+        return deviceNames
     }
-    
-    static func checkMicrophonePermission() -> Bool {
-        // macOS doesn't have the same permission model as iOS
-        // Instead, when the app tries to use the microphone, the system will prompt for permission
-        return true
+
+    static func getDefaultInputDeviceName() -> String? { listAudioInputDevices().first }
+    static func isMicrophoneAvailable() -> Bool { !listAudioInputDevices().isEmpty }
+
+    // MARK: – Bluetooth detection
+    /// Returns true if the current **output** device transport is Bluetooth.
+    static func isCurrentOutputDeviceBluetooth() -> Bool {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var devID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &devID) == noErr else { return false }
+
+        addr.mSelector = kAudioDevicePropertyTransportType
+        var transport: UInt32 = 0
+        size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(devID, &addr, 0, nil, &size, &transport) == noErr else { return false }
+        return transport == kAudioDeviceTransportTypeBluetooth
     }
-    
-    static func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
-        // On macOS, we can't explicitly request permission ahead of time
-        // The system will prompt when the app first tries to access the microphone
-        completion(true)
+
+    // MARK: – Volume helpers
+    /// Returns input volume (0‑100) of default input device, or nil.
+    static func getMicrophoneInputLevel() -> Float? {
+        guard let devID = defaultInputID() else { return nil }
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain)
+        var vol: Float32 = 0
+        var size = UInt32(MemoryLayout<Float32>.size)
+        guard AudioObjectGetPropertyData(devID, &addr, 0, nil, &size, &vol) == noErr else { return nil }
+        return vol * 100
     }
-    
-    static func setMicrophoneInputLevel(_ volume: Float) -> Bool {
-        var propertyAddress = AudioObjectPropertyAddress(
+
+    static func setMicrophoneInputLevel(_ level0to100: Float) -> Bool {
+        guard let devID = defaultInputID() else { return false }
+        var value = Float32(max(0, min(level0to100, 100)) / 100)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain)
+        var size = UInt32(MemoryLayout<Float32>.size)
+        return AudioObjectSetPropertyData(devID, &addr, 0, nil, size, &value) == noErr
+    }
+
+    // MARK: – Diagnostics
+    static func logAudioDiagnostics() {
+        print("🎤 Audio diagnostics:")
+        for name in listAudioInputDevices() { print("  • \(name)") }
+        if let vol = getMicrophoneInputLevel() { print("  Mic level: \(String(format: "%.0f", vol))%") }
+        print("  Output over Bluetooth: \(isCurrentOutputDeviceBluetooth())")
+    }
+
+    // MARK: – Private helpers
+    private static func defaultInputID() -> AudioDeviceID? {
+        var addr = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        
-        var deviceID: AudioDeviceID = 0
-        var propertySize = UInt32(MemoryLayout<AudioDeviceID>.size)
-        
-        var result = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &propertyAddress,
-            0,
-            nil,
-            &propertySize,
-            &deviceID
-        )
-        
-        guard result == noErr else { return false }
-        
-        // Set the volume
-        propertyAddress.mSelector = kAudioDevicePropertyVolumeScalar
-        propertyAddress.mScope = kAudioDevicePropertyScopeInput
-        
-        var newVolume = volume / 100.0
-        propertySize = UInt32(MemoryLayout<Float32>.size)
-        
-        result = AudioObjectGetPropertyData(
-            deviceID,
-            &propertyAddress,
-            0,
-            nil,
-            &propertySize,
-            &newVolume
-        )
-        
-        return result == noErr
+            mElement: kAudioObjectPropertyElementMain)
+        var devID: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        return AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &devID) == noErr ? devID : nil
     }
-} 
+
+    private static func name(of id: AudioDeviceID) -> String {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceNameCFString,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        var cfName: CFString = "" as CFString
+        var size = UInt32(MemoryLayout<CFString>.size)
+        return AudioObjectGetPropertyData(id, &addr, 0, nil, &size, &cfName) == noErr ? (cfName as String) : "Unknown"
+    }
+
+    private static func hasInput(_ id: AudioDeviceID) -> Bool {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioDevicePropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(id, &addr, 0, nil, &size) == noErr else { return false }
+        let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
+        defer { bufferList.deallocate() }
+        return AudioObjectGetPropertyData(id, &addr, 0, nil, &size, bufferList) == noErr && bufferList.pointee.mNumberBuffers > 0
+    }
+}
+

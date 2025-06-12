@@ -1,13 +1,11 @@
 import Foundation
 
-print("DEBUG: Swift Recorder main.swift starting up")
-print("DEBUG: Arguments: \(CommandLine.arguments)")
+print("DEBUG: Swift recorder starting")
+print("DEBUG: CLI args  →", CommandLine.arguments)
 
-// Create an instance of RecorderCLI and run it
-print("DEBUG: Creating RecorderCLI instance")
+// Kick off the recorder
 let recorder = RecorderCLI()
-print("DEBUG: Executing recording process")
 recorder.executeRecordingProcess()
-print("DEBUG: Recording process finished")
 
-// Just read the file content 
+// NOTE: RecorderCLI exits the process itself via ResponseHandler,
+// so there’s nothing else to do here.
